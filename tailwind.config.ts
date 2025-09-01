@@ -26,7 +26,8 @@ export default {
 				foreground: 'hsl(var(--foreground))',
 				primary: {
 					DEFAULT: 'hsl(var(--primary))',
-					foreground: 'hsl(var(--primary-foreground))'
+					foreground: 'hsl(var(--primary-foreground))',
+					glow: 'hsl(var(--primary-glow))'
 				},
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',
@@ -51,6 +52,19 @@ export default {
 				card: {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
+				},
+				// Status colors for service tracking
+				status: {
+					pending: 'hsl(var(--status-pending))',
+					progress: 'hsl(var(--status-progress))',
+					completed: 'hsl(var(--status-completed))',
+					ready: 'hsl(var(--status-ready))'
+				},
+				// Garage theme colors
+				garage: {
+					dark: 'hsl(var(--garage-dark))',
+					silver: 'hsl(var(--garage-silver))',
+					light: 'hsl(var(--garage-light))'
 				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
@@ -84,11 +98,57 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'fade-in': {
+					'0%': {
+						opacity: '0',
+						transform: 'translateY(10px)'
+					},
+					'100%': {
+						opacity: '1',
+						transform: 'translateY(0)'
+					}
+				},
+				'slide-up': {
+					'0%': {
+						opacity: '0',
+						transform: 'translateY(20px)'
+					},
+					'100%': {
+						opacity: '1',
+						transform: 'translateY(0)'
+					}
+				},
+				'progress-fill': {
+					'0%': { width: '0%' },
+					'100%': { width: 'var(--progress-width)' }
+				},
+				'glow': {
+					'0%, 100%': { 
+						boxShadow: '0 0 5px hsl(var(--primary) / 0.5)' 
+					},
+					'50%': { 
+						boxShadow: '0 0 20px hsl(var(--primary) / 0.8)' 
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'fade-in': 'fade-in 0.5s ease-out',
+				'slide-up': 'slide-up 0.6s ease-out',
+				'progress-fill': 'progress-fill 1s ease-out',
+				'glow': 'glow 2s ease-in-out infinite'
+			},
+			backgroundImage: {
+				'gradient-primary': 'var(--gradient-primary)',
+				'gradient-dark': 'var(--gradient-dark)',
+				'gradient-card': 'var(--gradient-card)'
+			},
+			boxShadow: {
+				'elegant': 'var(--shadow-elegant)',
+				'card': 'var(--shadow-card)',
+				'glow': 'var(--shadow-glow)'
 			}
 		}
 	},

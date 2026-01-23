@@ -3,7 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 
-export type UserRole = "admin" | "staff" | "customer";
+export type UserRole = "admin" | "manager" | "staff" | "customer";
 
 export interface AuthUser extends User {
   role?: UserRole;
@@ -53,13 +53,29 @@ export function useAuth() {
 
   const fetchUserRole = async (userId: string) => {
     try {
-      const { data: roleData, error } = await supabase
+      // First try to get existing role
+      const { data: roleData, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", userId)
         .single();
 
-      if (error) throw error;
+      let userRole: UserRole = "customer"; // default role
+
+      if (roleError && roleError.code === 'PGRST116') {
+        // No role found, create default customer role
+        const { error: insertError } = await supabase
+          .from("user_roles")
+          .insert({ user_id: userId, role: "customer" });
+
+        if (insertError) {
+          console.error("Error creating default role:", insertError);
+        }
+      } else if (roleData) {
+        userRole = roleData.role as UserRole;
+      } else if (roleError) {
+        console.error("Error fetching user role:", roleError);
+      }
 
       const { data: profileData } = await supabase
         .from("profiles")
@@ -69,7 +85,7 @@ export function useAuth() {
 
       setUser((prev) => ({
         ...prev!,
-        role: roleData.role as UserRole,
+        role: userRole,
         full_name: profileData?.full_name,
       }));
     } catch (error) {

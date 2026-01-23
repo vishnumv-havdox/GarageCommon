@@ -1,0 +1,635 @@
+================================================================================
+                    AMMA AUTO - DATABASE SCHEMA DOCUMENTATION
+================================================================================
+Updated: 2026-01-21
+Generated from: amma-drive-flow/supabase/migrations & types.ts
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. ENUMS
+2. TABLES
+   - profiles
+   - user_roles
+   - positions
+   - employees
+   - customers
+   - vehicles
+   - work_orders
+   - inventory
+   - invoices
+3. VIEWS
+   - employee_details
+4. FUNCTIONS
+   - has_role
+   - update_updated_at_column
+5. TRIGGERS
+6. ROW LEVEL SECURITY POLICIES
+7. RELATIONSHIPS DIAGRAM
+8. CONSTRAINTS & CHECKS
+
+================================================================================
+1. ENUMS
+================================================================================
+
+access_level_enum
+-----------------
+Values: 'admin' | 'manager' | 'staff'
+Used by: positions.access_level, employees.access_level
+
+================================================================================
+2. TABLES
+================================================================================
+
+--------------------------------------------------------------------------------
+TABLE: profiles
+--------------------------------------------------------------------------------
+Description: Extended user profile information (linked to auth.users)
+
+Columns:
+  | Column      | Type         | Nullable | Default          | Notes          |
+  |-------------|--------------|----------|------------------|----------------|
+  | id          | uuid         | NO       | gen_random_uuid()| PRIMARY KEY    |
+  | email       | text         | NO       | -                |                |
+  | full_name   | text         | NO       | -                |                |
+  | phone       | text         | YES      | -                |                |
+  | created_at  | timestamptz  | YES      | now()            |                |
+  | updated_at  | timestamptz  | YES      | now()            | Auto-updated   |
+
+Indexes:
+  - profiles_pkey (id)
+
+Triggers:
+  - update_profiles_updated_at (auto-updates updated_at)
+
+RLS Policies:
+  - Public profiles are viewable by everyone
+  - Users can update own profile
+
+--------------------------------------------------------------------------------
+TABLE: user_roles
+--------------------------------------------------------------------------------
+Description: Maps users to roles for authorization
+
+Columns:
+  | Column      | Type         | Nullable | Default          | Notes                |
+  |-------------|--------------|----------|------------------|----------------------|
+  | id          | uuid         | NO       | gen_random_uuid()| PRIMARY KEY          |
+  | user_id     | uuid         | NO       | -                | REFERENCES auth.users|
+  | role        | text         | NO       | -                | CHECK: admin/staff/customer|
+  | created_at  | timestamptz  | YES      | now()            |                      |
+
+Constraints:
+  - user_roles_pkey (PRIMARY KEY)
+  - user_roles_user_id_role_key (UNIQUE: user_id, role)
+  - user_roles_user_id_fkey (FOREIGN KEY -> auth.users ON DELETE CASCADE)
+
+Indexes:
+  - user_roles_pkey
+
+RLS Policies:
+  - Admins can manage user roles
+
+--------------------------------------------------------------------------------
+TABLE: positions
+--------------------------------------------------------------------------------
+Description: Job position definitions (roles within the organization)
+
+Columns:
+  | Column        | Type              | Nullable | Default          | Notes              |
+  |---------------|-------------------|----------|------------------|--------------------|
+  | id            | uuid              | NO       | gen_random_uuid()| PRIMARY KEY        |
+  | name          | text              | NO       | -                | UNIQUE - Job title |
+  | department    | text              | NO       | -                | e.g., Service, Sales|
+  | access_level  | access_level_enum | NO       | 'staff'          | Permission level   |
+  | description   | text              | YES      | -                |                    |
+  | base_salary   | numeric(10,2)     | YES      | -                | Default salary     |
+  | created_at    | timestamptz       | YES      | now()            |                    |
+
+Indexes:
+  - positions_pkey
+
+Relationships:
+  - One-to-Many: positions -> employees (via position_id)
+
+RLS Policies:
+  - Authenticated users can read positions
+  - Admins can manage positions
+
+Available Departments:
+  - Service
+  - Sales
+  - Administration
+  - Parts
+  - Finance
+  - HR
+
+--------------------------------------------------------------------------------
+TABLE: employees
+--------------------------------------------------------------------------------
+Description: Employee records for staff management
+
+Columns:
+  | Column           | Type              | Nullable | Default          | Notes                   |
+  |------------------|-------------------|----------|------------------|-------------------------|
+  | id               | uuid              | NO       | gen_random_uuid()| PRIMARY KEY             |
+  | user_id          | uuid              | YES      | -                | REFERENCES auth.users   |
+  | name             | text              | NO       | -                | Full name               |
+  | email            | text              | NO       | -                | Contact email           |
+  | phone            | text              | YES      | -                | Contact phone           |
+  | position_id      | uuid              | YES      | -                | REFERENCES positions    |
+  | access_level     | access_level_enum | NO       | 'staff'          | admin|manager|staff   |
+  | salary           | numeric(10,2)     | YES      | -                | Individual salary       |
+  | status           | text              | NO       | 'active'         | Employment status       |
+  | hire_date        | date              | YES      | -                |                        |
+  | emergency_contact| text              | YES      | -                |                        |
+  | emergency_phone  | text              | YES      | -                |                        |
+  | address          | text              | YES      | -                |                        |
+  | notes            | text              | YES      | -                |                        |
+  | created_at       | timestamptz       | YES      | now()            |                        |
+  | updated_at       | timestamptz       | YES      | now()            | Auto-updated           |
+
+Indexes:
+  - employees_pkey
+
+Constraints:
+  - employees_position_fk (FOREIGN KEY -> positions ON DELETE SET NULL)
+
+Relationships:
+  - Many-to-One: employees -> positions (via position_id)
+  - Many-to-One: employees -> work_orders (via assigned_to)
+
+Triggers:
+  - update_employees_updated_at (auto-updates updated_at)
+
+RLS Policies:
+  - Staff+ can read employees
+  - Admins can manage employees
+
+--------------------------------------------------------------------------------
+TABLE: customers
+--------------------------------------------------------------------------------
+Description: Customer information for the auto repair business
+
+Columns:
+  | Column        | Type         | Nullable | Default          | Notes              |
+  |---------------|--------------|----------|------------------|--------------------|
+  | id            | uuid         | NO       | gen_random_uuid()| PRIMARY KEY        |
+  | user_id       | uuid         | YES      | -                | REFERENCES auth.users|
+  | name          | text         | NO       | -                |                    |
+  | email         | text         | YES      | -                |                    |
+  | phone         | text         | YES      | -                |                    |
+  | company_name  | text         | YES      | -                |                    |
+  | address       | text         | YES      | -                |                    |
+  | created_at    | timestamptz  | YES      | now()            |                    |
+  | updated_at    | timestamptz  | YES      | now()            | Auto-updated       |
+
+Indexes:
+  - customers_pkey
+
+Relationships:
+  - One-to-Many: customers -> vehicles (via customer_id)
+  - One-to-Many: customers -> invoices (via customer_id)
+
+Triggers:
+  - update_customers_updated_at (auto-updates updated_at)
+
+RLS Policies:
+  - Staff+ can read customers
+  - Admins can manage customers
+
+--------------------------------------------------------------------------------
+TABLE: vehicles
+--------------------------------------------------------------------------------
+Description: Customer vehicles registered in the system
+
+Columns:
+  | Column        | Type         | Nullable | Default          | Notes              |
+  |---------------|--------------|----------|------------------|--------------------|
+  | id            | uuid         | NO       | gen_random_uuid()| PRIMARY KEY        |
+  | customer_id   | uuid         | NO       | -                | REFERENCES customers|
+  | vehicle_number| text         | NO       | -                | License plate      |
+  | vehicle_type  | text         | NO       | -                | e.g., Truck, Bus   |
+  | model         | text         | YES      | -                | e.g., Tata 407     |
+  | year          | number       | YES      | -                | e.g., 2020         |
+  | status        | text         | NO       | 'Inspection'     | Current status     |
+  | notes         | text         | YES      | -                |                    |
+  | entry_date    | timestamptz  | YES      | -                | Date vehicle came in|
+  | created_at    | timestamptz  | YES      | now()            |                    |
+  | updated_at    | timestamptz  | YES      | now()            | Auto-updated       |
+
+Indexes:
+  - vehicles_pkey
+
+Relationships:
+  - Many-to-One: vehicles -> customers (via customer_id)
+  - One-to-Many: vehicles -> work_orders (via vehicle_id)
+
+Constraints:
+  - vehicles_customer_id_fkey (FOREIGN KEY -> customers ON DELETE CASCADE)
+
+Triggers:
+  - update_vehicles_updated_at (auto-updates updated_at)
+
+RLS Policies:
+  - Staff+ can read vehicles
+  - Admins can manage vehicles
+
+Vehicle Types:
+  - Truck
+  - Bus
+  - Heavy Machinery
+  - Commercial Van
+  - Trailer
+  - Construction Equipment
+  - Agricultural Equipment
+
+--------------------------------------------------------------------------------
+TABLE: work_orders
+--------------------------------------------------------------------------------
+Description: Service/Repair work orders for vehicles
+
+Columns:
+  | Column        | Type         | Nullable | Default          | Notes              |
+  |---------------|--------------|----------|------------------|--------------------|
+  | id            | uuid         | NO       | gen_random_uuid()| PRIMARY KEY        |
+  | vehicle_id    | uuid         | NO       | -                | REFERENCES vehicles|
+  | assigned_to   | uuid         | YES      | -                | Employee ID        |
+  | service_type  | text         | NO       | -                | Type of service    |
+  | description   | text         | NO       | -                | Work description   |
+  | status        | text         | NO       | 'Pending'        | Check constraint   |
+  | priority      | text         | NO       | 'Medium'         | Check constraint   |
+  | estimated_cost| numeric(10,2)| YES      | -                |                    |
+  | actual_cost   | numeric(10,2)| YES      | -                |                    |
+  | started_at    | timestamptz  | YES      | -                |                    |
+  | completed_at  | timestamptz  | YES      | -                |                    |
+  | created_at    | timestamptz  | YES      | now()            |                    |
+  | updated_at    | timestamptz  | YES      | now()            | Auto-updated       |
+
+Indexes:
+  - work_orders_pkey
+
+Relationships:
+  - Many-to-One: work_orders -> vehicles (via vehicle_id)
+  - Many-to-One: work_orders -> employees (via assigned_to)
+  - One-to-Many: work_orders -> invoices (via work_order_id)
+
+Constraints:
+  - work_orders_vehicle_id_fkey (FOREIGN KEY -> vehicles ON DELETE CASCADE)
+  - work_orders_assigned_to_fkey (FOREIGN KEY -> employees ON DELETE SET NULL)
+  - status CHECK: IN ('Pending', 'In Progress', 'Completed', 'Cancelled')
+  - priority CHECK: IN ('Low', 'Medium', 'High', 'Urgent')
+
+Triggers:
+  - update_work_orders_updated_at (auto-updates updated_at)
+
+RLS Policies:
+  - Staff+ can read work orders
+  - Staff+ can create work orders
+  - Assigned staff or admins can update work orders
+  - Admins can manage all work orders
+
+Service Types:
+  - Mechanical Repair
+  - Body Building
+  - Painting
+  - Electrical Work
+  - Tinker Work
+  - Engine Overhaul
+  - Transmission Repair
+  - Brake System
+  - Suspension Work
+  - Air Conditioning
+  - Custom Modification
+
+--------------------------------------------------------------------------------
+TABLE: inventory
+--------------------------------------------------------------------------------
+Description: Parts and supplies inventory
+
+Columns:
+  | Column        | Type         | Nullable | Default          | Notes              |
+  |---------------|--------------|----------|------------------|--------------------|
+  | id            | uuid         | NO       | gen_random_uuid()| PRIMARY KEY        |
+  | item_name     | text         | NO       | -                |                    |
+  | category      | text         | NO       | -                | e.g., Oil, Brakes  |
+  | quantity      | number       | NO       | 0                | Current stock      |
+  | unit_price    | number       | NO       | -                |                    |
+  | reorder_level | number       | YES      | 10               | Alert threshold    |
+  | supplier      | text         | YES      | -                |                    |
+  | location      | text         | YES      | -                | Storage location   |
+  | created_at    | timestamptz  | YES      | now()            |                    |
+  | updated_at    | timestamptz  | YES      | now()            | Auto-updated       |
+
+Indexes:
+  - inventory_pkey
+
+Triggers:
+  - update_inventory_updated_at (auto-updates updated_at)
+
+RLS Policies:
+  - Staff+ can read inventory
+  - Admins can manage inventory
+
+--------------------------------------------------------------------------------
+TABLE: invoices
+--------------------------------------------------------------------------------
+Description: Customer invoices for services rendered
+
+Columns:
+  | Column        | Type         | Nullable | Default          | Notes              |
+  |---------------|--------------|----------|------------------|--------------------|
+  | id            | uuid         | NO       | gen_random_uuid()| PRIMARY KEY        |
+  | invoice_number| text         | NO       | -                | UNIQUE invoice #   |
+  | customer_id   | uuid         | NO       | -                | REFERENCES customers|
+  | work_order_id | uuid         | YES      | -                | REFERENCES work_orders|
+  | subtotal      | number       | NO       | -                | Before tax         |
+  | tax           | number       | NO       | 0                | Tax amount         |
+  | total         | number       | NO       | -                | Final amount       |
+  | status        | text         | NO       | 'Draft'          | Check constraint   |
+  | due_date      | date         | YES      | -                |                    |
+  | paid_at       | timestamptz  | YES      | -                |                    |
+  | created_at    | timestamptz  | YES      | now()            |                    |
+  | updated_at    | timestamptz  | YES      | now()            | Auto-updated       |
+
+Indexes:
+  - invoices_pkey
+  - invoices_invoice_number_key (UNIQUE)
+
+Relationships:
+  - Many-to-One: invoices -> customers (via customer_id)
+  - Many-to-One: invoices -> work_orders (via work_order_id)
+
+Constraints:
+  - invoices_customer_id_fkey (FOREIGN KEY -> customers ON DELETE CASCADE)
+  - invoices_work_order_id_fkey (FOREIGN KEY -> work_orders ON DELETE SET NULL)
+  - status CHECK: IN ('Draft', 'Sent', 'Paid', 'Overdue', 'Cancelled')
+
+Triggers:
+  - update_invoices_updated_at (auto-updates updated_at)
+
+RLS Policies:
+  - Staff+ can read invoices
+  - Admins can manage invoices
+
+================================================================================
+3. VIEWS
+================================================================================
+
+--------------------------------------------------------------------------------
+VIEW: employee_details
+--------------------------------------------------------------------------------
+Description: Joined view of employees with position information
+
+SQL Definition:
+  CREATE OR REPLACE VIEW public.employee_details AS
+  SELECT 
+      e.id,
+      e.name,
+      e.email,
+      e.phone,
+      e.salary,
+      e.status,
+      e.hire_date,
+      p.name AS position_name,
+      p.department,
+      p.access_level AS position_access_level,
+      e.created_at
+  FROM public.employees e
+  LEFT JOIN public.positions p ON e.position_id = p.id;
+
+Columns:
+  | Column              | Type              | Nullable | Notes                     |
+  |---------------------|-------------------|----------|---------------------------|
+  | id                  | uuid              | NO       | Employee ID               |
+  | name                | text              | NO       | Employee name             |
+  | email               | text              | NO       | Email                     |
+  | phone               | text              | YES      |                           |
+  | salary              | numeric           | YES      | Employee salary           |
+  | status              | text              | NO       | Employment status         |
+  | hire_date           | date              | YES      |                           |
+  | position_name       | text              | YES      | From positions table      |
+  | department          | text              | YES      | From positions table      |
+  | position_access_level| access_level_enum| YES      | From positions table      |
+  | created_at          | timestamptz       | YES      |                           |
+
+RLS Policies:
+  - Same as employees table
+
+================================================================================
+4. FUNCTIONS
+================================================================================
+
+--------------------------------------------------------------------------------
+FUNCTION: has_role
+--------------------------------------------------------------------------------
+Description: Check if a user has a specific role
+
+SQL Definition:
+  CREATE OR REPLACE FUNCTION public.has_role(
+      _user_id uuid,
+      _role text
+  ) RETURNS boolean AS $$
+  BEGIN
+      RETURN EXISTS (
+          SELECT 1 FROM public.user_roles
+          WHERE user_id = _user_id AND role = _role
+      );
+  END;
+  $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+Args:
+  | Param    | Type  | Description           |
+  |----------|-------|-----------------------|
+  | _user_id | uuid  | The user ID to check  |
+  | _role    | text  | Role to verify        |
+
+Returns: boolean - True if user has the role
+
+Usage:
+  SELECT has_role('user-uuid', 'admin');
+
+--------------------------------------------------------------------------------
+FUNCTION: update_updated_at_column
+--------------------------------------------------------------------------------
+Description: Trigger function to automatically update updated_at timestamp
+
+SQL Definition:
+  CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+  RETURNS trigger AS $$
+  BEGIN
+      NEW.updated_at = now();
+      RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+
+Usage: Used in triggers for auto-updating updated_at columns
+
+Applied Tables:
+  - profiles
+  - customers
+  - vehicles
+  - work_orders
+  - inventory
+  - invoices
+  - employees
+
+================================================================================
+5. TRIGGERS
+================================================================================
+
+| Trigger Name                    | Table           | Function                           | Event  |
+|---------------------------------|-----------------|------------------------------------|--------|
+| update_profiles_updated_at      | profiles        | update_updated_at_column           | UPDATE |
+| update_customers_updated_at     | customers       | update_updated_at_column           | UPDATE |
+| update_vehicles_updated_at      | vehicles        | update_updated_at_column           | UPDATE |
+| update_work_orders_updated_at   | work_orders     | update_updated_at_column           | UPDATE |
+| update_inventory_updated_at     | inventory       | update_updated_at_column           | UPDATE |
+| update_invoices_updated_at      | invoices        | update_updated_at_column           | UPDATE |
+| update_employees_updated_at     | employees       | update_updated_at_column           | UPDATE |
+
+================================================================================
+6. ROW LEVEL SECURITY POLICIES
+================================================================================
+
+Table           | Select Policy              | Insert Policy            | Update Policy                           | Delete Policy
+----------------|----------------------------|--------------------------|-----------------------------------------|----------------
+profiles        | Public viewable            | -                        | Users update own                        | -
+user_roles      | -                          | -                        | -                                       | Admins only
+positions       | Authenticated users        | Admins only              | Admins only                             | Admins only
+employees       | Staff+ read                | Admins only              | Assigned staff or Admins                | Admins only
+customers       | Staff+ read                | Admins only              | Admins only                             | Admins only
+vehicles        | Staff+ read                | Admins only              | Admins only                             | Admins only
+work_orders     | Staff+ read                | Staff+ create            | Assigned staff or Admins                | Admins only
+inventory       | Staff+ read                | Admins only              | Admins only                             | Admins only
+invoices        | Staff+ read                | Admins only              | Admins only                             | Admins only
+
+Access Levels:
+  - admin: Full system access
+  - manager: Department management
+  - staff: Basic access
+
+================================================================================
+7. RELATIONSHIPS DIAGRAM
+================================================================================
+
+                         auth.users
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+         ┌─────────┐   ┌──────────┐   ┌──────────┐
+         │profiles │   │user_roles│   │customers │
+         └─────────┘   └──────────┘   └──────────┘
+              │              │              │
+              │              │              │
+              │    ┌─────────┼─────────┐    │
+              │    │         │         │    │
+              │    ▼         ▼         ▼    ▼
+              │    ┌─────────────────────────────────────┐
+              │    │              employees              │
+              │    │         (position_id)               │
+              │    └─────────────────────────────────────┘
+              │              │
+              │    ┌─────────┴─────────┐
+              │    │                   │
+              ▼    ▼                   ▼
+         ┌──────────┐          ┌──────────┐
+         │positions │          │customers │
+         └──────────┘          └──────────┘
+              │                   │
+              │                   ├─────────────────────────┐
+              │                   │                         │
+              │                   ▼                         ▼
+              │            ┌──────────┐              ┌──────────┐
+              │            │vehicles  │              │invoices  │
+              │            └──────────┘              └──────────┘
+              │                 │                         ▲
+              │                 │                         │
+              │                 ├─────────────────────────┘
+              │                 │
+              │                 ▼
+              │          ┌──────────────┐
+              │          │ work_orders  │
+              │          │ (assigned_to)│
+              │          └──────────────┘
+              │                 │
+              │                 │
+              │                 ▼
+              │          ┌──────────────┐
+              │          │  inventory   │
+              │          └──────────────┘
+              │
+              └─────────────────────────────────────────────────────────┘
+
+  Key: ─── Foreign Key Relationship
+       ┌───┐ Primary/Related Table
+       │   │
+       ▼   └── Foreign Key Column
+
+================================================================================
+8. CONSTRAINTS & CHECKS
+================================================================================
+
+CHECK Constraints:
+------------------
+
+work_orders.status:
+  - 'Pending'
+  - 'In Progress'
+  - 'Completed'
+  - 'Cancelled'
+
+work_orders.priority:
+  - 'Low'
+  - 'Medium'
+  - 'High'
+  - 'Urgent'
+
+invoices.status:
+  - 'Draft'
+  - 'Sent'
+  - 'Paid'
+  - 'Overdue'
+  - 'Cancelled'
+
+user_roles.role:
+  - 'admin'
+  - 'staff'
+  - 'customer'
+
+UNIQUE Constraints:
+-------------------
+- positions.name
+- user_roles (user_id, role)
+- invoices.invoice_number
+
+Cascade/Set Null Rules:
+------------------------
+- user_roles.user_id → auth.users ON DELETE CASCADE
+- employees.position_id → positions ON DELETE SET NULL
+- customers.user_id → auth.users ON DELETE SET NULL
+- vehicles.customer_id → customers ON DELETE CASCADE
+- work_orders.vehicle_id → vehicles ON DELETE CASCADE
+- work_orders.assigned_to → employees ON DELETE SET NULL
+- invoices.customer_id → customers ON DELETE CASCADE
+- invoices.work_order_id → work_orders ON DELETE SET NULL
+
+================================================================================
+9. MIGRATION FILES
+================================================================================
+
+Order of migrations to apply:
+1. 20260120065845_remote_schema.sql - Base extensions and user_roles
+2. 20260120104230_init_app_tables.sql - Initial table definitions
+3. 20260120105820_positions_and_employees.sql - Positions table updates
+4. 20260121000000_complete_schema.sql - Complete schema (RECOMMENDED TO RUN)
+
+**Note:** The latest migration (20260121000000_complete_schema.sql) includes
+all tables and updates. It's recommended to run this migration directly
+as it creates all necessary tables and updates existing ones safely.
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+

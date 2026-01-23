@@ -47,7 +47,7 @@ export type Database = {
           vehicle_type: string
           model: string
           year?: number
-          current_status: string
+          status: string
           entry_date: string
           expected_completion?: string
           created_at: string
@@ -60,7 +60,7 @@ export type Database = {
           vehicle_type: string
           model: string
           year?: number
-          current_status?: string
+          status?: string
           entry_date?: string
           expected_completion?: string
           created_at?: string
@@ -73,7 +73,7 @@ export type Database = {
           vehicle_type?: string
           model?: string
           year?: number
-          current_status?: string
+          status?: string
           expected_completion?: string
           updated_at?: string
         }
@@ -102,8 +102,8 @@ export type Database = {
           status?: string
           estimated_cost: number
           actual_cost?: number
-          start_date?: string
-          completion_date?: string
+          started_at?: string
+          completed_at?: string
           created_at?: string
           updated_at?: string
         }
@@ -116,8 +116,8 @@ export type Database = {
           status?: string
           estimated_cost?: number
           actual_cost?: number
-          start_date?: string
-          completion_date?: string
+          started_at?: string
+          completed_at?: string
           updated_at?: string
         }
       }

@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
+import { getRedirectPath } from "@/config/accessControl";
 
 export default function Dashboard() {
   const { user, loading } = useAuth();
@@ -8,14 +9,13 @@ export default function Dashboard() {
     return null;
   }
 
-  // Redirect based on role
-  if (user?.role === "admin") {
-    return <Navigate to="/admin" replace />;
-  } else if (user?.role === "staff") {
-    return <Navigate to="/staff" replace />;
-  } else if (user?.role === "customer") {
-    return <Navigate to="/customer" replace />;
+  // Use centralized access control for redirect
+  const redirectPath = getRedirectPath("/dashboard", user?.role);
+  
+  if (redirectPath && redirectPath !== "/dashboard") {
+    return <Navigate to={redirectPath} replace />;
   }
 
   return <Navigate to="/auth" replace />;
 }
+

@@ -6,491 +6,924 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
-  }
+export interface Database {
   public: {
     Tables: {
-      customers: {
-        Row: {
-          address: string | null
-          company_name: string | null
-          created_at: string
-          email: string | null
-          id: string
-          name: string
-          phone: string | null
-          updated_at: string
-          user_id: string | null
-        }
-        Insert: {
-          address?: string | null
-          company_name?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          name: string
-          phone?: string | null
-          updated_at?: string
-          user_id?: string | null
-        }
-        Update: {
-          address?: string | null
-          company_name?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          name?: string
-          phone?: string | null
-          updated_at?: string
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      inventory: {
-        Row: {
-          category: string
-          created_at: string
-          id: string
-          item_name: string
-          location: string | null
-          quantity: number
-          reorder_level: number
-          supplier: string | null
-          unit_price: number
-          updated_at: string
-        }
-        Insert: {
-          category: string
-          created_at?: string
-          id?: string
-          item_name: string
-          location?: string | null
-          quantity?: number
-          reorder_level?: number
-          supplier?: string | null
-          unit_price: number
-          updated_at?: string
-        }
-        Update: {
-          category?: string
-          created_at?: string
-          id?: string
-          item_name?: string
-          location?: string | null
-          quantity?: number
-          reorder_level?: number
-          supplier?: string | null
-          unit_price?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      invoice_items: {
-        Row: {
-          created_at: string
-          description: string
-          id: string
-          inventory_id: string | null
-          invoice_id: string
-          quantity: number
-          total: number
-          unit_price: number
-        }
-        Insert: {
-          created_at?: string
-          description: string
-          id?: string
-          inventory_id?: string | null
-          invoice_id: string
-          quantity?: number
-          total: number
-          unit_price: number
-        }
-        Update: {
-          created_at?: string
-          description?: string
-          id?: string
-          inventory_id?: string | null
-          invoice_id?: string
-          quantity?: number
-          total?: number
-          unit_price?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "invoice_items_inventory_id_fkey"
-            columns: ["inventory_id"]
-            isOneToOne: false
-            referencedRelation: "inventory"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "invoice_items_invoice_id_fkey"
-            columns: ["invoice_id"]
-            isOneToOne: false
-            referencedRelation: "invoices"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      invoices: {
-        Row: {
-          created_at: string
-          customer_id: string
-          due_date: string | null
-          id: string
-          invoice_number: string
-          paid_at: string | null
-          status: string
-          subtotal: number
-          tax: number
-          total: number
-          updated_at: string
-          work_order_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          customer_id: string
-          due_date?: string | null
-          id?: string
-          invoice_number: string
-          paid_at?: string | null
-          status?: string
-          subtotal?: number
-          tax?: number
-          total?: number
-          updated_at?: string
-          work_order_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          customer_id?: string
-          due_date?: string | null
-          id?: string
-          invoice_number?: string
-          paid_at?: string | null
-          status?: string
-          subtotal?: number
-          tax?: number
-          total?: number
-          updated_at?: string
-          work_order_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "invoices_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "invoices_work_order_id_fkey"
-            columns: ["work_order_id"]
-            isOneToOne: false
-            referencedRelation: "work_orders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profiles: {
         Row: {
-          created_at: string
+          id: string
           email: string
           full_name: string
-          id: string
           phone: string | null
+          created_at: string
           updated_at: string
         }
         Insert: {
-          created_at?: string
+          id: string
           email: string
           full_name: string
-          id: string
           phone?: string | null
+          created_at?: string
           updated_at?: string
         }
         Update: {
-          created_at?: string
+          id?: string
           email?: string
           full_name?: string
-          id?: string
           phone?: string | null
+          created_at?: string
           updated_at?: string
         }
-        Relationships: []
       }
       user_roles: {
         Row: {
-          created_at: string
           id: string
-          role: Database["public"]["Enums"]["app_role"]
           user_id: string
+          role: 'admin' | 'staff' | 'customer'
+          created_at: string
         }
         Insert: {
-          created_at?: string
           id?: string
-          role: Database["public"]["Enums"]["app_role"]
           user_id: string
+          role: 'admin' | 'staff' | 'customer'
+          created_at?: string
         }
         Update: {
-          created_at?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+          role?: 'admin' | 'staff' | 'customer'
+          created_at?: string
         }
-        Relationships: []
+      }
+      customers: {
+        Row: {
+          id: string
+          user_id: string | null
+          name: string
+          email: string | null
+          phone: string | null
+          company_name: string | null
+          address: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          name: string
+          email?: string | null
+          phone?: string | null
+          company_name?: string | null
+          address?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          name?: string
+          email?: string | null
+          phone?: string | null
+          company_name?: string | null
+          address?: string | null
+          created_at?: string
+          updated_at?: string
+        }
       }
       vehicles: {
         Row: {
-          created_at: string
-          customer_id: string
           id: string
-          model: string | null
-          notes: string | null
-          status: string
-          updated_at: string
+          customer_id: string
           vehicle_number: string
           vehicle_type: string
+          model: string | null
           year: number | null
+          status: string
+          notes: string | null
+          entry_date: string | null
+          created_at: string
+          updated_at: string
         }
         Insert: {
-          created_at?: string
-          customer_id: string
           id?: string
-          model?: string | null
-          notes?: string | null
-          status?: string
-          updated_at?: string
+          customer_id: string
           vehicle_number: string
           vehicle_type: string
+          model?: string | null
           year?: number | null
+          status?: string
+          notes?: string | null
+          entry_date?: string | null
+          created_at?: string
+          updated_at?: string
         }
         Update: {
-          created_at?: string
-          customer_id?: string
           id?: string
-          model?: string | null
-          notes?: string | null
-          status?: string
-          updated_at?: string
+          customer_id?: string
           vehicle_number?: string
           vehicle_type?: string
+          model?: string | null
           year?: number | null
+          status?: string
+          notes?: string | null
+          entry_date?: string | null
+          created_at?: string
+          updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "vehicles_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       work_orders: {
         Row: {
-          actual_hours: number | null
-          assigned_to: string | null
-          completed_at: string | null
-          created_at: string
-          description: string
-          estimated_hours: number | null
           id: string
-          priority: string
-          started_at: string | null
-          status: string
-          updated_at: string
           vehicle_id: string
-          work_type: string
+          assigned_to: string | null
+          service_type: string
+          description: string
+          status: string
+          priority: string
+          current_stage: string | null
+          requires_approval: boolean | null
+          approved_by: string | null
+          approved_at: string | null
+          actual_cost: number | null
+          accepted_at: string | null
+          customer_visible: boolean | null
+          estimated_cost: number | null
+          started_at: string | null
+          completed_at: string | null
+          // Dynamic workflow columns
+          inspection_status: 'pending' | 'approved' | 'rejected' | null
+          inspection_notes: string | null
+          inspection_completed_at: string | null
+          inspection_completed_by: string | null
+          repairs_visible: boolean | null
+          repairs_approved: boolean | null
+          repairs_approved_at: string | null
+          repairs_approved_by: string | null
+          portal_updated_at: string | null
+          repair_completed_at: string | null
+          created_at: string
+          updated_at: string
         }
         Insert: {
-          actual_hours?: number | null
-          assigned_to?: string | null
-          completed_at?: string | null
-          created_at?: string
-          description: string
-          estimated_hours?: number | null
           id?: string
-          priority?: string
-          started_at?: string | null
-          status?: string
-          updated_at?: string
           vehicle_id: string
-          work_type: string
+          assigned_to?: string | null
+          service_type: string
+          description: string
+          status?: string
+          priority?: string
+          current_stage?: string | null
+          requires_approval?: boolean | null
+          approved_by?: string | null
+          approved_at?: string | null
+          actual_cost?: number | null
+          accepted_at?: string | null
+          customer_visible?: boolean | null
+          estimated_cost?: number | null
+          started_at?: string | null
+          completed_at?: string | null
+          // Dynamic workflow columns
+          inspection_status?: 'pending' | 'approved' | 'rejected' | null
+          inspection_notes?: string | null
+          inspection_completed_at?: string | null
+          inspection_completed_by?: string | null
+          repairs_visible?: boolean | null
+          repairs_approved?: boolean | null
+          repairs_approved_at?: string | null
+          repairs_approved_by?: string | null
+          portal_updated_at?: string | null
+          repair_completed_at?: string | null
+          created_at?: string
+          updated_at?: string
         }
         Update: {
-          actual_hours?: number | null
+          id?: string
+          vehicle_id?: string
           assigned_to?: string | null
+          service_type?: string
+          description?: string
+          status?: string
+          priority?: string
+          current_stage?: string | null
+          requires_approval?: boolean | null
+          approved_by?: string | null
+          approved_at?: string | null
+          actual_cost?: number | null
+          accepted_at?: string | null
+          customer_visible?: boolean | null
+          estimated_cost?: number | null
+          started_at?: string | null
+          completed_at?: string | null
+          // Dynamic workflow columns
+          inspection_status?: 'pending' | 'approved' | 'rejected' | null
+          inspection_notes?: string | null
+          inspection_completed_at?: string | null
+          inspection_completed_by?: string | null
+          repairs_visible?: boolean | null
+          repairs_approved?: boolean | null
+          repairs_approved_at?: string | null
+          repairs_approved_by?: string | null
+          portal_updated_at?: string | null
+          repair_completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_order_stages: {
+        Row: {
+          id: string
+          work_order_id: string
+          stage: string
+          status: string
+          started_at: string | null
+          completed_at: string | null
+          notes: string | null
+          completed_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          work_order_id: string
+          stage: string
+          status?: string
+          started_at?: string | null
+          completed_at?: string | null
+          notes?: string | null
+          completed_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          work_order_id?: string
+          stage?: string
+          status?: string
+          started_at?: string | null
+          completed_at?: string | null
+          notes?: string | null
+          completed_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_order_assignments: {
+        Row: {
+          id: string
+          work_order_id: string
+          employee_id: string
+          status: string
+          assigned_at: string | null
+          accepted_at: string | null
+          completed_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          work_order_id: string
+          employee_id: string
+          status?: string
+          assigned_at?: string | null
+          accepted_at?: string | null
+          completed_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          work_order_id?: string
+          employee_id?: string
+          status?: string
+          assigned_at?: string | null
+          accepted_at?: string | null
+          completed_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_order_parts: {
+        Row: {
+          id: string
+          work_order_id: string
+          inventory_id: string | null
+          part_name: string
+          quantity: number
+          unit_price: number
+          total_price: number
+          added_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          work_order_id: string
+          inventory_id?: string | null
+          part_name: string
+          quantity?: number
+          unit_price?: number
+          added_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          work_order_id?: string
+          inventory_id?: string | null
+          part_name?: string
+          quantity?: number
+          unit_price?: number
+          added_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_order_approvals: {
+        Row: {
+          id: string
+          work_order_id: string
+          approver_id: string
+          approval_type: string
+          status: string
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          work_order_id: string
+          approver_id: string
+          approval_type: string
+          status?: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          work_order_id?: string
+          approver_id?: string
+          approval_type?: string
+          status?: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      inventory: {
+        Row: {
+          id: string
+          item_name: string
+          category: string
+          quantity: number
+          unit_price: number
+          reorder_level: number
+          supplier: string | null
+          location: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          item_name: string
+          category: string
+          quantity?: number
+          unit_price: number
+          reorder_level?: number
+          supplier?: string | null
+          location?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          item_name?: string
+          category?: string
+          quantity?: number
+          unit_price?: number
+          reorder_level?: number
+          supplier?: string | null
+          location?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      invoices: {
+        Row: {
+          id: string
+          invoice_number: string
+          customer_id: string
+          work_order_id: string | null
+          subtotal: number
+          tax: number
+          total: number
+          status: string
+          due_date: string | null
+          paid_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          invoice_number: string
+          customer_id: string
+          work_order_id?: string | null
+          subtotal?: number
+          tax?: number
+          total?: number
+          status?: string
+          due_date?: string | null
+          paid_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          invoice_number?: string
+          customer_id?: string
+          work_order_id?: string | null
+          subtotal?: number
+          tax?: number
+          total?: number
+          status?: string
+          due_date?: string | null
+          paid_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      positions: {
+        Row: {
+          id: string
+          name: string
+          department: string
+          access_level: 'admin' | 'manager' | 'staff'
+          description: string | null
+          base_salary: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          department: string
+          access_level?: 'admin' | 'manager' | 'staff'
+          description?: string | null
+          base_salary?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          department?: string
+          access_level?: 'admin' | 'manager' | 'staff'
+          description?: string | null
+          base_salary?: number | null
+          created_at?: string
+        }
+      }
+      employees: {
+        Row: {
+          id: string
+          user_id: string | null
+          name: string
+          email: string
+          phone: string | null
+          position_id: string | null
+          access_level: 'admin' | 'manager' | 'staff'
+          salary: number | null
+          status: string
+          hire_date: string | null
+          emergency_contact: string | null
+          emergency_phone: string | null
+          address: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          name: string
+          email: string
+          phone?: string | null
+          position_id?: string | null
+          access_level?: 'admin' | 'manager' | 'staff'
+          salary?: number | null
+          status?: string
+          hire_date?: string | null
+          emergency_contact?: string | null
+          emergency_phone?: string | null
+          address?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          name?: string
+          email?: string
+          phone?: string | null
+          position_id?: string | null
+          access_level?: 'admin' | 'manager' | 'staff'
+          salary?: number | null
+          status?: string
+          hire_date?: string | null
+          emergency_contact?: string | null
+          emergency_phone?: string | null
+          address?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      // Multi-service support tables
+      work_order_services: {
+        Row: {
+          id: string
+          work_order_id: string
+          service_type: string
+          display_order: number
+          estimated_duration: string | null
+          estimated_cost: number
+          actual_cost: number
+          status: string
+          started_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          work_order_id: string
+          service_type: string
+          display_order?: number
+          estimated_duration?: string | null
+          estimated_cost?: number
+          actual_cost?: number
+          status?: string
+          started_at?: string | null
           completed_at?: string | null
           created_at?: string
-          description?: string
-          estimated_hours?: number | null
-          id?: string
-          priority?: string
-          started_at?: string | null
-          status?: string
           updated_at?: string
-          vehicle_id?: string
-          work_type?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "work_orders_vehicle_id_fkey"
-            columns: ["vehicle_id"]
-            isOneToOne: false
-            referencedRelation: "vehicles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Update: {
+          id?: string
+          work_order_id?: string
+          service_type?: string
+          display_order?: number
+          estimated_duration?: string | null
+          estimated_cost?: number
+          actual_cost?: number
+          status?: string
+          started_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_order_service_tasks: {
+        Row: {
+          id: string
+          service_id: string
+          task_name: string
+          task_description: string | null
+          is_predefined: boolean
+          predefined_task_id: string | null
+          estimated_effort: number | null
+          effort_unit: string
+          status: string
+          priority: string
+          sequence_order: number
+          notes: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          service_id: string
+          task_name: string
+          task_description?: string | null
+          is_predefined?: boolean
+          predefined_task_id?: string | null
+          estimated_effort?: number | null
+          effort_unit?: string
+          status?: string
+          priority?: string
+          sequence_order?: number
+          notes?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          service_id?: string
+          task_name?: string
+          task_description?: string | null
+          is_predefined?: boolean
+          predefined_task_id?: string | null
+          estimated_effort?: number | null
+          effort_unit?: string
+          status?: string
+          priority?: string
+          sequence_order?: number
+          notes?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_order_service_employees: {
+        Row: {
+          id: string
+          service_id: string
+          employee_id: string
+          role: string | null
+          status: string
+          assigned_at: string | null
+          accepted_at: string | null
+          completed_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          service_id: string
+          employee_id: string
+          role?: string | null
+          status?: string
+          assigned_at?: string | null
+          accepted_at?: string | null
+          completed_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          service_id?: string
+          employee_id?: string
+          role?: string | null
+          status?: string
+          assigned_at?: string | null
+          accepted_at?: string | null
+          completed_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_order_service_notes: {
+        Row: {
+          id: string
+          service_id: string
+          note_type: string | null
+          note_content: string
+          is_internal: boolean
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          service_id: string
+          note_type?: string | null
+          note_content: string
+          is_internal?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          service_id?: string
+          note_type?: string | null
+          note_content?: string
+          is_internal?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      custom_work_items: {
+        Row: {
+          id: string
+          service_type: string
+          task_name: string
+          task_description: string | null
+          estimated_effort: number | null
+          effort_unit: string
+          is_active: boolean
+          usage_count: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          service_type: string
+          task_name: string
+          task_description?: string | null
+          estimated_effort?: number | null
+          effort_unit?: string
+          is_active?: boolean
+          usage_count?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          service_type?: string
+          task_name?: string
+          task_description?: string | null
+          estimated_effort?: number | null
+          effort_unit?: string
+          is_active?: boolean
+          usage_count?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      // Dynamic workflow repair tasks table
+      repair_tasks: {
+        Row: {
+          id: string
+          work_order_id: string
+          task_name: string
+          task_description: string | null
+          task_category: string
+          status: 'pending' | 'in_progress' | 'completed' | 'reopened'
+          priority: 'Low' | 'Medium' | 'High' | 'Urgent'
+          sequence_order: number
+          notes: string | null
+          completed_at: string | null
+          completed_by: string | null
+          reopened_at: string | null
+          reopened_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          work_order_id: string
+          task_name: string
+          task_description?: string | null
+          task_category?: string
+          status?: 'pending' | 'in_progress' | 'completed' | 'reopened'
+          priority?: 'Low' | 'Medium' | 'High' | 'Urgent'
+          sequence_order?: number
+          notes?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          work_order_id?: string
+          task_name?: string
+          task_description?: string | null
+          task_category?: string
+          status?: 'pending' | 'in_progress' | 'completed' | 'reopened'
+          priority?: 'Low' | 'Medium' | 'High' | 'Urgent'
+          sequence_order?: number
+          notes?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      // Repair task history for audit trail
+      repair_task_history: {
+        Row: {
+          id: string
+          task_id: string
+          action: 'created' | 'started' | 'completed' | 'reopened' | 'updated'
+          performed_by: string | null
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          task_id: string
+          action: 'created' | 'started' | 'completed' | 'reopened' | 'updated'
+          performed_by?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          task_id?: string
+          action?: 'created' | 'started' | 'completed' | 'reopened' | 'updated'
+          performed_by?: string | null
+          notes?: string | null
+          created_at?: string
+        }
       }
     }
     Views: {
-      [_ in never]: never
+      employee_details: {
+        Row: {
+          id: string
+          name: string
+          email: string
+          phone: string | null
+          salary: number | null
+          status: string
+          hire_date: string | null
+          position_name: string | null
+          department: string | null
+          position_access_level: 'admin' | 'manager' | 'staff' | null
+          created_at: string
+        }
+      }
     }
     Functions: {
       has_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
+          _role: 'admin' | 'staff' | 'customer'
         }
         Returns: boolean
       }
-    }
-    Enums: {
-      app_role: "admin" | "staff" | "customer"
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
-
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
-
-export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
-    }
-    ? R
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
+      update_updated_at_column: {
+        Args: Record<string, never>
+        Returns: void
       }
-      ? R
-      : never
-    : never
-
-export type TablesInsert<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
-    ? I
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
+      // Dynamic workflow functions
+      get_staff_assigned_work: {
+        Args: {
+          p_user_id: string
+        }
+        Returns: any
       }
-      ? I
-      : never
-    : never
-
-export type TablesUpdate<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
-    ? U
-    : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
+      approve_inspection: {
+        Args: {
+          p_work_order_id: string
+          p_inspector_id: string
+          p_notes?: string
+        }
+        Returns: void
       }
-      ? U
-      : never
-    : never
-
-export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+      reject_inspection: {
+        Args: {
+          p_work_order_id: string
+          p_inspector_id: string
+          p_notes: string
+        }
+        Returns: void
+      }
+      complete_repair_task: {
+        Args: {
+          p_task_id: string
+          p_completed_by: string
+        }
+        Returns: void
+      }
+      reopen_repair_task: {
+        Args: {
+          p_task_id: string
+          p_reopened_by: string
+          p_reason?: string
+        }
+        Returns: void
+      }
+      approve_repairs: {
+        Args: {
+          p_work_order_id: string
+          p_approver_id: string
+        }
+        Returns: void
+      }
+      reopen_repairs: {
+        Args: {
+          p_work_order_id: string
+          p_reopened_by: string
+          p_reason: string
+        }
+        Returns: void
+      }
+      start_repair_task: {
+        Args: {
+          p_task_id: string
+          p_started_by: string
+        }
+        Returns: void
+      }
+    }
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
 
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
-
-export const Constants = {
-  public: {
-    Enums: {
-      app_role: ["admin", "staff", "customer"],
-    },
-  },
-} as const

@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   LogOut, Truck, FileText, Wrench, RefreshCw,
   CheckCircle2, Clock, MapPin, ChevronDown, ChevronUp,
-  AlertCircle, ShieldCheck, Hourglass, Activity
+  AlertCircle, ShieldCheck, Hourglass, Activity, Eye, Calendar
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +51,7 @@ interface WorkOrderProgress {
   actual_cost: number | null;
   created_at: string;
   updated_at: string;
+  completed_at: string | null;
   customer_visible: boolean;
   portal_updated_at: string | null;
   repair_completed_at: string | null;
@@ -63,6 +65,7 @@ interface WorkOrderProgress {
     model: string;
     customer_id: string;
   };
+  customer?: { name: string; phone?: string };
   stages: WorkOrderStage[];
   tasks: RepairTask[];
   services: any[];
@@ -80,6 +83,7 @@ export default function CustomerPortal() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [debugInfo, setDebugInfo] = useState<string>("");
   const [showDebug, setShowDebug] = useState(false);
+  const [viewDetailOrder, setViewDetailOrder] = useState<WorkOrderProgress | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -119,15 +123,38 @@ export default function CustomerPortal() {
 
       debug += `Customer ID: ${customerId}\n`;
 
-      const [vehiclesRes, invoicesRes] = await Promise.all([
-        supabase.from("vehicles").select("*").eq("customer_id", customerId),
-        supabase.from("invoices").select("*").eq("customer_id", customerId),
-      ]);
+      // Fetch vehicles and invoices using admin client to bypass RLS
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+      
+      let vehiclesRes: any = { data: [], error: null };
+      let invoicesRes: any = { data: [], error: null };
+      
+      if (SERVICE_ROLE_KEY) {
+        const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+          auth: { autoRefreshToken: false, persistSession: false }
+        });
+        
+        // Use admin client to fetch vehicles for this customer (bypasses RLS)
+        vehiclesRes = await adminClient
+          .from("vehicles")
+          .select("*")
+          .eq("customer_id", customerId);
+        
+        invoicesRes = await supabase.from("invoices").select("*").eq("customer_id", customerId);
+      } else {
+        // Fallback to regular client
+        [vehiclesRes, invoicesRes] = await Promise.all([
+          supabase.from("vehicles").select("*").eq("customer_id", customerId),
+          supabase.from("invoices").select("*").eq("customer_id", customerId),
+        ]);
+      }
+
+      // Set vehicles and invoices state
+      setVehicles(vehiclesRes.data || []);
 
       debug += `Vehicles found: ${vehiclesRes.data?.length || 0}\n`;
       debug += `Invoices found: ${invoicesRes.data?.length || 0}\n`;
-
-      setVehicles(vehiclesRes.data || []);
       setInvoices(invoicesRes.data || []);
 
       // Get customer's vehicle IDs
@@ -155,9 +182,6 @@ export default function CustomerPortal() {
       }
 
       // Strategy 2: Use admin client to fetch ALL work orders (bypasses RLS)
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-
       if (SERVICE_ROLE_KEY) {
         const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
           auth: { autoRefreshToken: false, persistSession: false }
@@ -321,11 +345,52 @@ export default function CustomerPortal() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const activeWorkOrders = workOrders.filter(wo => {
+  // Group work orders by ID AND by vehicle to consolidate duplicate entries
+  // This handles cases where services are stored as separate work orders with the same vehicle
+  const workOrdersById = workOrders.reduce((acc, wo) => {
+    // Create a composite key: work_order_id OR vehicle_id + vehicle_number
+    // This groups work orders with the same vehicle together
+    const key = wo.id || 
+      (wo.vehicle?.id ? `vehicle-${wo.vehicle.id}` : `unknown-${Math.random()}`);
+    
+    if (!acc[key]) {
+      acc[key] = { 
+        ...wo, 
+        services: [],
+        combined_service_types: new Set([wo.service_type].filter(Boolean))
+      };
+    } else {
+      // Add service_type to combined set
+      if (wo.service_type) {
+        (acc[key] as any).combined_service_types.add(wo.service_type);
+      }
+    }
+    
+    // Add service info if it exists
+    if (wo.services && wo.services.length > 0) {
+      wo.services.forEach(service => {
+        if (!acc[key].services.find((s: any) => s.id === service.id)) {
+          acc[key].services.push(service);
+        }
+      });
+    }
+    return acc;
+  }, {} as Record<string, WorkOrderProgress & { combined_service_types: Set<string> }>);
+
+  const activeWorkOrders = Object.values(workOrdersById).filter(wo => {
     const status = wo.status?.toLowerCase() || "";
-    // Hide delivered orders, but show completed orders (waiting for pickup)
-    return status !== "delivered" && status !== "cancelled" && wo.customer_visible;
-  })
+    // Only show truly active work orders (not delivered, completed, approved, or cancelled)
+    // Delivered/completed/approved orders should go to Work History
+    const finalStatuses = ["delivered", "completed", "cancelled", "approved"];
+    return !finalStatuses.includes(status) && wo.customer_visible;
+  });
+
+  // Get completed/delivered work orders for history
+  const completedWorkOrders = Object.values(workOrdersById).filter(wo => {
+    const status = wo.status?.toLowerCase() || "";
+    const finalStatuses = ["delivered", "completed", "approved"];
+    return finalStatuses.includes(status) && wo.customer_visible;
+  });
 
   const toggleOrderExpanded = (orderId: string) => {
     const newExpanded = new Set(expandedOrders);
@@ -468,6 +533,21 @@ export default function CustomerPortal() {
                 const showRepairs = order.inspection_status === 'approved' ||
                   ['completed', 'approved', 'delivered'].includes(orderStatus);
 
+                // Get all services - combine work order's service_type with services array
+                const services = order.services || [];
+                // Get combined service types from the Set (for work orders with same vehicle)
+                const combinedServiceTypes = (order as any).combined_service_types || new Set([order.service_type].filter(Boolean));
+                const serviceTypesArray = Array.from(combinedServiceTypes);
+                const hasMultipleServices = serviceTypesArray.length > 1;
+
+                // Build allServices array for task display
+                const allServices = [
+                  ...services,
+                  ...(order.service_type && !services.find((s: any) => s.service_type === order.service_type)
+                    ? [{ id: order.id, service_type: order.service_type }]
+                    : [])
+                ];
+
                 return (
                   <Card key={order.id} className="overflow-hidden">
                     <CardContent className="p-0">
@@ -481,11 +561,36 @@ export default function CustomerPortal() {
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-lg">{order.service_type}</h3>
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              {/* Primary service type */}
+                              <h3 className="font-semibold text-lg">{String(serviceTypesArray[0] || order.service_type || '')}</h3>
+                              {/* Additional services badge */}
+                              {hasMultipleServices && (
+                                <Badge variant="secondary" className="text-xs">
+                                  +{serviceTypesArray.length - 1} more service{serviceTypesArray.length > 2 ? 's' : ''}
+                                </Badge>
+                              )}
                               <Badge variant="outline" className="text-xs">#{order.id.slice(0, 6)}</Badge>
                               {order.priority === "Urgent" && (
                                 <Badge variant="destructive" className="text-xs">Urgent</Badge>
+                              )}
+                            </div>
+                            {/* Show all services in a single line */}
+                            <div className="flex items-center gap-2 mb-1">
+                              {serviceTypesArray.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {serviceTypesArray.map((st: string, index: number) => (
+                                    <Badge 
+                                      key={index} 
+                                      variant="outline" 
+                                      className={`text-xs ${index === 0 ? 'border-primary/50' : ''}`}
+                                    >
+                                      {st}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <Badge variant="outline" className="text-xs">{order.service_type}</Badge>
                               )}
                             </div>
                             <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -630,12 +735,12 @@ export default function CustomerPortal() {
                                           {stage === 'Repair' && order.tasks.length > 0 && (
                                             <div className="mt-4 space-y-4">
                                               {/* Group tasks by service */}
-                                              {order.services.map((service) => {
+                                              {allServices.map((service) => {
                                                 const serviceTasks = order.tasks.filter(t => t.service_id === service.id);
                                                 if (serviceTasks.length === 0) return null;
 
                                                 return (
-                                                  <div key={service.id} className="space-y-2 bg-background/50 rounded-lg p-3 border border-border/50">
+                                                  <div key={service.id || service.service_type} className="space-y-2 bg-background/50 rounded-lg p-3 border border-border/50">
                                                     <h6 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2 mb-2">
                                                       <Wrench className="h-3 w-3" />
                                                       {service.service_type} Tasks
@@ -771,12 +876,18 @@ export default function CustomerPortal() {
           <TabsList>
             <TabsTrigger value="vehicles">My Vehicles</TabsTrigger>
             <TabsTrigger value="workorders">Work Orders</TabsTrigger>
+            <TabsTrigger value="history">Work History</TabsTrigger>
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
           </TabsList>
 
           <TabsContent value="vehicles">
             <Card>
-              <CardHeader><CardTitle>My Vehicles</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>My Vehicles</CardTitle>
+                <CardDescription>
+                  Detailed information about your registered vehicles
+                </CardDescription>
+              </CardHeader>
               <CardContent>
                 {vehicles.length === 0 ? (
                   <p className="text-muted-foreground text-center py-8">No vehicles registered yet</p>
@@ -784,15 +895,116 @@ export default function CustomerPortal() {
                   <div className="space-y-4">
                     {vehicles.map((vehicle) => (
                       <div key={vehicle.id} className="border p-4 rounded-lg">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-semibold flex items-center gap-2">
-                              <Truck className="h-4 w-4" />
-                              {vehicle.vehicle_number}
-                            </h3>
-                            <p className="text-sm text-muted-foreground">{vehicle.vehicle_type} - {vehicle.model}</p>
+                        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                          {/* Vehicle Main Info */}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Truck className="h-5 w-5 text-primary" />
+                              <h3 className="font-semibold text-lg">{vehicle.vehicle_number}</h3>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {/* Model */}
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="text-muted-foreground">Model:</span>
+                                <span className="font-medium">{vehicle.model || "N/A"}</span>
+                              </div>
+                              
+                              {/* Vehicle Type */}
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="text-muted-foreground">Type:</span>
+                                <span className="font-medium">{vehicle.vehicle_type || "N/A"}</span>
+                              </div>
+                              
+                              {/* Color */}
+                              {vehicle.color && (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Color:</span>
+                                  <span className="font-medium">{vehicle.color}</span>
+                                </div>
+                              )}
+                              
+                              {/* Year */}
+                              {vehicle.year && (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Year:</span>
+                                  <span className="font-medium">{vehicle.year}</span>
+                                </div>
+                              )}
+                              
+                              {/* Registration Date */}
+                              {vehicle.created_at && (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Registered:</span>
+                                  <span className="font-medium">
+                                    {new Date(vehicle.created_at).toLocaleDateString("en-IN", {
+                                      day: "2-digit",
+                                      month: "short",
+                                      year: "numeric"
+                                    })}
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {/* VIN/Chassis Number */}
+                              {vehicle.vin && (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">VIN:</span>
+                                  <span className="font-medium text-xs font-mono">{vehicle.vin}</span>
+                                </div>
+                              )}
+                              
+                              {/* Engine Number */}
+                              {vehicle.engine_number && (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Engine:</span>
+                                  <span className="font-medium text-xs font-mono">{vehicle.engine_number}</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <Badge variant={vehicle.status === "active" ? "default" : "secondary"}>{vehicle.status}</Badge>
+                          
+                          {/* Vehicle Stats */}
+                          <div className="flex flex-col gap-2 min-w-[150px]">
+                            {/* Work Orders Count for this Vehicle */}
+                            {(() => {
+                              const vehicleWorkOrders = Object.values(workOrdersById).filter(
+                                (wo: any) => wo.vehicle_id === vehicle.id
+                              );
+                              const activeCount = vehicleWorkOrders.filter(
+                                (wo: any) => !["delivered", "completed", "cancelled", "approved"].includes(
+                                  (wo.status || "").toLowerCase()
+                                )
+                              ).length;
+                              const completedCount = vehicleWorkOrders.length - activeCount;
+                              
+                              // Get the latest work order status for display
+                              const latestWorkOrder = vehicleWorkOrders[0];
+                              const repairStatus = latestWorkOrder?.status || "No repairs";
+                              
+                              return (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <Badge 
+                                      variant={
+                                        completedCount > 0 && activeCount === 0 ? "default" : 
+                                        activeCount > 0 ? "secondary" : "outline"
+                                      }
+                                    >
+                                      {completedCount > 0 && activeCount === 0 ? "Completed" : 
+                                       activeCount > 0 ? "In Progress" : "Available"}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    <span className="font-medium text-blue-600">{activeCount}</span> active repairs
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    <span className="font-medium text-green-600">{completedCount}</span> completed
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -807,40 +1019,173 @@ export default function CustomerPortal() {
               <CardHeader>
                 <CardTitle>My Work Orders</CardTitle>
                 <CardDescription>
-                  All work orders visible to you
+                  All active work orders visible to you
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {workOrders.filter(wo => wo.customer_visible).length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No work orders available</p>
+                {activeWorkOrders.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No active work orders</p>
                 ) : (
                   <div className="space-y-4">
-                    {workOrders.filter(wo => wo.customer_visible).map((order) => (
-                      <div key={order.id} className="border p-4 rounded-lg">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-semibold">{order.service_type}</h3>
-                            <p className="text-sm text-muted-foreground">{order.description}</p>
-                            <p className="text-sm text-muted-foreground">
-                              Vehicle: {order.vehicle?.vehicle_number || "N/A"}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Created: {formatDateTime(order.created_at)}
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <Badge variant={order.status === "Completed" ? "default" : "secondary"}>
-                              {order.status}
-                            </Badge>
-                            {order.current_stage && (
-                              <span className="text-xs text-muted-foreground">
-                                Stage: {order.current_stage}
-                              </span>
-                            )}
+                    {activeWorkOrders.map((order) => {
+                      const services = order.services || [];
+                      return (
+                        <div key={order.id} className="border p-4 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="font-semibold">{order.service_type}</h3>
+                                {services.length > 0 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {services.length} service{services.length > 1 ? 's' : ''}
+                                  </Badge>
+                                )}
+                              </div>
+                              {services.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mb-2">
+                                  {services.map((service: any) => (
+                                    <Badge key={service.id} variant="secondary" className="text-xs">
+                                      {service.service_type}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                              <p className="text-sm text-muted-foreground">{order.description}</p>
+                              <p className="text-sm text-muted-foreground">
+                                Vehicle: {order.vehicle?.vehicle_number || "N/A"}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Created: {formatDateTime(order.created_at)}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Badge variant={order.status === "Completed" || order.status === "Delivered" ? "default" : "secondary"}>
+                                {order.status}
+                              </Badge>
+                              {order.current_stage && (
+                                <span className="text-xs text-muted-foreground">
+                                  Stage: {order.current_stage}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="history">
+            <Card>
+              <CardHeader>
+                <CardTitle>Work History</CardTitle>
+                <CardDescription>
+                  Completed and delivered work orders
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {completedWorkOrders.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No completed work orders yet</p>
+                ) : (
+                  <div className="space-y-4">
+                    {completedWorkOrders.map((order) => {
+                      const services = order.services || [];
+                      return (
+                        <Card key={order.id} className="overflow-hidden">
+                          <CardContent className="p-0">
+                            {/* Header with vehicle info */}
+                            <div className="p-4 border-b bg-green-50/50 flex flex-row justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="font-semibold text-lg">{order.vehicle?.vehicle_number || "N/A"}</h3>
+                                  <Badge variant="outline">{order.vehicle?.model || ""}</Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {order.customer?.name || "Customer"}
+                                </p>
+                              </div>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => setViewDetailOrder(order)}
+                                className="flex items-center gap-2"
+                              >
+                                <Eye className="h-4 w-4" />
+                                View Details
+                              </Button>
+                            </div>
+
+                            {/* Services Section */}
+                            <div className="p-4 border-b">
+                              <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                Services:
+                              </h4>
+                              <div className="space-y-1">
+                                {services.length > 0 ? (
+                                  services.map((service: any) => (
+                                    <div key={service.id} className="text-sm">
+                                      {service.service_type}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-sm">{order.service_type}</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Status Section */}
+                            <div className="p-4 border-b">
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                <Badge variant="secondary">{order.status}</Badge>
+                                {order.current_stage && (
+                                  <Badge variant="outline">{order.current_stage}</Badge>
+                                )}
+                              </div>
+                              {/* Repair Progress */}
+                              <div className="mt-3">
+                                <div className="flex items-center justify-between text-sm mb-1">
+                                  <span>Repair Progress</span>
+                                  <span className="font-medium">
+                                    {order.repair_status === 'approved' ? 'Approved' : 
+                                     order.repair_status === 'completed' ? 'Completed' : 
+                                     order.repair_status === 'in_progress' ? 'In Progress' : 
+                                     order.repair_status}
+                                  </span>
+                                </div>
+                                <Progress 
+                                  value={order.repair_status === 'approved' ? 100 : 
+                                              order.repair_status === 'completed' ? 100 : 
+                                              order.repair_status === 'in_progress' ? 50 : 0} 
+                                  className="h-2" 
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {order.repair_status === 'approved' 
+                                    ? '2 of 2 completed' 
+                                    : order.repair_status === 'completed'
+                                    ? '2 of 2 completed'
+                                    : '0 of 2 completed'}
+                                  {' '} • {order.repair_status === 'approved' 
+                                    ? '100% Complete' 
+                                    : order.repair_status === 'completed'
+                                    ? '100% Complete'
+                                    : '0% Complete'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Footer with assigned date */}
+                            <div className="p-4 bg-muted/20">
+                              <p className="text-xs text-muted-foreground">
+                                Assigned: {formatDateTime(order.created_at)}
+                              </p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -873,6 +1218,183 @@ export default function CustomerPortal() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Work Order Detail Modal */}
+      <Dialog open={!!viewDetailOrder} onOpenChange={() => setViewDetailOrder(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Work Order Details
+            </DialogTitle>
+          </DialogHeader>
+          
+          {viewDetailOrder && (
+            <div className="space-y-6">
+              {/* Vehicle Info */}
+              <div className="bg-muted/50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg flex items-center gap-2 mb-3">
+                  <Truck className="h-5 w-5" />
+                  {viewDetailOrder.vehicle?.vehicle_number || "N/A"}
+                  <Badge variant="outline">{viewDetailOrder.vehicle?.model || ""}</Badge>
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Order ID:</span>
+                    <span className="font-mono ml-2">#{viewDetailOrder.id}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge variant="secondary" className="ml-2">{viewDetailOrder.status}</Badge>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Current Stage:</span>
+                    <span className="ml-2">{viewDetailOrder.current_stage || "N/A"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Priority:</span>
+                    <Badge variant={viewDetailOrder.priority === "Urgent" ? "destructive" : "secondary"} className="ml-2">
+                      {viewDetailOrder.priority}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Services */}
+              <div>
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <Wrench className="h-4 w-4" />
+                  Services Performed
+                </h4>
+                <div className="bg-muted/30 p-3 rounded-lg">
+                  {viewDetailOrder.services && viewDetailOrder.services.length > 0 ? (
+                    <div className="space-y-2">
+                      {viewDetailOrder.services.map((service: any) => (
+                        <div key={service.id} className="flex items-center justify-between p-2 bg-background rounded border">
+                          <span>{service.service_type}</span>
+                          <Badge variant="outline">{service.status || "Completed"}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">{viewDetailOrder.service_type || "No services listed"}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Description */}
+              {viewDetailOrder.description && (
+                <div>
+                  <h4 className="font-medium mb-2">Description</h4>
+                  <p className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg">
+                    {viewDetailOrder.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Repair Progress */}
+              <div>
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Repair Progress
+                </h4>
+                <div className="space-y-3">
+                  <Progress 
+                    value={viewDetailOrder.repair_status === 'approved' ? 100 : 
+                                viewDetailOrder.repair_status === 'completed' ? 100 : 
+                                viewDetailOrder.repair_status === 'in_progress' ? 50 : 0} 
+                    className="h-3" 
+                  />
+                  <div className="flex items-center justify-between text-sm">
+                    <Badge variant="secondary">{viewDetailOrder.repair_status || "Pending"}</Badge>
+                    <span className="text-muted-foreground">
+                      {viewDetailOrder.repair_status === 'approved' || viewDetailOrder.repair_status === 'completed' 
+                        ? "100% Complete" 
+                        : "In Progress"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Repair Journey Timeline */}
+              <div>
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Repair Journey
+                </h4>
+                <div className="space-y-0 relative pl-4 border-l-2 border-muted">
+                  {STAGES.map((stage, index) => {
+                    const stageData = viewDetailOrder.stages.find(s => s.stage === stage);
+                    const stageStatus = stageData?.status || 'pending';
+                    const isCompleted = stageStatus === 'completed';
+                    
+                    return (
+                      <div key={stage} className="relative pb-6 last:pb-0 pl-6">
+                        <div className={`absolute -left-[21px] top-0 h-8 w-8 rounded-full border-4 border-background flex items-center justify-center ${
+                          isCompleted ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
+                        }`}>
+                          {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs">{index + 1}</span>}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <h5 className={`font-medium ${isCompleted ? "text-green-900" : "text-foreground"}`}>
+                            {stage}
+                          </h5>
+                          <Badge variant={isCompleted ? "default" : "outline"} className={isCompleted ? "bg-green-600" : ""}>
+                            {isCompleted ? "Completed" : stageStatus.replace('_', ' ')}
+                          </Badge>
+                        </div>
+                        {stageData?.completed_at && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Completed: {formatDateTime(stageData.completed_at)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tasks */}
+              {viewDetailOrder.tasks && viewDetailOrder.tasks.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Tasks Completed
+                  </h4>
+                  <div className="space-y-2">
+                    {viewDetailOrder.tasks.map((task) => (
+                      <div key={task.id} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                        <span className="text-sm">{task.task_name}</span>
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div className="border-t pt-4 space-y-2 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  <span>Created: {formatDateTime(viewDetailOrder.created_at)}</span>
+                </div>
+                {viewDetailOrder.completed_at && (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Completed: {formatDateTime(viewDetailOrder.completed_at)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewDetailOrder(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

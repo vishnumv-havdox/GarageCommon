@@ -137,10 +137,29 @@ export default function StaffDashboard() {
   // Define all states that should be considered as "completed/delivered"
   const completedStates = ["completed", "delivered", "cancelled", "rejected", "approved"];
 
-  const activeWorkItems = workItems.filter(w =>
+  // Group work items by work_order_id AND by vehicle to consolidate services into single cards
+  // This handles cases where services are stored as separate work orders with the same vehicle
+  const workItemsByOrderId = workItems.reduce((acc, item) => {
+    // Create a composite key: work_order_id OR vehicle_id
+    // This groups work orders with the same vehicle together
+    const key = item.work_order_id || 
+      (item.vehicle_number ? `vehicle-${item.vehicle_number}` : `unknown-${Math.random()}`);
+    
+    if (!acc[key]) {
+      acc[key] = { ...item, service_types: new Set([item.service_type].filter(Boolean)) };
+    } else {
+      // Add service_type to combined set
+      if (item.service_type) {
+        acc[key].service_types.add(item.service_type);
+      }
+    }
+    return acc;
+  }, {} as Record<string, VehicleWork & { service_types: Set<string> }>);
+
+  const activeWorkItems = Object.values(workItemsByOrderId).filter(w =>
     !completedStates.includes(w.work_order_status?.toLowerCase() || "")
   )
-  const completedWorkItems = workItems.filter(w =>
+  const completedWorkItems = Object.values(workItemsByOrderId).filter(w =>
     completedStates.includes(w.work_order_status?.toLowerCase() || "")
   )
 
@@ -531,10 +550,22 @@ export default function StaffDashboard() {
                                     <User className="h-3 w-3" />
                                     {work.customer_name}
                                   </span>
-                                  <span className="flex items-center gap-1">
-                                    <Briefcase className="h-3 w-3" />
-                                    {work.service_type}
-                                  </span>
+                                  {/* Show all service types for consolidated work orders */}
+                                  {(work as any).service_types && (work as any).service_types.size > 1 ? (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs">Services:</span>
+                                      {Array.from((work as any).service_types).map((st: string, i: number) => (
+                                        <Badge key={i} variant="outline" className="text-[10px]">
+                                          {st}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="flex items-center gap-1">
+                                      <Briefcase className="h-3 w-3" />
+                                      {work.service_type}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
@@ -616,76 +647,92 @@ export default function StaffDashboard() {
                           )}
 
 
+
                           {/* Tasks Section - Visible when NOT pending acceptance */}
                           {!canAccept && !isFinished && work.tasks && work.tasks.length > 0 && (
-                            <div className="p-4 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-medium">
-                                  {repairsAvailable ? "Repair Tasks" : "Inspection Tasks"}
-                                </h4>
-                                <span className="text-xs text-muted-foreground">
-                                  Toggle checkbox to update status
-                                </span>
-                              </div>
-                              {work.tasks
-                                .filter(task => {
-                                  // Stage filter
-                                  const isCorrectStage = repairsAvailable
-                                    ? (task.task_type !== 'inspection')
-                                    : (task.task_type === 'inspection');
-
-                                  if (!isCorrectStage) return false;
-
-                                  // Service filter (for component tasks)
-                                  // Show if it belongs to this service OR if it's a general task (null service_id)
-                                  return task.service_id === work.service_id || !task.service_id;
-                                })
-                                .map((task, index) => (
-                                  <div
-                                    key={task.id}
-                                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${task.is_completed
-                                      ? "bg-green-50 border-green-200"
-                                      : "bg-muted/30 border-transparent hover:bg-muted/50"
-                                      }`}
-                                  >
-                                    <Checkbox
-                                      id={`task-${task.id}`}
-                                      checked={task.is_completed}
-                                      onCheckedChange={(checked) => {
-                                        handleToggleTask(task.id, work.work_order_id, checked === true);
-                                      }}
-                                      disabled={isPendingApproval || repairsApproved || isFinished}
-                                      className="h-5 w-5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                                    />
-                                    <div className="flex-1">
-                                      <label
-                                        htmlFor={`task-${task.id}`}
-                                        className={`text-sm cursor-pointer ${task.is_completed ? "line-through text-muted-foreground" : ""
-                                          }`}
-                                      >
-                                        {index + 1}. {task.task_name}
-                                      </label>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <Badge variant="outline" className="text-[10px] uppercase">
-                                          {task.task_type}
-                                        </Badge>
+                            <div className="p-4 space-y-4">
+                              {/* Show all unique tasks (no duplication) */}
+                              {(() => {
+                                // Get unique tasks by id
+                                const uniqueTasks = work.tasks.reduce((acc: RepairTask[], task) => {
+                                  if (!acc.find(t => t.id === task.id)) {
+                                    acc.push(task);
+                                  }
+                                  return acc;
+                                }, []);
+                                
+                                const inspectionTasks = uniqueTasks.filter(t => t.task_type === 'inspection');
+                                const repairTasks = uniqueTasks.filter(t => t.task_type !== 'inspection');
+                                const currentTasks = repairsAvailable ? repairTasks : inspectionTasks;
+                                const allCurrentCompleted = currentTasks.every(t => t.is_completed) && currentTasks.length > 0;
+                                
+                                return (
+                                  <>
+                                    {currentTasks.length > 0 && (
+                                      <div className="border rounded-lg p-4">
+                                        <div className="flex items-center justify-between mb-3">
+                                          <h4 className="text-sm font-medium flex items-center gap-2">
+                                            <Wrench className="h-4 w-4" />
+                                            {repairsAvailable ? 'Repair Tasks' : 'Inspection Tasks'}
+                                          </h4>
+                                          <Badge variant="outline" className="text-xs">
+                                            {currentTasks.filter(t => t.is_completed).length}/{currentTasks.length} tasks
+                                          </Badge>
+                                        </div>
+                                        
+                                        <div className="space-y-2">
+                                          {currentTasks.map((task: RepairTask, index: number) => (
+                                            <div
+                                              key={task.id}
+                                              className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${task.is_completed
+                                                ? "bg-green-50 border-green-200"
+                                                : "bg-muted/30 border-transparent hover:bg-muted/50"
+                                                }`}
+                                            >
+                                              <Checkbox
+                                                id={`task-${task.id}`}
+                                                checked={task.is_completed}
+                                                onCheckedChange={(checked) => {
+                                                  handleToggleTask(task.id, work.work_order_id, checked === true);
+                                                }}
+                                                disabled={isPendingApproval || repairsApproved || isFinished}
+                                                className="h-5 w-5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                              />
+                                              <div className="flex-1">
+                                                <label
+                                                  htmlFor={`task-${task.id}`}
+                                                  className={`text-sm cursor-pointer ${task.is_completed ? "line-through text-muted-foreground" : ""
+                                                    }`}
+                                                >
+                                                  {index + 1}. {task.task_name}
+                                                </label>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                  <Badge variant="outline" className="text-[10px] uppercase">
+                                                    {task.task_type}
+                                                  </Badge>
+                                                </div>
+                                              </div>
+                                              {task.completed_at && (
+                                                <span className="text-xs text-green-600">
+                                                  ✓ {format(new Date(task.completed_at), "MMM d, HH:mm")}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
-                                    </div>
-                                    {task.completed_at && (
-                                      <span className="text-xs text-green-600">
-                                        ✓ {format(new Date(task.completed_at), "MMM d, HH:mm")}
-                                      </span>
                                     )}
-                                  </div>
-                                ))}
 
-                              {/* Notification if all current stage tasks are done */}
-                              {progress.completed === progress.total && progress.total > 0 && !repairsAvailable && work.inspection_status === 'pending' && (
-                                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center gap-2 text-blue-800 text-sm">
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  Inspection completed. Waiting for Admin approval to start repairs.
-                                </div>
-                              )}
+                                    {/* Notification if all current stage tasks are done */}
+                                    {allCurrentCompleted && !repairsAvailable && work.inspection_status === 'pending' && (
+                                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center gap-2 text-blue-800 text-sm">
+                                        <CheckCircle2 className="h-4 w-4" />
+                                        Inspection completed. Waiting for Admin approval to start repairs.
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
 
                               {/* Submit for Approval Button */}
                               {allRepairsCompleted && !isFinished && (
@@ -719,6 +766,7 @@ export default function StaffDashboard() {
                               )}
                             </div>
                           )}
+
 
                           {/* Description */}
                           <div className="p-4 text-sm text-muted-foreground">

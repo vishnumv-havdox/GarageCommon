@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Trash2, Edit, Mail, Phone, Building2, MapPin, Calendar } from "lucide-react";
+import { Plus, Search, Trash2, Edit, Mail, Phone, Building2, MapPin, Calendar, Car, ChevronDown, ChevronUp } from "lucide-react";
 import { CustomerForm } from "@/components/forms/CustomerForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { format } from "date-fns";
@@ -25,14 +25,41 @@ interface Customer {
   created_at: string;
 }
 
+interface Vehicle {
+  id: string;
+  customer_id: string;
+  vehicle_number: string;
+  vehicle_type: string;
+  model: string | null;
+  year: number | null;
+  status: string;
+  notes: string | null;
+  entry_date: string | null;
+  created_at: string;
+}
+
 export default function AdminCustomers() {
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [vehicles, setVehicles] = useState<Record<string, Vehicle[]>>({});
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+
+  const toggleExpand = (customerId: string) => {
+    setExpandedCustomers((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(customerId)) {
+        newSet.delete(customerId);
+      } else {
+        newSet.add(customerId);
+      }
+      return newSet;
+    });
+  };
 
   useEffect(() => {
     fetchCustomers();
@@ -41,13 +68,35 @@ export default function AdminCustomers() {
   const fetchCustomers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: customersData, error } = await supabase
         .from("customers")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setCustomers(data || []);
+      setCustomers(customersData || []);
+
+      // Fetch vehicles for all customers
+      if (customersData && customersData.length > 0) {
+        const customerIds = customersData.map((c: Customer) => c.id);
+        const { data: vehiclesData, error: vehiclesError } = await supabase
+          .from("vehicles")
+          .select("*")
+          .in("customer_id", customerIds)
+          .order("created_at", { ascending: false });
+
+        if (vehiclesError) throw vehiclesError;
+
+        // Group vehicles by customer_id
+        const vehiclesByCustomer: Record<string, Vehicle[]> = {};
+        (vehiclesData || []).forEach((vehicle: Vehicle) => {
+          if (!vehiclesByCustomer[vehicle.customer_id]) {
+            vehiclesByCustomer[vehicle.customer_id] = [];
+          }
+          vehiclesByCustomer[vehicle.customer_id].push(vehicle);
+        });
+        setVehicles(vehiclesByCustomer);
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -190,7 +239,10 @@ export default function AdminCustomers() {
                 <div className="text-center py-8 text-muted-foreground">No customers found</div>
               ) : (
                 <div className="space-y-4">
-                  {filteredCustomers.map((customer) => (
+                  {filteredCustomers.map((customer) => {
+                    const customerVehicles = vehicles[customer.id] || [];
+                    const isExpanded = expandedCustomers.has(customer.id);
+                    return (
                     <div key={customer.id} className="border p-4 rounded-lg">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -228,6 +280,65 @@ export default function AdminCustomers() {
                               {customer.address}
                             </p>
                           )}
+                          
+                          {/* Vehicles Section */}
+                          {customerVehicles.length > 0 && (
+                            <div className="mt-4">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="flex items-center gap-2 px-2 h-auto py-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+                                onClick={() => toggleExpand(customer.id)}
+                              >
+                                <Car className="h-4 w-4" />
+                                <span>{customerVehicles.length} Vehicle{customerVehicles.length > 1 ? 's' : ''}</span>
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </Button>
+                              
+                              {isExpanded && (
+                                <div className="mt-3 space-y-2 pl-6 border-l-2 border-muted">
+                                  {customerVehicles.map((vehicle) => (
+                                    <div key={vehicle.id} className="bg-muted/50 p-3 rounded-md">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                          <Car className="h-4 w-4 text-muted-foreground" />
+                                          <div>
+                                            <p className="font-medium">{vehicle.vehicle_number}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {vehicle.vehicle_type}
+                                              {vehicle.model && ` • ${vehicle.model}`}
+                                              {vehicle.year && ` • ${vehicle.year}`}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <Badge 
+                                          variant={vehicle.status === 'Completed' ? 'default' : vehicle.status === 'In Progress' ? 'secondary' : 'outline'}
+                                        >
+                                          {vehicle.status}
+                                        </Badge>
+                                      </div>
+                                      {vehicle.notes && (
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                          {vehicle.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {customerVehicles.length === 0 && (
+                            <div className="mt-4 text-xs text-muted-foreground flex items-center gap-2">
+                              <Car className="h-4 w-4" />
+                              No vehicles registered
+                            </div>
+                          )}
                         </div>
                         <Button
                           variant="destructive"
@@ -239,7 +350,7 @@ export default function AdminCustomers() {
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
             </CardContent>

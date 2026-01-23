@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { createClient } from '@supabase/supabase-js';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -11,13 +12,42 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   LogOut, Truck, FileText, Wrench, RefreshCw,
   CheckCircle2, Clock, MapPin, ChevronDown, ChevronUp,
-  AlertCircle, ShieldCheck, Hourglass, Activity, Eye, Calendar
+  AlertCircle, ShieldCheck, Hourglass, Activity, Eye, Calendar, History, SortAsc, SortDesc, Search
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
+// Import Table components
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+
 // Import ProgressTracker component
 import { CompactProgressTracker } from "@/components/work-orders/ProgressTracker";
+
+// Service History interface
+interface ServiceHistory {
+  id: string;
+  vehicle_id: string;
+  work_order_id: string;
+  service_type: string;
+  service_description: string | null;
+  work_summary: string | null;
+  status: string;
+  service_date: string;
+  delivery_date: string | null;
+  approved_by: string | null;
+  created_at: string;
+  vehicle?: {
+    id: string;
+    vehicle_number: string;
+    model: string;
+    customer_id: string;
+  };
+}
 
 interface WorkOrderStage {
   id: string;
@@ -84,6 +114,18 @@ export default function CustomerPortal() {
   const [debugInfo, setDebugInfo] = useState<string>("");
   const [showDebug, setShowDebug] = useState(false);
   const [viewDetailOrder, setViewDetailOrder] = useState<WorkOrderProgress | null>(null);
+  const [viewVehicleHistory, setViewVehicleHistory] = useState<any | null>(null);
+  const [historySearchTerm, setHistorySearchTerm] = useState("");
+  const [historySortBy, setHistorySortBy] = useState<"date" | "vehicle" | "status">("date");
+  
+  // Service History State
+  const [serviceHistory, setServiceHistory] = useState<ServiceHistory[]>([]);
+  const [viewingVehicleHistory, setViewingVehicleHistory] = useState<{
+    vehicleId: string;
+    vehicleNumber: string;
+    history: ServiceHistory[];
+  } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -417,6 +459,106 @@ export default function CustomerPortal() {
       minute: "2-digit",
     });
   };
+
+  const formatDate = (date: string | null) => {
+    if (!date) return "N/A";
+    return new Date(date).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  // Fetch service history for all customer's vehicles
+  const fetchServiceHistory = useCallback(async () => {
+    if (!user?.id || vehicles.length === 0) return;
+    
+    setHistoryLoading(true);
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+      
+      if (!SERVICE_ROLE_KEY) {
+        // If no service role key, try to use the service_history table with regular client
+        // This might fail due to RLS, but we'll try
+        const { data, error } = await supabase
+          .from("service_history")
+          .select("*")
+          .order("service_date", { ascending: false });
+        
+        if (!error && data) {
+          // Filter to only customer's vehicles client-side
+          const customerVehicleIds = vehicles.map(v => v.id);
+          const filteredHistory = data.filter((h: any) => 
+            customerVehicleIds.includes(h.vehicle_id)
+          );
+          setServiceHistory(filteredHistory);
+        }
+        setHistoryLoading(false);
+        return;
+      }
+      
+      // Use admin client to fetch all service history
+      const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+      
+      // Get customer ID first
+      const customerQuery = await supabase
+        .from("customers")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+      
+      let customerId = (customerQuery.data as any)?.id;
+      
+      // If no customer found by user_id, try by email
+      if (!customerId && user.email) {
+        const customerByEmailQuery = await supabase
+          .from("customers")
+          .select("id")
+          .eq("email", user.email)
+          .single();
+        customerId = (customerByEmailQuery.data as any)?.id;
+      }
+      
+      if (!customerId) {
+        setHistoryLoading(false);
+        return;
+      }
+      
+      // Get customer's vehicle IDs
+      const customerVehicleIds = vehicles.map(v => v.id);
+      
+      if (customerVehicleIds.length > 0) {
+        const { data, error } = await adminClient
+          .from("service_history")
+          .select(`
+            *,
+            vehicle:vehicles(id, vehicle_number, model, customer_id)
+          `)
+          .in("vehicle_id", customerVehicleIds)
+          .order("service_date", { ascending: false });
+        
+        if (error) {
+          console.error("Error fetching service history:", error);
+        } else {
+          setServiceHistory(data || []);
+        }
+      }
+    } catch (error: any) {
+      console.error("Error fetching service history:", error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [user, vehicles]);
+
+  // Fetch service history when vehicles are loaded
+  useEffect(() => {
+    if (vehicles.length > 0) {
+      fetchServiceHistory();
+    }
+  }, [vehicles.length, fetchServiceHistory]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -883,10 +1025,30 @@ export default function CustomerPortal() {
           <TabsContent value="vehicles">
             <Card>
               <CardHeader>
-                <CardTitle>My Vehicles</CardTitle>
-                <CardDescription>
-                  Detailed information about your registered vehicles
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>My Vehicles</CardTitle>
+                    <CardDescription>
+                      Detailed information about your registered vehicles
+                    </CardDescription>
+                  </div>
+                  {serviceHistory.length > 0 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setViewingVehicleHistory({
+                          vehicleId: 'all',
+                          vehicleNumber: 'All Vehicles',
+                          history: serviceHistory
+                        });
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <History className="h-4 w-4" />
+                      Common Service History
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {vehicles.length === 0 ? (
@@ -1001,6 +1163,24 @@ export default function CustomerPortal() {
                                   <div className="text-xs text-muted-foreground">
                                     <span className="font-medium text-green-600">{completedCount}</span> completed
                                   </div>
+                                  
+                                  {/* History Button */}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const vehicleHistory = serviceHistory.filter(h => h.vehicle_id === vehicle.id);
+                                      setViewingVehicleHistory({
+                                        vehicleId: vehicle.id,
+                                        vehicleNumber: vehicle.vehicle_number,
+                                        history: vehicleHistory
+                                      });
+                                    }}
+                                    className="flex items-center gap-2 mt-2"
+                                  >
+                                    <History className="h-4 w-4" />
+                                    History
+                                  </Button>
                                 </>
                               );
                             })()}
@@ -1390,6 +1570,93 @@ export default function CustomerPortal() {
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewDetailOrder(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Vehicle History Modal */}
+      <Dialog 
+        open={!!viewingVehicleHistory} 
+        onOpenChange={() => setViewingVehicleHistory(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Service History - {viewingVehicleHistory?.vehicleNumber}
+            </DialogTitle>
+            <CardDescription>
+              {viewingVehicleHistory?.history.length || 0} service record(s) found
+            </CardDescription>
+          </DialogHeader>
+          
+          {/* Vehicle Info */}
+          {viewingVehicleHistory && (
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-lg">{viewingVehicleHistory.vehicleNumber}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Total Services: {viewingVehicleHistory.history.length}
+                  </p>
+                </div>
+                {viewingVehicleHistory.history.length === 0 && (
+                  <Badge variant="outline">No History</Badge>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* History Table */}
+          {viewingVehicleHistory && viewingVehicleHistory.history.length > 0 && (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service Type</TableHead>
+                    <TableHead>Work Summary</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Start Date</TableHead>
+                    <TableHead>Completion Date</TableHead>
+                    <TableHead>Approved By</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewingVehicleHistory.history.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell className="font-medium">{record.service_type}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {record.work_summary || record.service_description || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{record.status}</Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(record.service_date)}</TableCell>
+                      <TableCell>
+                        {record.delivery_date ? formatDate(record.delivery_date) : "-"}
+                      </TableCell>
+                      <TableCell>{record.approved_by || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          
+          {viewingVehicleHistory && viewingVehicleHistory.history.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="h-12 w-12 mx-auto mb-4 opacity-20" />
+              <h3 className="font-medium mb-2">No Service History</h3>
+              <p className="text-sm">
+                This vehicle doesn't have any completed service records yet.
+              </p>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewingVehicleHistory(null)}>
               Close
             </Button>
           </DialogFooter>

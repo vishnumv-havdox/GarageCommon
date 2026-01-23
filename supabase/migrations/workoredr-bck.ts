@@ -424,14 +424,14 @@ export default function WorkOrderDetail() {
             const { error } = await supabase
                 .from("work_orders")
                 .update({
-                    status: "Completed",
+                    status: "Delivered",
                     completed_at: new Date().toISOString(),
                     current_stage: "Delivery"
                 } as any)
                 .eq("id", id);
 
             if (error) throw error;
-            toast({ title: "Work Delivered", description: "Work order marked as Completed" });
+            toast({ title: "Work Delivered", description: "Work order marked as Delivered" });
             fetchDetails();
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -1221,7 +1221,7 @@ export default function WorkOrderDetail() {
                                     <div className="flex items-center gap-3">
                                         <Checkbox
                                             id="delivery-status"
-                                            checked={workOrder.status === 'Completed'}
+                                            checked={workOrder.status === 'Delivered'}
                                             disabled={!workOrder.customer_notified}
                                             onCheckedChange={(checked) => {
                                                 if (checked) {
@@ -1244,8 +1244,8 @@ export default function WorkOrderDetail() {
                                             <span className="font-medium">Mark as Delivered</span>
                                         </label>
                                     </div>
-                                    <Badge variant={workOrder.status === 'Completed' ? "default" : "outline"} className={workOrder.status === 'Completed' ? "bg-primary" : ""}>
-                                        {workOrder.status === 'Completed' ? 'Completed' : 'Not Completed'}
+                                    <Badge variant={workOrder.status === 'Delivered' ? "default" : "outline"} className={workOrder.status === 'Delivered' ? "bg-primary" : ""}>
+                                        {workOrder.status === 'Delivered' ? 'Delivered' : 'Not Delivered'}
                                     </Badge>
                                 </div>
 

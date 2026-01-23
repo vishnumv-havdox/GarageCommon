@@ -323,7 +323,8 @@ export default function CustomerPortal() {
 
   const activeWorkOrders = workOrders.filter(wo => {
     const status = wo.status?.toLowerCase() || "";
-    return status !== "completed" && status !== "cancelled" && wo.customer_visible;
+    // Hide delivered orders, but show completed orders (waiting for pickup)
+    return status !== "delivered" && status !== "cancelled" && wo.customer_visible;
   })
 
   const toggleOrderExpanded = (orderId: string) => {

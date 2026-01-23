@@ -709,7 +709,7 @@ export default function StaffDashboard() {
                                 </Button>
                               )}
 
-                              {isPendingApproval && (
+                              {isPendingApproval && !repairsApproved && (
                                 <div className="flex items-center justify-center gap-2 p-3 bg-purple-50 rounded-lg">
                                   <Clock className="h-4 w-4 text-purple-600 animate-pulse" />
                                   <span className="text-sm font-medium text-purple-800">

@@ -138,7 +138,7 @@ export default function AdminWorkOrders() {
       ).length;
       const pendingApproval = mapped.filter((o: WorkOrder) => o.status === "Pending Approval").length;
       const completed = mapped.filter((o: WorkOrder) =>
-        o.status === "Approved" || o.status === "Completed" || o.status === "Delivered"
+        o.status === "Approved" || o.status === "Completed"
       ).length;
       setStats({ pending, inProgress, pendingApproval, completed });
     } catch (error: any) {

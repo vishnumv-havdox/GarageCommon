@@ -109,10 +109,23 @@ export const accessControlConfig: AccessRule[] = [
     description: "Invoice management - admin, manager, and staff",
   },
   {
+    path: "/admin/invoices/:id",
+    allowedRoles: ["admin", "manager", "staff"],
+    redirectTo: "/dashboard",
+    description: "Invoice Editor - admin, manager, and staff",
+  },
+  {
     path: "/admin/access-control",
     allowedRoles: ["admin"],
     redirectTo: "/dashboard",
     description: "Access control settings - admins only",
+  },
+
+  {
+    path: "/admin/settings",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Company profile and document settings - admin and manager",
   },
 
   // Staff routes
@@ -222,7 +235,8 @@ export const navConfig: NavItem[] = [
   { label: "Progress", path: "/admin/progress", icon: Activity, roles: ["admin", "manager", "staff"] },
   { label: "Inventory", path: "/admin/inventory", icon: Package, roles: ["admin"] },
   { label: "Invoices", path: "/admin/invoices", icon: Receipt, roles: ["admin", "manager", "staff"] },
-  { label: "Access Control", path: "/admin/access-control", icon: Settings, roles: ["admin"] },
+  { label: "Configuration", path: "/admin/settings", icon: Settings, roles: ["admin", "manager"] },
+  { label: "Access Control", path: "/admin/access-control", icon: Shield, roles: ["admin"] },
   { label: "Staff Portal", path: "/staff", icon: Briefcase, roles: ["staff"] },
   { label: "My Portal", path: "/customer", icon: User, roles: ["customer"] },
 ];

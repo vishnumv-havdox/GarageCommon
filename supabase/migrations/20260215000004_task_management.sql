@@ -14,10 +14,13 @@ CREATE TABLE IF NOT EXISTS public.task_templates (
 ALTER TABLE public.task_templates ENABLE ROW LEVEL SECURITY;
 
 -- Policies
+-- Policies
+DROP POLICY IF EXISTS "Enable read access for authenticated users" ON public.task_templates;
 CREATE POLICY "Enable read access for authenticated users" ON public.task_templates
     FOR SELECT
     USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Enable all access for staff and admins" ON public.task_templates;
 CREATE POLICY "Enable all access for staff and admins" ON public.task_templates
     FOR ALL
     USING (

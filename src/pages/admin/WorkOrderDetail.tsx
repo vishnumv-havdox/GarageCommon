@@ -19,7 +19,7 @@ import {
     ArrowLeft, Wrench, Users, ClipboardList, IndianRupee,
     CheckCircle2, XCircle, Clock, Trash2, Shield, User,
     Truck, AlertTriangle, RefreshCw, ChevronRight, Plus, X, Edit, Play,
-    Bell, ShieldCheck
+    Bell, ShieldCheck, FileText, Calendar as CalendarIcon
 } from "lucide-react";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
 import {
@@ -33,6 +33,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { generateWorkSlipPDF, generateInvoicePDF } from "@/utils/pdfGenerator";
 import {
     Select,
     SelectContent,
@@ -578,6 +579,12 @@ export default function WorkOrderDetail() {
                     <div className="flex gap-2">
                         <Button variant="outline" size="icon" onClick={() => fetchDetails()} title="Refresh Details">
                             <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        <Button variant="outline" onClick={() => generateWorkSlipPDF(workOrder.id)} title="Download Work Slip">
+                            <FileText className="h-4 w-4 mr-2" /> Slip
+                        </Button>
+                        <Button variant="outline" onClick={() => generateInvoicePDF(workOrder.id)} title="Download Tax Invoice">
+                            <IndianRupee className="h-4 w-4 mr-2" /> Invoice
                         </Button>
                         {canAccept && (
                             <Button className="bg-green-600 hover:bg-green-700" onClick={handleAcceptOrder}>

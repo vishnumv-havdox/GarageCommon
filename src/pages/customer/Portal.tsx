@@ -8,12 +8,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import {
   LogOut, Truck, FileText, Wrench, RefreshCw,
   CheckCircle2, Clock, MapPin, ChevronDown, ChevronUp,
-  AlertCircle, ShieldCheck, Hourglass, Activity, Eye, Calendar, History, SortAsc, SortDesc, Search
+  AlertCircle, ShieldCheck, Hourglass, Activity, Eye, Calendar, History, SortAsc, SortDesc, Search,
+  QrCode, CreditCard, Upload, Download
 } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -127,6 +131,23 @@ export default function CustomerPortal() {
   } | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Payment State
+  const [profile, setProfile] = useState<any>(null);
+  const [payingInvoice, setPayingInvoice] = useState<any | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"UPI" | "Bank Transfer" | "Cash">("UPI");
+  const [paymentProof, setPaymentProof] = useState<File | null>(null);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+  // Invoice View State
+  const [viewingInvoice, setViewingInvoice] = useState<any | null>(null);
+  const [viewingInvoiceItems, setViewingInvoiceItems] = useState<any[]>([]);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    const { data } = await supabase.from('company_profiles').select('payment_qr_code_url, bank_details, company_name').maybeSingle();
+    if (data) setProfile(data);
+  }, []);
+
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
@@ -183,12 +204,12 @@ export default function CustomerPortal() {
           .select("*")
           .eq("customer_id", customerId);
 
-        invoicesRes = await supabase.from("invoices").select("*").eq("customer_id", customerId);
+        invoicesRes = await supabase.from("invoices").select("*, payments(status)").eq("customer_id", customerId);
       } else {
         // Fallback to regular client
         [vehiclesRes, invoicesRes] = await Promise.all([
           supabase.from("vehicles").select("*").eq("customer_id", customerId),
-          supabase.from("invoices").select("*").eq("customer_id", customerId),
+          supabase.from("invoices").select("*, payments(status)").eq("customer_id", customerId),
         ]);
       }
 
@@ -557,8 +578,104 @@ export default function CustomerPortal() {
   useEffect(() => {
     if (vehicles.length > 0) {
       fetchServiceHistory();
+      fetchProfile();
     }
-  }, [vehicles.length, fetchServiceHistory]);
+  }, [vehicles.length, fetchServiceHistory, fetchProfile]);
+
+  const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Draft');
+
+  // Notify about unpaid invoices
+  useEffect(() => {
+    if (unpaidInvoices.length > 0 && !loading) {
+      toast({
+        title: "Payment Reminder",
+        description: `You have ${unpaidInvoices.length} unpaid invoice(s). Please review them.`,
+        variant: "destructive",
+      });
+    }
+  }, [unpaidInvoices.length, loading, toast]);
+
+  const handleViewInvoice = async (invoice: any) => {
+    setViewingInvoice(invoice);
+    setInvoiceLoading(true);
+    setViewingInvoiceItems([]);
+
+    try {
+      const { data: items, error } = await supabase
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', invoice.id);
+
+      if (error) throw error;
+
+      if (items && items.length > 0) {
+        setViewingInvoiceItems(items);
+      } else {
+        setViewingInvoiceItems([]);
+      }
+    } catch (err: any) {
+      console.error("Error fetching invoice items:", err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load invoice details"
+      });
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
+  const handlePaymentSubmit = async () => {
+    if (!paymentProof || !payingInvoice) {
+      toast({ variant: "destructive", title: "Missing Information", description: "Please upload a payment proof." });
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+    try {
+      const fileExt = paymentProof.name.split('.').pop();
+      const fileName = `proof-${payingInvoice.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('payment-proofs')
+        .upload(filePath, paymentProof);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('payment-proofs')
+        .getPublicUrl(filePath);
+
+      const { error: insertError } = await (supabase as any)
+        .from('payments')
+        .insert({
+          invoice_id: payingInvoice.id,
+          amount: payingInvoice.total,
+          payment_method: paymentMethod,
+          proof_url: publicUrl,
+          status: 'pending'
+        });
+
+      if (insertError) throw insertError;
+
+      toast({
+        title: "Payment Submitted",
+        description: "Your payment reference has been submitted for verification."
+      });
+      setPayingInvoice(null);
+      setPaymentProof(null);
+      setPaymentMethod("UPI");
+
+      fetchData();
+
+    } catch (error: any) {
+      console.error("Payment submission failed:", error);
+      toast({ variant: "destructive", title: "Submission Failed", description: error.message });
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -649,11 +766,11 @@ export default function CustomerPortal() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Pending Invoices</CardTitle>
+              <CardTitle className="text-sm font-medium">Unpaid Invoices</CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{invoices.filter((inv) => inv.status === "pending").length}</div>
+              <div className="text-2xl font-bold">{invoices.filter((inv) => inv.status !== 'Paid' && inv.status !== 'Draft').length}</div>
             </CardContent>
           </Card>
         </div>
@@ -1410,13 +1527,61 @@ export default function CustomerPortal() {
                 ) : (
                   <div className="space-y-4">
                     {invoices.map((invoice) => (
-                      <div key={invoice.id} className="border p-4 rounded-lg">
+                      <div key={invoice.id} className="border p-4 rounded-lg bg-card/50">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h3 className="font-semibold">{invoice.invoice_number}</h3>
-                            <p className="text-sm font-semibold">Total: ₹{invoice.total}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-semibold text-lg">
+                                {invoice.bill_number ? `Bill #${invoice.bill_number}` : invoice.invoice_number}
+                              </h3>
+                              <Badge variant={
+                                invoice.status === 'Paid' ? 'default' :
+                                  invoice.status === 'Draft' ? 'secondary' :
+                                    'destructive' // Finalized/Unpaid
+                              } className={invoice.status === 'Paid' ? 'bg-green-600' : ''}>
+                                {invoice.status}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {format(new Date(invoice.created_at), "MMM d, yyyy")}
+                            </p>
+                            <p className="text-lg font-bold mt-2">₹{(invoice.total || 0).toLocaleString()}</p>
                           </div>
-                          <Badge variant={invoice.status === "paid" ? "default" : "destructive"}>{invoice.status}</Badge>
+                          <div className="flex items-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center gap-2"
+                              onClick={() => generateInvoicePDF(invoice.work_order_id)}
+                            >
+                              <Download className="h-4 w-4" />
+                              Download PDF
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center gap-2 ml-2"
+                              onClick={() => handleViewInvoice(invoice)}
+                            >
+                              <Eye className="h-4 w-4" />
+                              View
+                            </Button>
+                            {(invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending')) && (
+                              <Button
+                                size="sm"
+                                className="flex items-center gap-2 ml-2 bg-green-600 hover:bg-green-700"
+                                onClick={() => setPayingInvoice(invoice)}
+                              >
+                                <CreditCard className="h-4 w-4" />
+                                Pay Now
+                              </Button>
+                            )}
+                            {(invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending')) && (
+                              <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
+                                <Hourglass className="h-3 w-3 mr-1" /> Verifying
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1427,6 +1592,188 @@ export default function CustomerPortal() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Payment Dialog */}
+      <Dialog open={!!payingInvoice} onOpenChange={(open) => !open && setPayingInvoice(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Make Payment</DialogTitle>
+            <DialogDescription>
+              Submit payment details for Invoice #{payingInvoice?.bill_number || payingInvoice?.invoice_number}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
+              <span className="text-sm font-medium">Total Amount</span>
+              <span className="text-xl font-bold">₹{payingInvoice?.total?.toLocaleString()}</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Payment Method</Label>
+              <RadioGroup value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)} className="flex flex-col gap-2">
+                <div className="flex items-center space-x-2 border p-3 rounded-md cursor-pointer hover:bg-muted/50">
+                  <RadioGroupItem value="UPI" id="upi" />
+                  <Label htmlFor="upi" className="flex items-center gap-2 cursor-pointer w-full">
+                    <QrCode className="h-4 w-4" /> UPI (QR Code)
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2 border p-3 rounded-md cursor-pointer hover:bg-muted/50">
+                  <RadioGroupItem value="Bank Transfer" id="bank" />
+                  <Label htmlFor="bank" className="flex items-center gap-2 cursor-pointer w-full">
+                    <div className="flex flex-col">
+                      <span>Bank Transfer</span>
+                    </div>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2 border p-3 rounded-md cursor-pointer hover:bg-muted/50">
+                  <RadioGroupItem value="Cash" id="cash" />
+                  <Label htmlFor="cash" className="flex items-center gap-2 cursor-pointer w-full">
+                    Cash (At Workshop)
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {paymentMethod === "UPI" && profile?.payment_qr_code_url && (
+              <div className="flex flex-col items-center p-4 border rounded-lg bg-white">
+                <img src={profile.payment_qr_code_url} alt="Payment QR Code" className="w-48 h-48 object-contain" />
+                <p className="text-xs text-muted-foreground mt-2">Scan with any UPI app</p>
+              </div>
+            )}
+
+            {paymentMethod === "Bank Transfer" && profile?.bank_details && (
+              <div className="p-4 border rounded-lg bg-muted/50 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Bank Name:</span>
+                  <span className="font-medium">{profile.bank_details.bank_name || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Account Name:</span>
+                  <span className="font-medium">{profile.bank_details.account_name || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Account Number:</span>
+                  <span className="font-mono">{profile.bank_details.account_number || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">IFSC Code:</span>
+                  <span className="font-mono">{profile.bank_details.ifsc_code || 'N/A'}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Payment Proof (Screenshot/Receipt)</Label>
+              <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-muted/50 transition-colors cursor-pointer relative bg-muted/20">
+                <Input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setPaymentProof(e.target.files[0]);
+                    }
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+                {paymentProof ? (
+                  <div className="flex flex-col items-center text-green-600">
+                    <CheckCircle2 className="h-8 w-8 mb-2" />
+                    <span className="text-sm font-medium truncate max-w-[200px]">{paymentProof.name}</span>
+                    <span className="text-xs mt-1">Click to change</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center text-muted-foreground">
+                    <Upload className="h-8 w-8 mb-2" />
+                    <span className="text-sm font-medium">Click to upload proof</span>
+                    <span className="text-xs mt-1">supports JPG, PNG, PDF</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayingInvoice(null)}>Cancel</Button>
+            <Button onClick={handlePaymentSubmit} disabled={isSubmittingPayment || !paymentProof}>
+              {isSubmittingPayment ? "Submitting..." : "Submit Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Detail Dialog */}
+      <Dialog open={!!viewingInvoice} onOpenChange={(open) => !open && setViewingInvoice(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Invoice Details</DialogTitle>
+            <DialogDescription>
+              {viewingInvoice?.bill_number ? `Bill #${viewingInvoice.bill_number}` : viewingInvoice?.invoice_number}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Simple Invoice Items View */}
+          <div className="space-y-4">
+            {/* Header Info */}
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Date:</span>
+                <span className="ml-2 font-medium">{viewingInvoice?.created_at ? format(new Date(viewingInvoice.created_at), 'PPP') : 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Status:</span>
+                <Badge className="ml-2">{viewingInvoice?.status}</Badge>
+              </div>
+            </div>
+
+            {/* Items Table */}
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted">
+                  <tr>
+                    <th className="p-3 text-left">Description</th>
+                    <th className="p-3 text-right">Qty</th>
+                    <th className="p-3 text-right">Unit Price</th>
+                    <th className="p-3 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {invoiceLoading ? (
+                    <tr><td colSpan={4} className="p-4 text-center">Loading items...</td></tr>
+                  ) : viewingInvoiceItems.length === 0 ? (
+                    <tr><td colSpan={4} className="p-4 text-center text-muted-foreground">No items found</td></tr>
+                  ) : (
+                    viewingInvoiceItems.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="p-3">{item.description}</td>
+                        <td className="p-3 text-right">{item.quantity}</td>
+                        <td className="p-3 text-right">₹{item.unit_price}</td>
+                        <td className="p-3 text-right">₹{item.total}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot className="bg-muted/50 font-medium">
+                  <tr>
+                    <td colSpan={3} className="p-3 text-right">Grand Total</td>
+                    <td className="p-3 text-right">₹{viewingInvoice?.total?.toLocaleString()}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button onClick={() => generateInvoicePDF(viewingInvoice?.work_order_id)}>
+              <Download className="h-4 w-4 mr-2" />
+              Download PDF
+            </Button>
+            <Button variant="outline" onClick={() => setViewingInvoice(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
 
       {/* Work Order Detail Modal */}
       <Dialog open={!!viewDetailOrder} onOpenChange={() => setViewDetailOrder(null)}>
@@ -1690,6 +2037,6 @@ export default function CustomerPortal() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

@@ -16,6 +16,9 @@ import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, 
 import { serviceTypeConfig, ServiceType } from "@/config/serviceTypeConfig"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
+import { format } from "date-fns"
+import { Calendar as CalendarIcon, Clock } from "lucide-react"
+import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 
 interface Customer {
@@ -92,7 +95,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const [customerId, setCustomerId] = useState("")
   const [vehicleId, setVehicleId] = useState("")
   const [priority, setPriority] = useState("Medium")
+
   const [generalDescription, setGeneralDescription] = useState("")
+  const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState<Date | undefined>(undefined)
+  const [estimatedDeliveryTime, setEstimatedDeliveryTime] = useState("18:00")
 
   // Multi-service state
   const [selectedServices, setSelectedServices] = useState<ServiceType[]>([])
@@ -108,6 +114,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     color: "",
     vin: "",
     engine_number: "",
+    kilometers_driven: 0,
   })
   const [isCreatingVehicle, setIsCreatingVehicle] = useState(false)
 
@@ -128,6 +135,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     color: "",
     vin: "",
     engine_number: "",
+    kilometers_driven: 0,
   })
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
   const [includeVehicle, setIncludeVehicle] = useState(true)
@@ -727,6 +735,20 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       return
     }
 
+    if (!estimatedDeliveryDate) {
+      toast({
+        title: "Error",
+        description: "Please select an Estimated Delivery Date",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Combine Date and Time
+    const deliveryDateTime = new Date(estimatedDeliveryDate);
+    const [hours, minutes] = estimatedDeliveryTime.split(':').map(Number);
+    deliveryDateTime.setHours(hours || 0, minutes || 0, 0, 0);
+
     setIsLoading(true)
     try {
       // 1. Create Main Work Order
@@ -750,7 +772,8 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           // Lifecycle Fields
           odometer_reading: lifecycleData.odometer_reading || null,
           next_service_due_km: lifecycleData.next_service_due_km || null,
-          is_fc_renewal: lifecycleData.is_fc_renewal
+          is_fc_renewal: lifecycleData.is_fc_renewal,
+          estimated_delivery_date: deliveryDateTime.toISOString()
         }])
         .select()
         .single()
@@ -1014,6 +1037,49 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                     value={generalDescription}
                     onChange={(e) => setGeneralDescription(e.target.value)}
                   />
+                </div>
+
+                <div className="space-y-4 border-t pt-4 mt-4">
+                  <h3 className="text-lg font-medium flex items-center gap-2">
+                    Reference & Delivery
+                  </h3>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <CalendarIcon className="h-4 w-4" /> Estimated Delivery Date <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !estimatedDeliveryDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {estimatedDeliveryDate ? format(estimatedDeliveryDate, "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={estimatedDeliveryDate}
+                            onSelect={setEstimatedDeliveryDate}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <div className="w-[120px]">
+                        <Input
+                          type="time"
+                          value={estimatedDeliveryTime}
+                          onChange={(e) => setEstimatedDeliveryTime(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2">

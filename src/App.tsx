@@ -17,8 +17,10 @@ import AdminAnalytics from "./pages/admin/Analytics";
 import AdminProgress from "./pages/admin/Progress";
 import AdminInventory from "./pages/admin/Inventory";
 import AdminInvoices from "./pages/admin/Invoices";
+import AdminInvoiceEditor from "./pages/admin/InvoiceEditor";
 import AdminUsers from "./pages/admin/Users";
 import AdminAccessControl from "./pages/admin/AccessControl";
+import AdminSettings from "./pages/admin/Settings";
 import StaffDashboard from "./pages/staff/Dashboard";
 import CustomerPortal from "./pages/customer/Portal";
 import NotFound from "./pages/NotFound";
@@ -39,8 +41,10 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/progress": AdminProgress,
   "/admin/inventory": AdminInventory,
   "/admin/invoices": AdminInvoices,
+  "/admin/invoices/:id": AdminInvoiceEditor,
   "/admin/users": AdminUsers,
   "/admin/access-control": AdminAccessControl,
+  "/admin/settings": AdminSettings,
   "/staff": StaffDashboard,
   "/customer": CustomerPortal,
 };

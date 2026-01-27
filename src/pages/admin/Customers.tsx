@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Trash2, Edit, Mail, Phone, Building2, MapPin, Calendar, Car, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Search, Trash2, Edit, Mail, Phone, Building2, MapPin, Calendar, Car, ChevronDown, ChevronUp, Receipt } from "lucide-react";
 import { CustomerForm } from "@/components/forms/CustomerForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { format } from "date-fns";
@@ -38,10 +38,20 @@ interface Vehicle {
   created_at: string;
 }
 
+interface Invoice {
+  id: string;
+  customer_id: string;
+  bill_number?: number;
+  status: string;
+  total: number;
+  created_at: string;
+}
+
 export default function AdminCustomers() {
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Record<string, Vehicle[]>>({});
+  const [invoices, setInvoices] = useState<Record<string, Invoice[]>>({});
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -76,9 +86,11 @@ export default function AdminCustomers() {
       if (error) throw error;
       setCustomers(customersData || []);
 
-      // Fetch vehicles for all customers
+      // Fetch vehicles AND invoices for all customers
       if (customersData && customersData.length > 0) {
         const customerIds = customersData.map((c: Customer) => c.id);
+
+        // Vehicles
         const { data: vehiclesData, error: vehiclesError } = await supabase
           .from("vehicles")
           .select("*")
@@ -87,7 +99,6 @@ export default function AdminCustomers() {
 
         if (vehiclesError) throw vehiclesError;
 
-        // Group vehicles by customer_id
         const vehiclesByCustomer: Record<string, Vehicle[]> = {};
         (vehiclesData || []).forEach((vehicle: Vehicle) => {
           if (!vehiclesByCustomer[vehicle.customer_id]) {
@@ -96,6 +107,24 @@ export default function AdminCustomers() {
           vehiclesByCustomer[vehicle.customer_id].push(vehicle);
         });
         setVehicles(vehiclesByCustomer);
+
+        // Invoices
+        const { data: invoicesData, error: invoicesError } = await supabase
+          .from("invoices")
+          .select("*")
+          .in("customer_id", customerIds)
+          .order("created_at", { ascending: false });
+
+        if (invoicesError) throw invoicesError;
+
+        const invoicesByCustomer: Record<string, Invoice[]> = {};
+        (invoicesData || []).forEach((inv: Invoice) => {
+          if (!invoicesByCustomer[inv.customer_id]) {
+            invoicesByCustomer[inv.customer_id] = [];
+          }
+          invoicesByCustomer[inv.customer_id].push(inv);
+        });
+        setInvoices(invoicesByCustomer);
       }
     } catch (error: any) {
       toast({
@@ -281,8 +310,8 @@ export default function AdminCustomers() {
                               </p>
                             )}
 
-                            {/* Vehicles Section */}
-                            {customerVehicles.length > 0 && (
+                            {/* Vehicles & Invoices Section */}
+                            {(customerVehicles.length > 0 || (invoices[customer.id]?.length || 0) > 0) && (
                               <div className="mt-4">
                                 <Button
                                   variant="ghost"
@@ -292,6 +321,13 @@ export default function AdminCustomers() {
                                 >
                                   <Car className="h-4 w-4" />
                                   <span>{customerVehicles.length} Vehicle{customerVehicles.length > 1 ? 's' : ''}</span>
+                                  {/* Also show invoice count if any */}
+                                  {(invoices[customer.id]?.length || 0) > 0 && (
+                                    <span className="flex items-center gap-1 ml-2">
+                                      <Receipt className="h-3 w-3" />
+                                      {invoices[customer.id]?.length} Invoice{(invoices[customer.id]?.length || 0) > 1 ? 's' : ''}
+                                    </span>
+                                  )}
                                   {isExpanded ? (
                                     <ChevronUp className="h-4 w-4" />
                                   ) : (
@@ -300,29 +336,63 @@ export default function AdminCustomers() {
                                 </Button>
 
                                 {isExpanded && (
-                                  <div className="mt-3 space-y-2 pl-6 border-l-2 border-muted">
-                                    {customerVehicles.map((vehicle) => (
-                                      <div key={vehicle.id} className="bg-muted/50 p-3 rounded-md">
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-3">
-                                            <Car className="h-4 w-4 text-muted-foreground" />
+                                  <div className="mt-3 space-y-4 pl-6 border-l-2 border-muted">
+                                    {/* Vehicles */}
+                                    {customerVehicles.length > 0 && (
+                                      <div className="space-y-2">
+                                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Vehicles</h4>
+                                        {customerVehicles.map((vehicle) => (
+                                          <div key={vehicle.id} className="bg-muted/50 p-3 rounded-md">
+                                            <div className="flex items-center justify-between">
+                                              <div className="flex items-center gap-3">
+                                                <Car className="h-4 w-4 text-muted-foreground" />
+                                                <div>
+                                                  <p className="font-medium">{vehicle.vehicle_number}</p>
+                                                  <p className="text-xs text-muted-foreground">
+                                                    {vehicle.vehicle_type}
+                                                    {vehicle.model && ` • ${vehicle.model}`}
+                                                    {vehicle.year && ` • ${vehicle.year}`}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            {vehicle.notes && (
+                                              <p className="text-xs text-muted-foreground mt-2">
+                                                {vehicle.notes}
+                                              </p>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {/* Invoices */}
+                                    {(invoices[customer.id]?.length || 0) > 0 && (
+                                      <div className="space-y-2">
+                                        <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mt-4">Invoices</h4>
+                                        {invoices[customer.id]?.map((inv) => (
+                                          <div key={inv.id} className="bg-muted/50 p-3 rounded-md flex justify-between items-center">
                                             <div>
-                                              <p className="font-medium">{vehicle.vehicle_number}</p>
-                                              <p className="text-xs text-muted-foreground">
-                                                {vehicle.vehicle_type}
-                                                {vehicle.model && ` • ${vehicle.model}`}
-                                                {vehicle.year && ` • ${vehicle.year}`}
+                                              <div className="flex items-center gap-2">
+                                                <Receipt className="h-4 w-4 text-muted-foreground" />
+                                                <span className="font-medium text-sm">
+                                                  {inv.bill_number ? `#${inv.bill_number}` : 'Draft'}
+                                                </span>
+                                                <Badge variant={inv.status === 'Paid' ? 'default' : inv.status === 'Draft' ? 'secondary' : 'destructive'} className="text-[10px] h-5">
+                                                  {inv.status}
+                                                </Badge>
+                                              </div>
+                                              <p className="text-xs text-muted-foreground mt-1">
+                                                {format(new Date(inv.created_at), "MMM d, yyyy")} • ₹{(inv.total || 0).toLocaleString()}
                                               </p>
                                             </div>
+                                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => window.location.href = `/admin/invoices/${inv.id}`}>
+                                              View
+                                            </Button>
                                           </div>
-                                        </div>
-                                        {vehicle.notes && (
-                                          <p className="text-xs text-muted-foreground mt-2">
-                                            {vehicle.notes}
-                                          </p>
-                                        )}
+                                        ))}
                                       </div>
-                                    ))}
+                                    )}
                                   </div>
                                 )}
                               </div>

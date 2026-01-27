@@ -35,3 +35,4 @@ INSERT INTO public.service_types (name) VALUES
     ('Air Conditioning'),
     ('Custom Modification')
 ON CONFLICT (name) DO NOTHING;
+

@@ -79,7 +79,7 @@ export function SectionStaffPanel({
                         return (
                             <div
                                 key={emp.id}
-                                className={`flex items-start gap-2 p-2 rounded-md border transition-colors ${isSelected ? "bg-primary/5 border-primary/20" : "bg-white dark:bg-zinc-900 border-transparent"
+                                className={`flex items-start gap-3 p-3 rounded-md border transition-colors ${isSelected ? "bg-primary/5 border-primary/20" : "bg-white dark:bg-zinc-900 border-transparent"
                                     }`}
                             >
                                 <Checkbox

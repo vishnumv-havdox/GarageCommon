@@ -124,7 +124,7 @@ export default function AdminCustomers() {
 
   const handleConfirmDelete = async () => {
     if (!deletingCustomer) return;
-    
+
     const customerId = deletingCustomer.id;
 
     try {
@@ -196,10 +196,10 @@ export default function AdminCustomers() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
+      <div className="flex flex-col lg:flex-row">
         <AdminSidebar />
-        <main className="flex-1 p-8">
-          <div className="flex items-center justify-between mb-8">
+        <main className="flex-1 p-4 lg:p-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold">Customer Management</h1>
               <p className="text-muted-foreground">Manage customer records and accounts</p>
@@ -243,114 +243,110 @@ export default function AdminCustomers() {
                     const customerVehicles = vehicles[customer.id] || [];
                     const isExpanded = expandedCustomers.has(customer.id);
                     return (
-                    <div key={customer.id} className="border p-4 rounded-lg">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-lg">{customer.name}</h3>
-                            <Badge variant="secondary">Customer</Badge>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                            {customer.email && (
+                      <div key={customer.id} className="border p-4 rounded-lg">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="font-semibold text-lg">{customer.name}</h3>
+                              <Badge variant="secondary">Customer</Badge>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                              {customer.email && (
+                                <p className="flex items-center gap-2 text-muted-foreground">
+                                  <Mail className="h-4 w-4" />
+                                  {customer.email}
+                                </p>
+                              )}
+                              {customer.phone && (
+                                <p className="flex items-center gap-2 text-muted-foreground">
+                                  <Phone className="h-4 w-4" />
+                                  {customer.phone}
+                                </p>
+                              )}
+                              {customer.company_name && (
+                                <p className="flex items-center gap-2 text-muted-foreground">
+                                  <Building2 className="h-4 w-4" />
+                                  {customer.company_name}
+                                </p>
+                              )}
                               <p className="flex items-center gap-2 text-muted-foreground">
-                                <Mail className="h-4 w-4" />
-                                {customer.email}
+                                <Calendar className="h-4 w-4" />
+                                Joined: {format(new Date(customer.created_at), 'MMM d, yyyy')}
+                              </p>
+                            </div>
+                            {customer.address && (
+                              <p className="flex items-start gap-2 text-sm text-muted-foreground mt-2">
+                                <MapPin className="h-4 w-4 mt-0.5" />
+                                {customer.address}
                               </p>
                             )}
-                            {customer.phone && (
-                              <p className="flex items-center gap-2 text-muted-foreground">
-                                <Phone className="h-4 w-4" />
-                                {customer.phone}
-                              </p>
-                            )}
-                            {customer.company_name && (
-                              <p className="flex items-center gap-2 text-muted-foreground">
-                                <Building2 className="h-4 w-4" />
-                                {customer.company_name}
-                              </p>
-                            )}
-                            <p className="flex items-center gap-2 text-muted-foreground">
-                              <Calendar className="h-4 w-4" />
-                              Joined: {format(new Date(customer.created_at), 'MMM d, yyyy')}
-                            </p>
-                          </div>
-                          {customer.address && (
-                            <p className="flex items-start gap-2 text-sm text-muted-foreground mt-2">
-                              <MapPin className="h-4 w-4 mt-0.5" />
-                              {customer.address}
-                            </p>
-                          )}
-                          
-                          {/* Vehicles Section */}
-                          {customerVehicles.length > 0 && (
-                            <div className="mt-4">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="flex items-center gap-2 px-2 h-auto py-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-                                onClick={() => toggleExpand(customer.id)}
-                              >
-                                <Car className="h-4 w-4" />
-                                <span>{customerVehicles.length} Vehicle{customerVehicles.length > 1 ? 's' : ''}</span>
-                                {isExpanded ? (
-                                  <ChevronUp className="h-4 w-4" />
-                                ) : (
-                                  <ChevronDown className="h-4 w-4" />
-                                )}
-                              </Button>
-                              
-                              {isExpanded && (
-                                <div className="mt-3 space-y-2 pl-6 border-l-2 border-muted">
-                                  {customerVehicles.map((vehicle) => (
-                                    <div key={vehicle.id} className="bg-muted/50 p-3 rounded-md">
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                          <Car className="h-4 w-4 text-muted-foreground" />
-                                          <div>
-                                            <p className="font-medium">{vehicle.vehicle_number}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                              {vehicle.vehicle_type}
-                                              {vehicle.model && ` • ${vehicle.model}`}
-                                              {vehicle.year && ` • ${vehicle.year}`}
-                                            </p>
+
+                            {/* Vehicles Section */}
+                            {customerVehicles.length > 0 && (
+                              <div className="mt-4">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex items-center gap-2 px-2 h-auto py-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+                                  onClick={() => toggleExpand(customer.id)}
+                                >
+                                  <Car className="h-4 w-4" />
+                                  <span>{customerVehicles.length} Vehicle{customerVehicles.length > 1 ? 's' : ''}</span>
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                </Button>
+
+                                {isExpanded && (
+                                  <div className="mt-3 space-y-2 pl-6 border-l-2 border-muted">
+                                    {customerVehicles.map((vehicle) => (
+                                      <div key={vehicle.id} className="bg-muted/50 p-3 rounded-md">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-3">
+                                            <Car className="h-4 w-4 text-muted-foreground" />
+                                            <div>
+                                              <p className="font-medium">{vehicle.vehicle_number}</p>
+                                              <p className="text-xs text-muted-foreground">
+                                                {vehicle.vehicle_type}
+                                                {vehicle.model && ` • ${vehicle.model}`}
+                                                {vehicle.year && ` • ${vehicle.year}`}
+                                              </p>
+                                            </div>
                                           </div>
                                         </div>
-                                        <Badge 
-                                          variant={vehicle.status === 'Completed' ? 'default' : vehicle.status === 'In Progress' ? 'secondary' : 'outline'}
-                                        >
-                                          {vehicle.status}
-                                        </Badge>
+                                        {vehicle.notes && (
+                                          <p className="text-xs text-muted-foreground mt-2">
+                                            {vehicle.notes}
+                                          </p>
+                                        )}
                                       </div>
-                                      {vehicle.notes && (
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                          {vehicle.notes}
-                                        </p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {customerVehicles.length === 0 && (
-                            <div className="mt-4 text-xs text-muted-foreground flex items-center gap-2">
-                              <Car className="h-4 w-4" />
-                              No vehicles registered
-                            </div>
-                          )}
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {customerVehicles.length === 0 && (
+                              <div className="mt-4 text-xs text-muted-foreground flex items-center gap-2">
+                                <Car className="h-4 w-4" />
+                                No vehicles registered
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(customer)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
                         </div>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDelete(customer)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
-                        </Button>
                       </div>
-                    </div>
-                  )})}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

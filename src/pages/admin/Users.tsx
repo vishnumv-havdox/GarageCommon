@@ -14,14 +14,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Search, 
-  Filter, 
-  Shield, 
-  Users, 
-  UserCog, 
-  Mail, 
-  Phone, 
+import {
+  Search,
+  Filter,
+  Shield,
+  Users,
+  UserCog,
+  Mail,
+  Phone,
   Calendar,
   Building2,
   Truck,
@@ -108,15 +108,15 @@ export default function AdminUsers() {
       const { data: rolesData } = await (supabase.from("user_roles").select("user_id, role") as any);
       const adminUserIds = rolesData?.filter((r: any) => r.role === 'admin').map((r: any) => r.user_id) || [];
       const staffUserIds = rolesData?.filter((r: any) => r.role === 'staff').map((r: any) => r.user_id) || [];
-      
+
       // 2. Fetch admins from profiles
       const { data: profilesData } = await supabase.from("profiles").select("*") as any;
-      
+
       // 3. Fetch employees
       const { data: employeesData } = await (supabase
         .from("employees")
         .select("*, positions:position_id (name, department, access_level)") as any);
-      
+
       // 4. Fetch customers
       const { data: customersData } = await (supabase.from("customers").select("*, vehicles(count)") as any);
 
@@ -176,7 +176,7 @@ export default function AdminUsers() {
     let result = [...items];
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      result = result.filter(item => 
+      result = result.filter(item =>
         String(item[nameField] || '').toLowerCase().includes(term) ||
         String(item[emailField] || '').toLowerCase().includes(term)
       );
@@ -206,7 +206,7 @@ export default function AdminUsers() {
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      const userRole = selectedUser?.role || 
+      const userRole = selectedUser?.role ||
         (activeTab === 'admins' ? 'admin' : activeTab === 'employees' ? 'staff' : 'customer');
 
       // For employees and customers, we need to get the domain record by user_id
@@ -217,7 +217,7 @@ export default function AdminUsers() {
           .select("id")
           .eq("user_id", userId)
           .maybeSingle() as any);
-        
+
         if (employeeData?.id) {
           await supabaseAdmin.from("employees").delete().eq("id", employeeData.id);
         }
@@ -228,11 +228,11 @@ export default function AdminUsers() {
           .select("id")
           .eq("user_id", userId)
           .maybeSingle() as any);
-        
+
         if (customerData?.id) {
           // First delete all vehicles belonging to this customer
           await supabaseAdmin.from("vehicles").delete().eq("customer_id", customerData.id);
-          
+
           // Then delete the customer
           await supabaseAdmin.from("customers").delete().eq("id", customerData.id);
         }
@@ -303,13 +303,13 @@ export default function AdminUsers() {
     { field: 'phone' as SortField, label: 'Phone' },
   ];
 
-  const UserTable = ({ 
-    data, 
-    columns, 
+  const UserTable = ({
+    data,
+    columns,
     renderActions,
-    nameField 
-  }: { 
-    data: any[], 
+    nameField
+  }: {
+    data: any[],
     columns: { field: SortField; label: string }[],
     renderActions?: (item: any) => React.ReactNode,
     nameField: string
@@ -345,7 +345,7 @@ export default function AdminUsers() {
               <tr key={item.id} className="border-b hover:bg-muted/50">
                 {columns.map(col => (
                   <td key={col.field} className="p-3">
-                    {col.field === 'created_at' 
+                    {col.field === 'created_at'
                       ? format(new Date(item[col.field]), 'MMM d, yyyy')
                       : String(item[col.field] || '-')
                     }
@@ -406,11 +406,11 @@ export default function AdminUsers() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
+      <div className="flex flex-col lg:flex-row">
         <AdminSidebar />
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 lg:p-8">
           {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold">Users Management</h1>
               <p className="text-muted-foreground">Manage Admins, Employees, and Customers</p>
@@ -421,7 +421,7 @@ export default function AdminUsers() {
                 Add Admin
               </Button>
               <Button onClick={fetchAllUsers} variant="outline" disabled={loading}>
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> 
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
             </div>
@@ -432,11 +432,11 @@ export default function AdminUsers() {
             <CardContent className="pt-6">
               <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search users..." 
-                  value={searchTerm} 
-                  onChange={e => setSearchTerm(e.target.value)} 
-                  className="pl-10" 
+                <Input
+                  placeholder="Search users..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="pl-10"
                 />
               </div>
             </CardContent>
@@ -478,7 +478,7 @@ export default function AdminUsers() {
 
                 <TabsContent value="admins" className="mt-4">
                   <CardTitle className="text-lg mb-4">System Administrators</CardTitle>
-                  <UserTable 
+                  <UserTable
                     data={filterAndSort(admins, 'full_name', 'email')}
                     columns={adminColumns}
                     nameField="full_name"
@@ -487,7 +487,7 @@ export default function AdminUsers() {
 
                 <TabsContent value="employees" className="mt-4">
                   <CardTitle className="text-lg mb-4">Staff Members</CardTitle>
-                  <UserTable 
+                  <UserTable
                     data={filterAndSort(employees, 'name', 'email')}
                     columns={employeeColumns}
                     nameField="name"
@@ -496,7 +496,7 @@ export default function AdminUsers() {
 
                 <TabsContent value="customers" className="mt-4">
                   <CardTitle className="text-lg mb-4">Customers</CardTitle>
-                  <UserTable 
+                  <UserTable
                     data={filterAndSort(customers, 'name', 'email')}
                     columns={customerColumns}
                     nameField="name"
@@ -746,8 +746,8 @@ export default function AdminUsers() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={() => {
                 if (selectedUser?.id) {
                   handleDeleteUser(selectedUser.id);

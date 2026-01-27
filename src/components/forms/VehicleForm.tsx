@@ -14,19 +14,43 @@ interface Customer {
   company_name?: string
 }
 
+interface Vehicle {
+  id: string
+  customer_id: string
+  vehicle_number: string
+  vehicle_type: string
+  model: string
+  year: number
+  color?: string
+  vin?: string
+  engine_number?: string
+  notes?: string
+  kilometers_driven?: number
+  next_service_km?: number
+  next_service_date?: string
+}
+
 interface VehicleFormProps {
   onSuccess: () => void
   onCancel: () => void
+  initialData?: Vehicle
 }
 
-export function VehicleForm({ onSuccess, onCancel }: VehicleFormProps) {
+export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormProps) {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [formData, setFormData] = useState({
-    customer_id: "",
-    vehicle_number: "",
-    vehicle_type: "",
-    model: "",
-    year: new Date().getFullYear()
+    customer_id: initialData?.customer_id || "",
+    vehicle_number: initialData?.vehicle_number || "",
+    vehicle_type: initialData?.vehicle_type || "",
+    model: initialData?.model || "",
+    year: initialData?.year || new Date().getFullYear(),
+    color: initialData?.color || "",
+    vin: initialData?.vin || "",
+    engine_number: initialData?.engine_number || "",
+    notes: initialData?.notes || "",
+    kilometers_driven: initialData?.kilometers_driven || 0,
+    next_service_km: initialData?.next_service_km || 0,
+    next_service_date: initialData?.next_service_date || ""
   })
   const [isLoading, setIsLoading] = useState(false)
   const [loadingCustomers, setLoadingCustomers] = useState(true)
@@ -72,13 +96,29 @@ export function VehicleForm({ onSuccess, onCancel }: VehicleFormProps) {
 
     setIsLoading(true)
     try {
-      const { error } = await supabase
-        .from('vehicles')
-        .insert([{
-          ...formData,
-          status: 'Inspection',
-          entry_date: new Date().toISOString()
-        }])
+      const payload = {
+        ...formData,
+        // Ensure optional number fields are null if 0 or empty for cleaner DB (optional preference, but 0 is fine too)
+        // For dates, empty string should be null
+        next_service_date: formData.next_service_date || null,
+        // Only set default status for new vehicles
+        ...(initialData ? {} : { status: 'active', entry_date: new Date().toISOString() })
+      }
+
+      let error;
+
+      if (initialData) {
+        const { error: updateError } = await supabase
+          .from('vehicles')
+          .update(payload)
+          .eq('id', initialData.id)
+        error = updateError
+      } else {
+        const { error: insertError } = await supabase
+          .from('vehicles')
+          .insert([payload])
+        error = insertError
+      }
 
       if (error) {
         toast({
@@ -89,14 +129,14 @@ export function VehicleForm({ onSuccess, onCancel }: VehicleFormProps) {
       } else {
         toast({
           title: "Success",
-          description: "Vehicle registered successfully",
+          description: `Vehicle ${initialData ? 'updated' : 'registered'} successfully`,
         })
         onSuccess()
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: error.message || "An unexpected error occurred",
         variant: "destructive",
       })
     } finally {
@@ -123,7 +163,7 @@ export function VehicleForm({ onSuccess, onCancel }: VehicleFormProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Truck className="w-5 h-5" />
-          Register New Vehicle
+          {initialData ? 'Edit Vehicle' : 'Register New Vehicle'}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -150,7 +190,7 @@ export function VehicleForm({ onSuccess, onCancel }: VehicleFormProps) {
               </Select>
             )}
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="vehicle_number">Vehicle Number *</Label>
@@ -199,9 +239,85 @@ export function VehicleForm({ onSuccess, onCancel }: VehicleFormProps) {
                 disabled={isLoading}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="color">Color</Label>
+              <Input
+                id="color"
+                placeholder="e.g., White"
+                value={formData.color}
+                onChange={(e) => handleChange('color', e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vin">VIN / Chassis Number</Label>
+              <Input
+                id="vin"
+                placeholder="e.g., MAT..."
+                value={formData.vin}
+                onChange={(e) => handleChange('vin', e.target.value.toUpperCase())}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="engine_number">Engine Number</Label>
+              <Input
+                id="engine_number"
+                placeholder="e.g., 497..."
+                value={formData.engine_number}
+                onChange={(e) => handleChange('engine_number', e.target.value.toUpperCase())}
+                disabled={isLoading}
+              />
+            </div>
           </div>
 
-          <div className="flex gap-2 justify-end">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="kilometers_driven">Kilometers Driven</Label>
+              <Input
+                id="kilometers_driven"
+                type="number"
+                placeholder="e.g., 50000"
+                value={formData.kilometers_driven}
+                onChange={(e) => handleChange('kilometers_driven', parseInt(e.target.value))}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="next_service_km">Next Service @ KM</Label>
+              <Input
+                id="next_service_km"
+                type="number"
+                placeholder="e.g., 55000"
+                value={formData.next_service_km}
+                onChange={(e) => handleChange('next_service_km', parseInt(e.target.value))}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="next_service_date">Next Service Date</Label>
+              <Input
+                id="next_service_date"
+                type="date"
+                value={formData.next_service_date}
+                onChange={(e) => handleChange('next_service_date', e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t pt-4">
+            <Label htmlFor="notes">Notes</Label>
+            <Input
+              id="notes"
+              placeholder="Any additional information..."
+              value={formData.notes}
+              onChange={(e) => handleChange('notes', e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-4">
             <Button
               type="button"
               variant="outline"
@@ -217,10 +333,10 @@ export function VehicleForm({ onSuccess, onCancel }: VehicleFormProps) {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Registering...
+                  {initialData ? 'Updating...' : 'Registering...'}
                 </>
               ) : (
-                "Register Vehicle"
+                initialData ? 'Update Vehicle' : 'Register Vehicle'
               )}
             </Button>
           </div>

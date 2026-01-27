@@ -96,13 +96,19 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
+      <div className="flex flex-col lg:flex-row">
         {/* Shared Sidebar */}
         <AdminSidebar />
 
         {/* Main Content */}
-        <main className="flex-1 p-8">
-          <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
+        <main className="flex-1 p-4 lg:p-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
+            <div>
+              <h1 className="text-3xl font-bold">Dashboard</h1>
+              <p className="text-muted-foreground">Overview of work orders and shop performance</p>
+            </div>
+            <div className="flex items-center gap-2 w-full lg:w-auto"></div>
+          </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

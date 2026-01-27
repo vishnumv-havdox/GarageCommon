@@ -117,7 +117,7 @@ export default function CustomerPortal() {
   const [viewVehicleHistory, setViewVehicleHistory] = useState<any | null>(null);
   const [historySearchTerm, setHistorySearchTerm] = useState("");
   const [historySortBy, setHistorySortBy] = useState<"date" | "vehicle" | "status">("date");
-  
+
   // Service History State
   const [serviceHistory, setServiceHistory] = useState<ServiceHistory[]>([]);
   const [viewingVehicleHistory, setViewingVehicleHistory] = useState<{
@@ -168,21 +168,21 @@ export default function CustomerPortal() {
       // Fetch vehicles and invoices using admin client to bypass RLS
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-      
+
       let vehiclesRes: any = { data: [], error: null };
       let invoicesRes: any = { data: [], error: null };
-      
+
       if (SERVICE_ROLE_KEY) {
         const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
           auth: { autoRefreshToken: false, persistSession: false }
         });
-        
+
         // Use admin client to fetch vehicles for this customer (bypasses RLS)
         vehiclesRes = await adminClient
           .from("vehicles")
           .select("*")
           .eq("customer_id", customerId);
-        
+
         invoicesRes = await supabase.from("invoices").select("*").eq("customer_id", customerId);
       } else {
         // Fallback to regular client
@@ -392,12 +392,12 @@ export default function CustomerPortal() {
   const workOrdersById = workOrders.reduce((acc, wo) => {
     // Create a composite key: work_order_id OR vehicle_id + vehicle_number
     // This groups work orders with the same vehicle together
-    const key = wo.id || 
+    const key = wo.id ||
       (wo.vehicle?.id ? `vehicle-${wo.vehicle.id}` : `unknown-${Math.random()}`);
-    
+
     if (!acc[key]) {
-      acc[key] = { 
-        ...wo, 
+      acc[key] = {
+        ...wo,
         services: [],
         combined_service_types: new Set([wo.service_type].filter(Boolean))
       };
@@ -407,7 +407,7 @@ export default function CustomerPortal() {
         (acc[key] as any).combined_service_types.add(wo.service_type);
       }
     }
-    
+
     // Add service info if it exists
     if (wo.services && wo.services.length > 0) {
       wo.services.forEach(service => {
@@ -472,12 +472,12 @@ export default function CustomerPortal() {
   // Fetch service history for all customer's vehicles
   const fetchServiceHistory = useCallback(async () => {
     if (!user?.id || vehicles.length === 0) return;
-    
+
     setHistoryLoading(true);
     try {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-      
+
       if (!SERVICE_ROLE_KEY) {
         // If no service role key, try to use the service_history table with regular client
         // This might fail due to RLS, but we'll try
@@ -485,11 +485,11 @@ export default function CustomerPortal() {
           .from("service_history")
           .select("*")
           .order("service_date", { ascending: false });
-        
+
         if (!error && data) {
           // Filter to only customer's vehicles client-side
           const customerVehicleIds = vehicles.map(v => v.id);
-          const filteredHistory = data.filter((h: any) => 
+          const filteredHistory = data.filter((h: any) =>
             customerVehicleIds.includes(h.vehicle_id)
           );
           setServiceHistory(filteredHistory);
@@ -497,21 +497,21 @@ export default function CustomerPortal() {
         setHistoryLoading(false);
         return;
       }
-      
+
       // Use admin client to fetch all service history
       const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
         auth: { autoRefreshToken: false, persistSession: false }
       });
-      
+
       // Get customer ID first
       const customerQuery = await supabase
         .from("customers")
         .select("id")
         .eq("user_id", user.id)
         .single();
-      
+
       let customerId = (customerQuery.data as any)?.id;
-      
+
       // If no customer found by user_id, try by email
       if (!customerId && user.email) {
         const customerByEmailQuery = await supabase
@@ -521,15 +521,15 @@ export default function CustomerPortal() {
           .single();
         customerId = (customerByEmailQuery.data as any)?.id;
       }
-      
+
       if (!customerId) {
         setHistoryLoading(false);
         return;
       }
-      
+
       // Get customer's vehicle IDs
       const customerVehicleIds = vehicles.map(v => v.id);
-      
+
       if (customerVehicleIds.length > 0) {
         const { data, error } = await adminClient
           .from("service_history")
@@ -539,7 +539,7 @@ export default function CustomerPortal() {
           `)
           .in("vehicle_id", customerVehicleIds)
           .order("service_date", { ascending: false });
-        
+
         if (error) {
           console.error("Error fetching service history:", error);
         } else {
@@ -722,9 +722,9 @@ export default function CustomerPortal() {
                               {serviceTypesArray.length > 0 ? (
                                 <div className="flex flex-wrap gap-1">
                                   {serviceTypesArray.map((st: string, index: number) => (
-                                    <Badge 
-                                      key={index} 
-                                      variant="outline" 
+                                    <Badge
+                                      key={index}
+                                      variant="outline"
                                       className={`text-xs ${index === 0 ? 'border-primary/50' : ''}`}
                                     >
                                       {st}
@@ -1064,20 +1064,20 @@ export default function CustomerPortal() {
                               <Truck className="h-5 w-5 text-primary" />
                               <h3 className="font-semibold text-lg">{vehicle.vehicle_number}</h3>
                             </div>
-                            
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {/* Model */}
                               <div className="flex items-center gap-2 text-sm">
                                 <span className="text-muted-foreground">Model:</span>
                                 <span className="font-medium">{vehicle.model || "N/A"}</span>
                               </div>
-                              
+
                               {/* Vehicle Type */}
                               <div className="flex items-center gap-2 text-sm">
                                 <span className="text-muted-foreground">Type:</span>
                                 <span className="font-medium">{vehicle.vehicle_type || "N/A"}</span>
                               </div>
-                              
+
                               {/* Color */}
                               {vehicle.color && (
                                 <div className="flex items-center gap-2 text-sm">
@@ -1085,7 +1085,7 @@ export default function CustomerPortal() {
                                   <span className="font-medium">{vehicle.color}</span>
                                 </div>
                               )}
-                              
+
                               {/* Year */}
                               {vehicle.year && (
                                 <div className="flex items-center gap-2 text-sm">
@@ -1093,7 +1093,7 @@ export default function CustomerPortal() {
                                   <span className="font-medium">{vehicle.year}</span>
                                 </div>
                               )}
-                              
+
                               {/* Registration Date */}
                               {vehicle.created_at && (
                                 <div className="flex items-center gap-2 text-sm">
@@ -1107,7 +1107,7 @@ export default function CustomerPortal() {
                                   </span>
                                 </div>
                               )}
-                              
+
                               {/* VIN/Chassis Number */}
                               {vehicle.vin && (
                                 <div className="flex items-center gap-2 text-sm">
@@ -1115,7 +1115,7 @@ export default function CustomerPortal() {
                                   <span className="font-medium text-xs font-mono">{vehicle.vin}</span>
                                 </div>
                               )}
-                              
+
                               {/* Engine Number */}
                               {vehicle.engine_number && (
                                 <div className="flex items-center gap-2 text-sm">
@@ -1123,9 +1123,38 @@ export default function CustomerPortal() {
                                   <span className="font-medium text-xs font-mono">{vehicle.engine_number}</span>
                                 </div>
                               )}
+
+                              {/* Service Tracking - New Section */}
+                              <div className="md:col-span-2 mt-2 pt-2 border-t grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Odometer:</span>
+                                  <span className="font-medium">
+                                    {vehicle.kilometers_driven ? `${vehicle.kilometers_driven.toLocaleString()} km` : "N/A"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Next Service @:</span>
+                                  <span className="font-medium">
+                                    {vehicle.next_service_km ? `${vehicle.next_service_km.toLocaleString()} km` : "N/A"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Next Service Date:</span>
+                                  <span className="font-medium">
+                                    {vehicle.next_service_date
+                                      ? new Date(vehicle.next_service_date).toLocaleDateString("en-IN", {
+                                        day: "2-digit",
+                                        month: "short",
+                                        year: "numeric"
+                                      })
+                                      : "N/A"
+                                    }
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          
+
                           {/* Vehicle Stats */}
                           <div className="flex flex-col gap-2 min-w-[150px]">
                             {/* Work Orders Count for this Vehicle */}
@@ -1139,22 +1168,22 @@ export default function CustomerPortal() {
                                 )
                               ).length;
                               const completedCount = vehicleWorkOrders.length - activeCount;
-                              
+
                               // Get the latest work order status for display
                               const latestWorkOrder = vehicleWorkOrders[0];
                               const repairStatus = latestWorkOrder?.status || "No repairs";
-                              
+
                               return (
                                 <>
                                   <div className="flex items-center gap-2">
-                                    <Badge 
+                                    <Badge
                                       variant={
-                                        completedCount > 0 && activeCount === 0 ? "default" : 
-                                        activeCount > 0 ? "secondary" : "outline"
+                                        completedCount > 0 && activeCount === 0 ? "default" :
+                                          activeCount > 0 ? "secondary" : "outline"
                                       }
                                     >
-                                      {completedCount > 0 && activeCount === 0 ? "Completed" : 
-                                       activeCount > 0 ? "In Progress" : "Available"}
+                                      {completedCount > 0 && activeCount === 0 ? "Completed" :
+                                        activeCount > 0 ? "In Progress" : "Available"}
                                     </Badge>
                                   </div>
                                   <div className="text-xs text-muted-foreground">
@@ -1163,7 +1192,7 @@ export default function CustomerPortal() {
                                   <div className="text-xs text-muted-foreground">
                                     <span className="font-medium text-green-600">{completedCount}</span> completed
                                   </div>
-                                  
+
                                   {/* History Button */}
                                   <Button
                                     variant="outline"
@@ -1287,8 +1316,8 @@ export default function CustomerPortal() {
                                   {order.customer?.name || "Customer"}
                                 </p>
                               </div>
-                              <Button 
-                                variant="outline" 
+                              <Button
+                                variant="outline"
                                 size="sm"
                                 onClick={() => setViewDetailOrder(order)}
                                 className="flex items-center gap-2"
@@ -1329,29 +1358,29 @@ export default function CustomerPortal() {
                                 <div className="flex items-center justify-between text-sm mb-1">
                                   <span>Repair Progress</span>
                                   <span className="font-medium">
-                                    {order.repair_status === 'approved' ? 'Approved' : 
-                                     order.repair_status === 'completed' ? 'Completed' : 
-                                     order.repair_status === 'in_progress' ? 'In Progress' : 
-                                     order.repair_status}
+                                    {order.repair_status === 'approved' ? 'Approved' :
+                                      order.repair_status === 'completed' ? 'Completed' :
+                                        order.repair_status === 'in_progress' ? 'In Progress' :
+                                          order.repair_status}
                                   </span>
                                 </div>
-                                <Progress 
-                                  value={order.repair_status === 'approved' ? 100 : 
-                                              order.repair_status === 'completed' ? 100 : 
-                                              order.repair_status === 'in_progress' ? 50 : 0} 
-                                  className="h-2" 
+                                <Progress
+                                  value={order.repair_status === 'approved' ? 100 :
+                                    order.repair_status === 'completed' ? 100 :
+                                      order.repair_status === 'in_progress' ? 50 : 0}
+                                  className="h-2"
                                 />
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {order.repair_status === 'approved' 
-                                    ? '2 of 2 completed' 
-                                    : order.repair_status === 'completed'
+                                  {order.repair_status === 'approved'
                                     ? '2 of 2 completed'
-                                    : '0 of 2 completed'}
-                                  {' '} • {order.repair_status === 'approved' 
-                                    ? '100% Complete' 
                                     : order.repair_status === 'completed'
+                                      ? '2 of 2 completed'
+                                      : '0 of 2 completed'}
+                                  {' '} • {order.repair_status === 'approved'
                                     ? '100% Complete'
-                                    : '0% Complete'}
+                                    : order.repair_status === 'completed'
+                                      ? '100% Complete'
+                                      : '0% Complete'}
                                 </p>
                               </div>
                             </div>
@@ -1408,7 +1437,7 @@ export default function CustomerPortal() {
               Work Order Details
             </DialogTitle>
           </DialogHeader>
-          
+
           {viewDetailOrder && (
             <div className="space-y-6">
               {/* Vehicle Info */}
@@ -1479,17 +1508,17 @@ export default function CustomerPortal() {
                   Repair Progress
                 </h4>
                 <div className="space-y-3">
-                  <Progress 
-                    value={viewDetailOrder.repair_status === 'approved' ? 100 : 
-                                viewDetailOrder.repair_status === 'completed' ? 100 : 
-                                viewDetailOrder.repair_status === 'in_progress' ? 50 : 0} 
-                    className="h-3" 
+                  <Progress
+                    value={viewDetailOrder.repair_status === 'approved' ? 100 :
+                      viewDetailOrder.repair_status === 'completed' ? 100 :
+                        viewDetailOrder.repair_status === 'in_progress' ? 50 : 0}
+                    className="h-3"
                   />
                   <div className="flex items-center justify-between text-sm">
                     <Badge variant="secondary">{viewDetailOrder.repair_status || "Pending"}</Badge>
                     <span className="text-muted-foreground">
-                      {viewDetailOrder.repair_status === 'approved' || viewDetailOrder.repair_status === 'completed' 
-                        ? "100% Complete" 
+                      {viewDetailOrder.repair_status === 'approved' || viewDetailOrder.repair_status === 'completed'
+                        ? "100% Complete"
                         : "In Progress"}
                     </span>
                   </div>
@@ -1507,12 +1536,11 @@ export default function CustomerPortal() {
                     const stageData = viewDetailOrder.stages.find(s => s.stage === stage);
                     const stageStatus = stageData?.status || 'pending';
                     const isCompleted = stageStatus === 'completed';
-                    
+
                     return (
                       <div key={stage} className="relative pb-6 last:pb-0 pl-6">
-                        <div className={`absolute -left-[21px] top-0 h-8 w-8 rounded-full border-4 border-background flex items-center justify-center ${
-                          isCompleted ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
-                        }`}>
+                        <div className={`absolute -left-[21px] top-0 h-8 w-8 rounded-full border-4 border-background flex items-center justify-center ${isCompleted ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
+                          }`}>
                           {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs">{index + 1}</span>}
                         </div>
                         <div className="flex items-center justify-between">
@@ -1567,7 +1595,7 @@ export default function CustomerPortal() {
               </div>
             </div>
           )}
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewDetailOrder(null)}>
               Close
@@ -1577,8 +1605,8 @@ export default function CustomerPortal() {
       </Dialog>
 
       {/* Vehicle History Modal */}
-      <Dialog 
-        open={!!viewingVehicleHistory} 
+      <Dialog
+        open={!!viewingVehicleHistory}
         onOpenChange={() => setViewingVehicleHistory(null)}
       >
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
@@ -1591,7 +1619,7 @@ export default function CustomerPortal() {
               {viewingVehicleHistory?.history.length || 0} service record(s) found
             </CardDescription>
           </DialogHeader>
-          
+
           {/* Vehicle Info */}
           {viewingVehicleHistory && (
             <div className="bg-muted/50 p-4 rounded-lg">
@@ -1608,7 +1636,7 @@ export default function CustomerPortal() {
               </div>
             </div>
           )}
-          
+
           {/* History Table */}
           {viewingVehicleHistory && viewingVehicleHistory.history.length > 0 && (
             <div className="rounded-md border">
@@ -1644,7 +1672,7 @@ export default function CustomerPortal() {
               </Table>
             </div>
           )}
-          
+
           {viewingVehicleHistory && viewingVehicleHistory.history.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
               <History className="h-12 w-12 mx-auto mb-4 opacity-20" />
@@ -1654,7 +1682,7 @@ export default function CustomerPortal() {
               </p>
             </div>
           )}
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewingVehicleHistory(null)}>
               Close

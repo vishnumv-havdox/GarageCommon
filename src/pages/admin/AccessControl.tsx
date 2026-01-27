@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { 
-  Shield, 
-  Users, 
-  UserCog, 
-  Search, 
+import {
+  Shield,
+  Users,
+  UserCog,
+  Search,
   RefreshCw,
   Edit,
   Lock,
@@ -78,7 +78,7 @@ export default function AccessControlPage() {
   });
 
   const handleToggleEnabled = (ruleId: string) => {
-    setRules(prev => prev.map(r => 
+    setRules(prev => prev.map(r =>
       r.id === ruleId ? { ...r, enabled: !r.enabled } : r
     ));
     toast({
@@ -88,7 +88,7 @@ export default function AccessControlPage() {
   };
 
   const handleEditRoles = (ruleId: string, newRoles: UserRole[]) => {
-    setRules(prev => prev.map(r => 
+    setRules(prev => prev.map(r =>
       r.id === ruleId ? { ...r, allowedRoles: newRoles } : r
     ));
     setIsEditDialogOpen(false);
@@ -98,18 +98,18 @@ export default function AccessControlPage() {
     });
   };
 
-  const getRoleBadgeVariant = (role: string): "default" | "destructive" | "secondary" => 
+  const getRoleBadgeVariant = (role: string): "default" | "destructive" | "secondary" =>
     role === "admin" ? "destructive" : role === "staff" ? "default" : "secondary";
 
-  const getRoleIcon = (role: string) => 
-    role === "admin" ? <Shield className="h-3 w-3" /> : 
-    role === "staff" ? <UserCog className="h-3 w-3" /> : 
-    <Users className="h-3 w-3" />;
+  const getRoleIcon = (role: string) =>
+    role === "admin" ? <Shield className="h-3 w-3" /> :
+      role === "staff" ? <UserCog className="h-3 w-3" /> :
+        <Users className="h-3 w-3" />;
 
   const SortButton = ({ field, label }: { field: SortField; label: string }) => (
-    <Button 
-      variant="ghost" 
-      size="sm" 
+    <Button
+      variant="ghost"
+      size="sm"
       className="gap-1 h-8 font-medium"
       onClick={() => handleSort(field)}
     >
@@ -120,10 +120,10 @@ export default function AccessControlPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
+      <div className="flex flex-col lg:flex-row">
         <AdminSidebar />
-        <main className="flex-1 p-8">
-          <div className="flex items-center justify-between mb-8">
+        <main className="flex-1 p-4 lg:p-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold flex items-center gap-2">
                 <Lock className="h-8 w-8" />
@@ -180,11 +180,11 @@ export default function AccessControlPage() {
             <CardContent className="pt-6">
               <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search routes, descriptions, or roles..." 
-                  value={searchTerm} 
-                  onChange={e => setSearchTerm(e.target.value)} 
-                  className="pl-10" 
+                <Input
+                  placeholder="Search routes, descriptions, or roles..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="pl-10"
                 />
               </div>
             </CardContent>
@@ -216,7 +216,7 @@ export default function AccessControlPage() {
                     {filteredRules.map((rule) => (
                       <tr key={rule.id} className="border-b hover:bg-muted/50">
                         <td className="p-3">
-                          <Switch 
+                          <Switch
                             checked={rule.enabled}
                             onCheckedChange={() => handleToggleEnabled(rule.id)}
                           />
@@ -230,8 +230,8 @@ export default function AccessControlPage() {
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
                             {rule.allowedRoles.map((role) => (
-                              <Badge 
-                                key={role} 
+                              <Badge
+                                key={role}
                                 variant={getRoleBadgeVariant(role)}
                                 className="gap-1"
                               >
@@ -320,13 +320,12 @@ export default function AccessControlPage() {
                   <Label className="text-muted-foreground mb-2 block">Allowed Roles</Label>
                   <div className="flex flex-wrap gap-2">
                     {allRoles.map((role) => (
-                      <div 
+                      <div
                         key={role}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-                          selectedRule.allowedRoles.includes(role)
-                            ? "border-primary bg-primary/10"
-                            : "border-muted hover:border-muted-foreground"
-                        }`}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${selectedRule.allowedRoles.includes(role)
+                          ? "border-primary bg-primary/10"
+                          : "border-muted hover:border-muted-foreground"
+                          }`}
                         onClick={() => {
                           const newRoles = selectedRule.allowedRoles.includes(role)
                             ? selectedRule.allowedRoles.filter(r => r !== role)
@@ -348,7 +347,7 @@ export default function AccessControlPage() {
                 <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={() => handleEditRoles(selectedRule.id, selectedRule.allowedRoles)}
                   disabled={selectedRule.allowedRoles.length === 0}
                 >

@@ -17,6 +17,7 @@ import {
   ClipboardCheck, Clock5
 } from "lucide-react";
 import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
+import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { CompactProgressTracker } from "@/components/work-orders/ProgressTracker";
 import {
   DropdownMenu,
@@ -221,27 +222,10 @@ export default function AdminWorkOrders() {
   // List View
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
-        <aside className="w-64 min-h-screen bg-card border-r flex flex-col hidden lg:flex">
-          <div className="p-4 border-b">
-            <NavLink to="/admin" className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg"><Shield className="h-6 w-6 text-primary" /></div>
-              <div><h1 className="font-bold">AMMA AUTO</h1><p className="text-xs text-muted-foreground">Admin Panel</p></div>
-            </NavLink>
-          </div>
-          <nav className="flex-1 p-4 space-y-1">
-            <NavLink to="/admin" end className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Users className="h-5 w-5" />Dashboard</NavLink>
-            <NavLink to="/admin/work-orders" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><ClipboardList className="h-5 w-5" />Work Orders</NavLink>
-            <NavLink to="/admin/analytics" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><BarChart3 className="h-5 w-5" />Performance</NavLink>
-            <NavLink to="/admin/progress" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Activity className="h-5 w-5" />Progress</NavLink>
-          </nav>
-          <div className="p-4 border-t">
-            <div className="flex items-center gap-3 mb-3"><Badge variant="default">Admin</Badge><span className="text-sm truncate">{user?.full_name || user?.email}</span></div>
-            <Button onClick={signOut} variant="outline" className="w-full" size="sm"><LogOut className="h-4 w-4 mr-2" />Logout</Button>
-          </div>
-        </aside>
-        <main className="flex-1 p-8">
-          <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col lg:flex-row">
+        <AdminSidebar />
+        <main className="flex-1 p-4 lg:p-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold">Work Orders</h1>
               <p className="text-muted-foreground">Manage service work orders and approvals</p>

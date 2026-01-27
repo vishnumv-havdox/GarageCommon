@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, LogOut } from "lucide-react";
+import { Shield, LogOut, Menu } from "lucide-react";
 import { navConfig } from "@/config/accessControl";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 // Re-export for backward compatibility
 export { navConfig };
@@ -11,18 +13,17 @@ export { navConfig };
 export function AdminSidebar() {
   const { user, signOut } = useAuth();
   const location = useLocation();
+  const [open, setOpen] = useState(false);
 
   // Filter nav items based on user role
-  // Show items where the user's role is included
   const filteredNav = navConfig.filter(
     item => item.roles.includes(user?.role || "customer")
   );
 
-  return (
-    <aside className="w-64 min-h-screen bg-card border-r flex flex-col">
-      {/* Logo */}
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full bg-card">
       <div className="p-4 border-b">
-        <NavLink to="/admin" className="flex items-center gap-3">
+        <NavLink to="/admin" className="flex items-center gap-3" onClick={() => setOpen(false)}>
           <div className="p-2 bg-primary/10 rounded-lg">
             <Shield className="h-6 w-6 text-primary" />
           </div>
@@ -33,8 +34,7 @@ export function AdminSidebar() {
         </NavLink>
       </div>
 
-      {/* Navigation - Using centralized navConfig */}
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {filteredNav.map((item) => {
           const Icon = item.icon || Shield;
           const isActive = item.end
@@ -46,11 +46,11 @@ export function AdminSidebar() {
               key={item.path}
               to={item.path}
               end={item.end}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive
+              onClick={() => setOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
+                }`}
             >
               <Icon className="h-5 w-5" />
               {item.label}
@@ -59,11 +59,10 @@ export function AdminSidebar() {
         })}
       </nav>
 
-      {/* User Info & Logout */}
-      <div className="p-4 border-t">
+      <div className="p-4 border-t mt-auto">
         <div className="flex items-center gap-3 mb-3">
           <Badge variant="default">{user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'User'}</Badge>
-          <span className="text-sm truncate">
+          <span className="text-sm truncate max-w-[120px]">
             {user?.full_name || user?.email || "User"}
           </span>
         </div>
@@ -77,7 +76,36 @@ export function AdminSidebar() {
           Logout
         </Button>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Mobile Header */}
+      <div className="lg:hidden flex items-center justify-between p-4 border-b bg-card w-full">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/10 rounded-lg">
+            <Shield className="h-5 w-5 text-primary" />
+          </div>
+          <span className="font-bold">Admin Panel</span>
+        </div>
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <Menu className="h-6 w-6" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 w-72">
+            <SidebarContent />
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* Desktop Sidebar - Fixed Width */}
+      <aside className="hidden lg:flex w-64 min-h-screen border-r flex-col sticky top-0 h-screen overflow-y-auto">
+        <SidebarContent />
+      </aside>
+    </>
   );
 }
 

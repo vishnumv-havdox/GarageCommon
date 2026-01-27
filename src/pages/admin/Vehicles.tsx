@@ -9,16 +9,48 @@ import { useToast } from "@/hooks/use-toast";
 import { NavLink } from "react-router-dom";
 import { LogOut, Users, Shield, Plus, Search, Truck } from "lucide-react";
 import { VehicleForm } from "@/components/forms/VehicleForm";
+import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Label } from "@/components/ui/label"
 
 interface Vehicle {
   id: string;
+  created_at: string;
+  customer_id: string;
   vehicle_number: string;
   vehicle_type: string;
   model: string;
   year?: number;
   status: string;
-  customer?: { name: string };
-  created_at: string;
+  customer?: {
+    name: string;
+  };
+  color?: string;
+  vin?: string;
+  engine_number?: string;
+  notes?: string;
+  kilometers_driven?: number;
+  next_service_km?: number;
+  next_service_date?: string;
+  fc_number?: string;
+  fc_expiry_date?: string;
 }
 
 export default function AdminVehicles() {
@@ -28,6 +60,10 @@ export default function AdminVehicles() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [viewingVehicle, setViewingVehicle] = useState<Vehicle | null>(null);
+  const [deletingVehicle, setDeletingVehicle] = useState<Vehicle | null>(null);
 
   useEffect(() => { fetchVehicles(); }, []);
 
@@ -42,7 +78,27 @@ export default function AdminVehicles() {
     } finally { setLoading(false); }
   };
 
-  const handleFormSuccess = () => { setShowForm(false); fetchVehicles(); toast({ title: "Success", description: "Vehicle saved successfully" }); };
+  const handleFormSuccess = () => {
+    setShowForm(false);
+    setEditingVehicle(null);
+    fetchVehicles();
+    toast({ title: "Success", description: editingVehicle ? "Vehicle updated successfully" : "Vehicle saved successfully" });
+  };
+
+  const handleDelete = async () => {
+    if (!deletingVehicle) return;
+    try {
+      const { error } = await supabase.from('vehicles').delete().eq('id', deletingVehicle.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Vehicle deleted successfully" });
+      fetchVehicles();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setDeletingVehicle(null);
+    }
+  }
+
 
   const filteredVehicles = vehicles.filter((v) =>
     v.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) || v.model?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -50,40 +106,38 @@ export default function AdminVehicles() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
-        <aside className="w-64 min-h-screen bg-card border-r flex flex-col">
-          <div className="p-4 border-b">
-            <NavLink to="/admin" className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg"><Shield className="h-6 w-6 text-primary" /></div>
-              <div><h1 className="font-bold">AMMA AUTO</h1><p className="text-xs text-muted-foreground">Admin Panel</p></div>
-            </NavLink>
+      <div className="flex flex-col lg:flex-row">
+        <AdminSidebar />
+        <main className="flex-1 p-4 lg:p-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
+            <div>
+              <h1 className="text-3xl font-bold">Vehicle Management</h1>
+              <p className="text-muted-foreground">Manage vehicle records</p>
+            </div>
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Register Vehicle
+            </Button>
           </div>
-          <nav className="flex-1 p-4 space-y-1">
-            <NavLink to="/admin" end className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Users className="h-5 w-5" />Dashboard</NavLink>
-            <NavLink to="/admin/users" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Shield className="h-5 w-5" />Users</NavLink>
-            <NavLink to="/admin/customers" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Users className="h-5 w-5" />Customers</NavLink>
-            <NavLink to="/admin/vehicles" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Truck className="h-5 w-5" />Vehicles</NavLink>
-            <NavLink to="/admin/work-orders" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Users className="h-5 w-5" />Work Orders</NavLink>
-            <NavLink to="/admin/inventory" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Users className="h-5 w-5" />Inventory</NavLink>
-            <NavLink to="/admin/invoices" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}><Users className="h-5 w-5" />Invoices</NavLink>
-          </nav>
-          <div className="p-4 border-t">
-            <div className="flex items-center gap-3 mb-3"><Badge variant="default">Admin</Badge><span className="text-sm truncate">{user?.full_name || user?.email}</span></div>
-            <Button onClick={signOut} variant="outline" className="w-full" size="sm"><LogOut className="h-4 w-4 mr-2" />Logout</Button>
-          </div>
-        </aside>
-        <main className="flex-1 p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div><h1 className="text-3xl font-bold">Vehicle Management</h1><p className="text-muted-foreground">Manage vehicle records</p></div>
-            <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-2" />Register Vehicle</Button>
-          </div>
-          {showForm && <div className="mb-8"><VehicleForm onSuccess={handleFormSuccess} onCancel={() => setShowForm(false)} /></div>}
+
+          {showForm && (
+            <div className="mb-8">
+              <VehicleForm onSuccess={handleFormSuccess} onCancel={() => { setShowForm(false); setEditingVehicle(null); }} initialData={editingVehicle || undefined} />
+            </div>
+          )}
+
           <div className="mb-6">
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search vehicles..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+              <Input
+                placeholder="Search vehicles..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
             </div>
           </div>
+
           <Card>
             <CardHeader>
               <CardTitle>Vehicles ({filteredVehicles.length})</CardTitle>
@@ -96,14 +150,28 @@ export default function AdminVehicles() {
               ) : (
                 <div className="space-y-4">
                   {filteredVehicles.map((vehicle) => (
-                    <div key={vehicle.id} className="border p-4 rounded-lg">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-semibold">{vehicle.vehicle_number}</h3>
-                          <p className="text-sm text-muted-foreground">{vehicle.vehicle_type} - {vehicle.model}</p>
-                          <p className="text-sm text-muted-foreground">Customer: {vehicle.customer?.name}</p>
+                    <div key={vehicle.id} className="border p-4 rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Truck className="h-4 w-4 text-muted-foreground" />
+                            <h3 className="font-semibold">{vehicle.vehicle_number}</h3>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {vehicle.vehicle_type} • {vehicle.model} {vehicle.year ? `• ${vehicle.year}` : ''}
+                          </p>
+                          {vehicle.customer && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Owner: {vehicle.customer.name}
+                            </p>
+                          )}
                         </div>
-                        <Badge variant={vehicle.status === "active" ? "default" : "secondary"}>{vehicle.status}</Badge>
+
+                        <div className="flex items-center gap-2 w-full lg:w-auto">
+                          <Button variant="outline" size="sm" onClick={() => setViewingVehicle(vehicle)} className="flex-1 lg:flex-none">View</Button>
+                          <Button variant="outline" size="sm" onClick={() => { setEditingVehicle(vehicle); setShowForm(true); }} className="flex-1 lg:flex-none">Edit</Button>
+                          <Button variant="destructive" size="sm" onClick={() => setDeletingVehicle(vehicle)} className="flex-1 lg:flex-none">Delete</Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -113,7 +181,128 @@ export default function AdminVehicles() {
           </Card>
         </main>
       </div>
+
+      {/* View Dialog */}
+      <Dialog open={!!viewingVehicle} onOpenChange={(open) => !open && setViewingVehicle(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vehicle Details</DialogTitle>
+          </DialogHeader>
+          {viewingVehicle && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Vehicle Number</Label>
+                  <p className="font-medium">{viewingVehicle.vehicle_number}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Type</Label>
+                  <p className="font-medium">{viewingVehicle.vehicle_type}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Model</Label>
+                  <p className="font-medium">{viewingVehicle.model}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Year</Label>
+                  <p className="font-medium">{viewingVehicle.year || 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Owner</Label>
+                  <p className="font-medium">{viewingVehicle.customer?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Status</Label>
+                  <p className="font-medium">{viewingVehicle.status}</p>
+                </div>
+                {viewingVehicle.color && (
+                  <div>
+                    <Label className="text-muted-foreground">Color</Label>
+                    <p className="font-medium">{viewingVehicle.color}</p>
+                  </div>
+                )}
+                {viewingVehicle.vin && (
+                  <div>
+                    <Label className="text-muted-foreground">VIN</Label>
+                    <p className="font-medium">{viewingVehicle.vin}</p>
+                  </div>
+                )}
+                {viewingVehicle.engine_number && (
+                  <div>
+                    <Label className="text-muted-foreground">Engine No</Label>
+                    <p className="font-medium">{viewingVehicle.engine_number}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Service Tracking Section */}
+              <div className="border-t pt-4 grid grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Odometer (KM)</Label>
+                  <p className="font-medium">{viewingVehicle.kilometers_driven?.toLocaleString() || '0'} km</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Next Service @</Label>
+                  <p className="font-medium">{viewingVehicle.next_service_km ? `${viewingVehicle.next_service_km.toLocaleString()} km` : 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Next Service Date</Label>
+                  <p className="font-medium">{viewingVehicle.next_service_date ? new Date(viewingVehicle.next_service_date).toLocaleDateString() : 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* FC Management Section */}
+              <div className="border-t pt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">FC Number</Label>
+                  <p className="font-medium">{viewingVehicle.fc_number || 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">FC Expiry Date</Label>
+                  <div className="flex items-center gap-2">
+                    <p className={`font-medium ${viewingVehicle.fc_expiry_date && new Date(viewingVehicle.fc_expiry_date) < new Date()
+                        ? 'text-destructive'
+                        : 'text-foreground'
+                      }`}>
+                      {viewingVehicle.fc_expiry_date ? new Date(viewingVehicle.fc_expiry_date).toLocaleDateString() : 'N/A'}
+                    </p>
+                    {viewingVehicle.fc_expiry_date && new Date(viewingVehicle.fc_expiry_date) < new Date() && (
+                      <Badge variant="destructive" className="text-[10px] h-5">Expired</Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {viewingVehicle.notes && (
+                <div>
+                  <Label className="text-muted-foreground">Notes</Label>
+                  <p className="text-sm bg-muted p-2 rounded mt-1">{viewingVehicle.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <AlertDialog open={!!deletingVehicle} onOpenChange={(open) => !open && setDeletingVehicle(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the vehicle <b>{deletingVehicle?.vehicle_number}</b>.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
-

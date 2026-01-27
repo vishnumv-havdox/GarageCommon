@@ -11,6 +11,30 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 // ... (previous imports)
 
+// Export interfaces
+export interface TaskTemplate {
+    id: string;
+    name: string;
+    service_type_id: string;
+    is_active: boolean;
+}
+
+export interface TaskItem {
+    id: string;
+    name: string;
+    isPredefined: boolean;
+}
+
+interface TaskSelectorProps {
+    serviceType: string;
+    availableTasks: TaskTemplate[];
+    tasks: TaskItem[];
+    onTasksChange: (tasks: TaskItem[]) => void;
+    onCustomTaskAdd?: (name: string) => Promise<TaskTemplate | null>;
+    onTaskUpdate?: (task: TaskTemplate, newName: string) => Promise<void>;
+    onTaskDelete?: (taskId: string) => Promise<void>;
+}
+
 export function TaskSelector({
     serviceType,
     availableTasks = [],
@@ -166,32 +190,32 @@ export function TaskSelector({
                                                 key={task.id}
                                                 value={task.name}
                                                 onSelect={() => handleAddPredefined(task.id)}
-                                                className="group flex items-center justify-between"
+                                                className="group flex items-center justify-between py-3"
                                             >
                                                 <span>{task.name}</span>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                                     {onTaskUpdate && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
-                                                            className="h-6 w-6 hover:text-blue-500"
+                                                            className="h-8 w-8 hover:text-blue-500"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setEditingTask(task);
                                                                 setEditTaskName(task.name);
                                                             }}
                                                         >
-                                                            <Edit className="h-3 w-3" />
+                                                            <Edit className="h-4 w-4" />
                                                         </Button>
                                                     )}
                                                     {onTaskDelete && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
-                                                            className="h-6 w-6 hover:text-destructive"
+                                                            className="h-8 w-8 hover:text-destructive"
                                                             onClick={(e) => handleDeleteClick(e, task)}
                                                         >
-                                                            <Trash2 className="h-3 w-3" />
+                                                            <Trash2 className="h-4 w-4" />
                                                         </Button>
                                                     )}
                                                 </div>
@@ -239,7 +263,7 @@ export function TaskSelector({
                 ) : (
                     <div className="space-y-2">
                         {tasks.map((task) => (
-                            <div key={task.id} className="flex items-center justify-between bg-white dark:bg-zinc-900 border px-3 py-2 rounded-sm text-sm shadow-sm group">
+                            <div key={task.id} className="flex items-center justify-between bg-white dark:bg-zinc-900 border px-3 py-2.5 rounded-sm text-sm shadow-sm group">
                                 <div className="flex items-center gap-2">
                                     <span className="font-medium">{task.name}</span>
                                     {task.isPredefined && <Badge variant="secondary" className="text-[10px] h-4 px-1">Predefined</Badge>}
@@ -247,10 +271,10 @@ export function TaskSelector({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="h-8 w-8 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
                                     onClick={() => handleRemove(task.id)}
                                 >
-                                    <X className="h-3 w-3 text-destructive" />
+                                    <X className="h-4 w-4 text-destructive" />
                                 </Button>
                             </div>
                         ))}
@@ -260,7 +284,7 @@ export function TaskSelector({
 
             {/* Edit Task Dialog */}
             <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
-                <DialogContent>
+                <DialogContent className="w-[95vw] max-w-sm rounded-lg">
                     <DialogHeader>
                         <DialogTitle>Edit Task Template</DialogTitle>
                         <DialogDescription>
@@ -289,7 +313,7 @@ export function TaskSelector({
 
             {/* Delete Confirmation Alert Dialog */}
             <AlertDialog open={!!deletingTask} onOpenChange={(open) => !open && setDeletingTask(null)}>
-                <AlertDialogContent>
+                <AlertDialogContent className="w-[95vw] max-w-md rounded-lg mx-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -297,8 +321,8 @@ export function TaskSelector({
                             This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                        <AlertDialogCancel disabled={isDeleting} className="mt-0">Cancel</AlertDialogCancel>
                         <AlertDialogAction onClick={(e) => { e.preventDefault(); handleDeleteConfirm(); }} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                             {isDeleting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                             Delete

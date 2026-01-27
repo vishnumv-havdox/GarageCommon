@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2 } from "lucide-react"
+import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity } from "lucide-react"
 import { serviceTypeConfig, ServiceType } from "@/config/serviceTypeConfig"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
@@ -30,6 +30,8 @@ interface Vehicle {
   model: string
   customer_id: string
   customer_name: string
+  kilometers_driven?: number
+  next_service_km?: number
 }
 
 interface Employee {
@@ -130,6 +132,13 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
   const [includeVehicle, setIncludeVehicle] = useState(true)
 
+  // Lifecycle State
+  const [lifecycleData, setLifecycleData] = useState({
+    odometer_reading: 0,
+    next_service_due_km: 0,
+    is_fc_renewal: false
+  })
+
   useEffect(() => {
     fetchAllData()
   }, [])
@@ -142,7 +151,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     try {
       const [customersRes, vehiclesRes, employeesRes, serviceTypesRes, taskTemplatesRes] = await Promise.all([
         supabase.from('customers').select('id, name, company_name').order('name'),
-        supabase.from('vehicles').select('id, vehicle_number, model, customer_id, customers!inner(name)'),
+        supabase.from('vehicles').select('id, vehicle_number, model, customer_id, kilometers_driven, next_service_km, customers(name)'),
         supabase.from('employees').select('id, name, email, position_id, access_level, status').eq('status', 'active'),
         supabase.from('service_types').select('id, name').order('name'),
         supabase.from('task_templates').select('id, name, service_type_id').eq('is_active', true),
@@ -155,7 +164,9 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           vehicle_number: v.vehicle_number,
           model: v.model,
           customer_id: v.customer_id,
-          customer_name: v.customers?.name
+          customer_name: v.customers?.name,
+          kilometers_driven: v.kilometers_driven,
+          next_service_km: v.next_service_km
         }))
         setVehicles(formatted)
       }
@@ -212,6 +223,16 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     setVehicleId(id)
     setVehicleSearch("")
     setVehicleSearchOpen(false)
+
+    // Pre-fill lifecycle data
+    const selectedVehicle = vehicles.find(v => v.id === id)
+    if (selectedVehicle) {
+      setLifecycleData(prev => ({
+        ...prev,
+        odometer_reading: selectedVehicle.kilometers_driven || 0,
+        next_service_due_km: selectedVehicle.next_service_km || 0
+      }))
+    }
   }
 
   const handleServiceToggle = (type: string, checked: boolean) => {
@@ -491,6 +512,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           color: newVehicleData.color || null,
           vin: newVehicleData.vin || null,
           engine_number: newVehicleData.engine_number || null,
+          kilometers_driven: newVehicleData.kilometers_driven || 0,
           status: 'Inspection'
         })
         .select()
@@ -501,7 +523,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       // Refresh vehicles list
       const { data: vehiclesRes } = await supabase
         .from('vehicles')
-        .select('id, vehicle_number, model, customer_id, customers!inner(name)')
+        .select('id, vehicle_number, model, customer_id, kilometers_driven, next_service_km, customers(name)')
         .eq('customer_id', customerId)
 
       if (vehiclesRes) {
@@ -510,7 +532,9 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           vehicle_number: v.vehicle_number,
           model: v.model,
           customer_id: v.customer_id,
-          customer_name: v.customers?.name
+          customer_name: v.customers?.name,
+          kilometers_driven: v.kilometers_driven,
+          next_service_km: v.next_service_km
         }))
         setVehicles(prev => [...prev, ...formatted])
       }
@@ -518,6 +542,12 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       // Auto-select the new vehicle
       if (newVehicle) {
         setVehicleId(newVehicle.id)
+        // Pre-fill lifecycle data
+        setLifecycleData(prev => ({
+          ...prev,
+          odometer_reading: newVehicleData.kilometers_driven || 0,
+          next_service_due_km: 0
+        }))
       }
 
       // Reset form and close dialog
@@ -716,7 +746,11 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           notes: JSON.stringify({
             service_types: selectedServices,
             total_sections: selectedServices.length
-          })
+          }),
+          // Lifecycle Fields
+          odometer_reading: lifecycleData.odometer_reading || null,
+          next_service_due_km: lifecycleData.next_service_due_km || null,
+          is_fc_renewal: lifecycleData.is_fc_renewal
         }])
         .select()
         .single()
@@ -789,10 +823,15 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         }
       }
 
-      // Update vehicle status
+      // Update vehicle status and lifecycle data
       await supabase
         .from('vehicles')
-        .update({ status: 'In Progress' })
+        .update({
+          status: 'In Progress',
+          // Update master data with latest values from this work order intake
+          kilometers_driven: lifecycleData.odometer_reading || undefined,
+          next_service_km: lifecycleData.next_service_due_km || undefined
+        })
         .eq('id', vehicleId)
 
       toast({
@@ -844,13 +883,13 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Vehicle Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <Label>Customer / Company *</Label>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                      className="h-8 px-2 text-muted-foreground hover:text-foreground ml-auto"
                       onClick={() => setShowAddCustomerDialog(true)}
                     >
                       <Plus className="h-4 w-4 mr-1" />
@@ -867,7 +906,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0" align="start">
-                      <Command>
+                      <Command shouldFilter={false}>
                         <CommandInput placeholder="Search customer..." value={customerSearch} onValueChange={setCustomerSearch} />
                         <CommandList>
                           <CommandEmpty>No customer found.</CommandEmpty>
@@ -885,13 +924,13 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <Label>Vehicle *</Label>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                      className="h-8 px-2 text-muted-foreground hover:text-foreground ml-auto"
                       onClick={() => {
                         if (!customerId) {
                           toast({
@@ -918,7 +957,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0" align="start">
-                      <Command>
+                      <Command shouldFilter={false}>
                         <CommandInput placeholder="Search vehicle..." value={vehicleSearch} onValueChange={setVehicleSearch} />
                         <CommandList>
                           <CommandEmpty>
@@ -1110,9 +1149,8 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                   </DialogContent>
                 </Dialog>
 
-                {/* Delete Service Alert Dialog */}
                 <AlertDialog open={!!deletingService} onOpenChange={(open) => !open && setDeletingService(null)}>
-                  <AlertDialogContent>
+                  <AlertDialogContent className="w-[95vw] max-w-md rounded-lg mx-auto">
                     <AlertDialogHeader>
                       <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                       <AlertDialogDescription>
@@ -1120,8 +1158,8 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                         This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel disabled={isDeletingService}>Cancel</AlertDialogCancel>
+                    <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                      <AlertDialogCancel disabled={isDeletingService} className="mt-0">Cancel</AlertDialogCancel>
                       <AlertDialogAction onClick={(e) => { e.preventDefault(); handleDeleteServiceConfirm(); }} disabled={isDeletingService} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                         {isDeletingService && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                         Delete
@@ -1131,7 +1169,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                 </AlertDialog>
 
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {dbServiceTypes.map((type) => (
                   <div key={type.id} className="group relative flex items-center space-x-2 border rounded-md p-3 hover:bg-muted/50 transition-colors pr-12">
                     <Checkbox
@@ -1215,12 +1253,62 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
               </div>
             )}
 
+            {/* Lifecycle & Service Tracking Section */}
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                Service Tracking & Lifecycle
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="odometer">Current Odometer (KM)</Label>
+                  <Input
+                    id="odometer"
+                    type="number"
+                    value={lifecycleData.odometer_reading || ''}
+                    onChange={(e) => setLifecycleData(prev => ({ ...prev, odometer_reading: parseInt(e.target.value) || 0 }))}
+                    placeholder="e.g. 50000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="next_service">Next Service Due (KM)</Label>
+                  <Input
+                    id="next_service"
+                    type="number"
+                    value={lifecycleData.next_service_due_km || ''}
+                    onChange={(e) => setLifecycleData(prev => ({ ...prev, next_service_due_km: parseInt(e.target.value) || 0 }))}
+                    placeholder="e.g. 55000"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 border p-3 rounded-md bg-muted/20">
+                <Checkbox
+                  id="fc_renewal"
+                  checked={lifecycleData.is_fc_renewal}
+                  onCheckedChange={(checked) => setLifecycleData(prev => ({ ...prev, is_fc_renewal: checked as boolean }))}
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <label
+                    htmlFor="fc_renewal"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Includes FC Renewal?
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Check if this work order involves Fitness Certificate renewal tasks.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Actions */}
-            <div className="flex gap-4 justify-end pt-6 border-t">
-              <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+            <div className="flex flex-col-reverse sm:flex-row gap-4 sm:justify-end pt-6 border-t">
+              <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading} className="w-full sm:w-auto">
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading || selectedServices.length === 0} size="lg">
+              <Button type="submit" disabled={isLoading || selectedServices.length === 0} size="lg" className="w-full sm:w-auto">
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1335,6 +1423,18 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                 placeholder="Engine Serial Number"
                 value={newVehicleData.engine_number}
                 onChange={(e) => setNewVehicleData(prev => ({ ...prev, engine_number: e.target.value.toUpperCase() }))}
+                disabled={isCreatingVehicle}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new_kilometers">Current Odometer (KM)</Label>
+              <Input
+                id="new_kilometers"
+                type="number"
+                placeholder="e.g. 50000"
+                value={newVehicleData.kilometers_driven || ''}
+                onChange={(e) => setNewVehicleData(prev => ({ ...prev, kilometers_driven: parseInt(e.target.value) || 0 }))}
                 disabled={isCreatingVehicle}
               />
             </div>

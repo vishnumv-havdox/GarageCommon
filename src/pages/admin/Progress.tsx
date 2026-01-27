@@ -134,18 +134,20 @@ export default function AdminProgress() {
   useEffect(() => {
     fetchWorkOrders();
     fetchRealtimeData();
-    
+
     // Set up auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchRealtimeData();
     }, 30000);
-    
+
     return () => clearInterval(interval);
   }, [fetchWorkOrders, fetchRealtimeData]);
 
-  const calculateProgress = (stages: any[]) => {
+  const calculateProgress = (stages: any[], status: string) => {
+    if (status === 'Completed' || status === 'Delivered') return 100;
     const completed = stages.filter(s => s.status === 'completed').length;
-    return stages.length > 0 ? (completed / stages.length) * 100 : 0;
+    // Assuming 5 stages total as standard
+    return (completed / 5) * 100;
   };
 
   const getStatusBadge = (status: string) => {
@@ -328,13 +330,12 @@ export default function AdminProgress() {
                 const count = realtimeStageCounts[stage] || 0;
                 const isActive = count > 0;
                 return (
-                  <div 
+                  <div
                     key={stage}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      isActive 
-                        ? 'bg-primary/5 border-primary/30' 
-                        : 'bg-muted/30 border-muted'
-                    }`}
+                    className={`p-4 rounded-lg border-2 transition-all ${isActive
+                      ? 'bg-primary/5 border-primary/30'
+                      : 'bg-muted/30 border-muted'
+                      }`}
                   >
                     <p className="text-sm text-muted-foreground">{stage}</p>
                     <p className={`text-2xl font-bold ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
@@ -411,10 +412,10 @@ export default function AdminProgress() {
                     <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No active work orders found.</TableCell></TableRow>
                   ) : (
                     filteredOrders.map((wo) => {
-                      const progress = calculateProgress(wo.stages);
+                      const progress = calculateProgress(wo.stages, wo.status);
                       return (
-                        <TableRow 
-                          key={wo.id} 
+                        <TableRow
+                          key={wo.id}
                           className="group hover:bg-muted/50 transition-colors cursor-pointer"
                           onClick={() => navigate(`/admin/work-orders/${wo.id}`)}
                         >
@@ -458,7 +459,9 @@ export default function AdminProgress() {
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="font-normal border-primary/20 bg-primary/5">
-                              {wo.current_stage || 'Not Started'}
+                              {wo.status === 'Completed' || wo.status === 'Delivered'
+                                ? 'Delivery'
+                                : (wo.current_stage || 'Not Started')}
                             </Badge>
                           </TableCell>
                           <TableCell>

@@ -14,7 +14,7 @@ interface Employee {
 }
 
 interface SectionStaffPanelProps {
-    serviceType: ServiceType;
+    serviceType: string;
     availableEmployees: Employee[];
     selectedEmployeeIds: string[];
     onSelectionChange: (ids: string[]) => void;
@@ -28,7 +28,7 @@ export function SectionStaffPanel({
 }: SectionStaffPanelProps) {
 
     // Filter employees suitable for this service type
-    const eligiblePositions = getEligiblePositions(serviceType);
+    const eligiblePositions = getEligiblePositions(serviceType as any);
 
     // Filter logic: 
     // 1. If eligiblePositions has entries, match position_name

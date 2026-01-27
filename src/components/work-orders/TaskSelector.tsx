@@ -1,66 +1,141 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { serviceTypeConfig, ServiceType } from "@/config/serviceTypeConfig";
-import { Plus, X, ListTodo } from "lucide-react";
+import { Plus, X, ListTodo, Check, ChevronsUpDown, Edit, Trash2, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-export interface TaskItem {
-    id: string;
-    name: string;
-    isPredefined: boolean;
-}
+// ... (previous imports)
 
-interface TaskSelectorProps {
-    serviceType: ServiceType;
-    tasks: TaskItem[];
-    onTasksChange: (tasks: TaskItem[]) => void;
-}
-
-export function TaskSelector({ serviceType, tasks, onTasksChange }: TaskSelectorProps) {
-    const [selectedPredefined, setSelectedPredefined] = useState<string>("");
+export function TaskSelector({
+    serviceType,
+    availableTasks = [],
+    tasks,
+    onTasksChange,
+    onCustomTaskAdd,
+    onTaskUpdate,
+    onTaskDelete
+}: TaskSelectorProps) {
+    const [open, setOpen] = useState(false);
     const [customTaskName, setCustomTaskName] = useState("");
+    const [isCreating, setIsCreating] = useState(false);
 
-    const config = serviceTypeConfig[serviceType];
-    const predefinedTasks = config?.tasks || [];
+    // Edit State
+    const [editingTask, setEditingTask] = useState<TaskTemplate | null>(null);
+    const [editTaskName, setEditTaskName] = useState("");
+    const [isUpdating, setIsUpdating] = useState(false);
 
-    const handleAddPredefined = (taskName: string) => {
-        if (!taskName) return;
+    // Delete State
+    const [deletingTask, setDeletingTask] = useState<TaskTemplate | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleAddPredefined = (templateId: string) => {
+        // ... (existing logic)
+        if (!templateId) return;
+        const template = availableTasks.find(t => t.id === templateId);
+        if (!template) return;
 
         // Check if already added
-        if (tasks.some(t => t.name === taskName)) {
+        if (tasks.some(t => t.name === template.name)) {
             return;
         }
 
         const newTask: TaskItem = {
             id: crypto.randomUUID(),
-            name: taskName,
+            name: template.name,
             isPredefined: true
         };
 
         onTasksChange([...tasks, newTask]);
-        setSelectedPredefined("");
+        setOpen(false);
     };
 
-    const handleAddCustom = () => {
+    const handleAddCustom = async () => {
+        // ... (existing logic)
         const trimmed = customTaskName.trim();
         if (!trimmed) return;
 
-        const newTask: TaskItem = {
-            id: crypto.randomUUID(),
-            name: trimmed,
-            isPredefined: false
-        };
+        // Check if it matches an existing template first
+        const existingTemplate = availableTasks.find(t => t.name.toLowerCase() === trimmed.toLowerCase());
+        if (existingTemplate) {
+            handleAddPredefined(existingTemplate.id);
+            setCustomTaskName("");
+            return;
+        }
 
-        onTasksChange([...tasks, newTask]);
-        setCustomTaskName("");
+        // If generic custom adding (no persistence required/supported by parent)
+        if (!onCustomTaskAdd) {
+            const newTask: TaskItem = {
+                id: crypto.randomUUID(),
+                name: trimmed,
+                isPredefined: false
+            };
+            onTasksChange([...tasks, newTask]);
+            setCustomTaskName("");
+            return;
+        }
+
+        // Persist to DB
+        setIsCreating(true);
+        try {
+            const newTemplate = await onCustomTaskAdd(trimmed);
+            if (newTemplate) {
+                const newTask: TaskItem = {
+                    id: crypto.randomUUID(),
+                    name: newTemplate.name,
+                    isPredefined: true // Now it's a template, so it's predefined!
+                };
+                onTasksChange([...tasks, newTask]);
+                setCustomTaskName("");
+            }
+        } catch (error) {
+            console.error("Failed to add custom task:", error);
+        } finally {
+            setIsCreating(false);
+        }
     };
 
     const handleRemove = (taskId: string) => {
         onTasksChange(tasks.filter(t => t.id !== taskId));
     };
+
+    const handleUpdateConfirm = async () => {
+        if (!editingTask || !onTaskUpdate || !editTaskName.trim()) return;
+        setIsUpdating(true);
+        try {
+            await onTaskUpdate(editingTask, editTaskName.trim());
+            setEditingTask(null);
+        } catch (error) {
+            console.error("Failed to update task:", error);
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
+    const handleDeleteClick = (e: React.MouseEvent, task: TaskTemplate) => {
+        e.stopPropagation();
+        setDeletingTask(task);
+    }
+
+    const handleDeleteConfirm = async () => {
+        if (!deletingTask || !onTaskDelete) return;
+        setIsDeleting(true);
+        try {
+            await onTaskDelete(deletingTask.id);
+            setDeletingTask(null);
+        } catch (error) {
+            console.error("Failed to delete task:", error);
+        } finally {
+            setIsDeleting(false);
+        }
+    }
+
+    // Derived list of selectable tasks (excluding already selected)
+    const selectableTasks = availableTasks.filter(t => !tasks.some(selected => selected.name === t.name));
 
     return (
         <div className="space-y-4">
@@ -68,22 +143,70 @@ export function TaskSelector({ serviceType, tasks, onTasksChange }: TaskSelector
                 {/* Predefined Seletor */}
                 <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground">Add Predefined Task</Label>
-                    <Select value={selectedPredefined} onValueChange={handleAddPredefined}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select task..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {predefinedTasks.map((task) => (
-                                <SelectItem
-                                    key={task}
-                                    value={task}
-                                    disabled={tasks.some(t => t.name === task)}
-                                >
-                                    {task}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <Popover open={open} onOpenChange={setOpen}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={open}
+                                className="w-full justify-between"
+                            >
+                                {selectableTasks.length > 0 ? "Select task..." : "No new tasks"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                            <Command>
+                                <CommandInput placeholder="Search tasks..." />
+                                <CommandList>
+                                    <CommandEmpty>No tasks found.</CommandEmpty>
+                                    <CommandGroup>
+                                        {selectableTasks.map((task) => (
+                                            <CommandItem
+                                                key={task.id}
+                                                value={task.name}
+                                                onSelect={() => handleAddPredefined(task.id)}
+                                                className="group flex items-center justify-between"
+                                            >
+                                                <span>{task.name}</span>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {onTaskUpdate && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 hover:text-blue-500"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingTask(task);
+                                                                setEditTaskName(task.name);
+                                                            }}
+                                                        >
+                                                            <Edit className="h-3 w-3" />
+                                                        </Button>
+                                                    )}
+                                                    {onTaskDelete && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 hover:text-destructive"
+                                                            onClick={(e) => handleDeleteClick(e, task)}
+                                                        >
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                    {selectableTasks.length === 0 && (
+                                        <div className="p-2 text-xs text-muted-foreground text-center">
+                                            All tasks added or none available.
+                                        </div>
+                                    )}
+                                </CommandList>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
                 </div>
 
                 {/* Custom Input */}
@@ -95,9 +218,10 @@ export function TaskSelector({ serviceType, tasks, onTasksChange }: TaskSelector
                             value={customTaskName}
                             onChange={(e) => setCustomTaskName(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustom())}
+                            disabled={isCreating}
                         />
-                        <Button size="icon" variant="ghost" onClick={handleAddCustom} type="button">
-                            <Plus className="h-4 w-4" />
+                        <Button size="icon" variant="ghost" onClick={handleAddCustom} type="button" disabled={isCreating}>
+                            {isCreating ? <Plus className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                         </Button>
                     </div>
                 </div>
@@ -133,6 +257,55 @@ export function TaskSelector({ serviceType, tasks, onTasksChange }: TaskSelector
                     </div>
                 )}
             </div>
+
+            {/* Edit Task Dialog */}
+            <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Task Template</DialogTitle>
+                        <DialogDescription>
+                            Enable consistency by renaming this task for all future uses.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit-task-name">Task Name</Label>
+                            <Input
+                                id="edit-task-name"
+                                value={editTaskName}
+                                onChange={(e) => setEditTaskName(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingTask(null)}>Cancel</Button>
+                        <Button onClick={handleUpdateConfirm} disabled={!editTaskName.trim() || isUpdating}>
+                            {isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            Update
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Alert Dialog */}
+            <AlertDialog open={!!deletingTask} onOpenChange={(open) => !open && setDeletingTask(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete the task template "{deletingTask?.name}".
+                            This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={(e) => { e.preventDefault(); handleDeleteConfirm(); }} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            {isDeleting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

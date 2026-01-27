@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { TaskSelector, TaskItem } from "./TaskSelector";
+import { TaskSelector, TaskItem, TaskTemplate } from "./TaskSelector";
 import { SectionStaffPanel } from "./SectionStaffPanel";
 import { Trash2, Wrench, FileText, IndianRupee } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
@@ -18,7 +18,7 @@ interface Employee {
 }
 
 export interface ServiceSectionData {
-    serviceType: ServiceType;
+    serviceType: string;
     tasks: TaskItem[];
     selectedEmployeeIds: string[];
     notes: string;
@@ -27,19 +27,29 @@ export interface ServiceSectionData {
 }
 
 interface ServiceSectionProps {
-    serviceType: ServiceType;
+    serviceType: string;
+    serviceId?: string; // ID from DB
     data: ServiceSectionData;
     availableEmployees: Employee[];
+    availableTasks?: TaskTemplate[]; // Tasks from DB
     onChange: (data: ServiceSectionData) => void;
     onRemove: () => void;
+    onCustomTaskAdd?: (name: string) => Promise<TaskTemplate | null>;
+    onTaskUpdate?: (task: TaskTemplate, newName: string) => Promise<void>;
+    onTaskDelete?: (taskId: string) => Promise<void>;
 }
 
 export function ServiceSection({
     serviceType,
+    serviceId,
     data,
     availableEmployees,
+    availableTasks = [],
     onChange,
-    onRemove
+    onRemove,
+    onCustomTaskAdd,
+    onTaskUpdate,
+    onTaskDelete
 }: ServiceSectionProps) {
 
     const handleFieldChange = (field: keyof ServiceSectionData, value: any) => {
@@ -67,8 +77,12 @@ export function ServiceSection({
                         {/* Task Selector */}
                         <TaskSelector
                             serviceType={serviceType}
+                            availableTasks={availableTasks}
                             tasks={data.tasks}
                             onTasksChange={(tasks) => handleFieldChange("tasks", tasks)}
+                            onCustomTaskAdd={onCustomTaskAdd}
+                            onTaskUpdate={onTaskUpdate}
+                            onTaskDelete={onTaskDelete}
                         />
 
                         <Separator />

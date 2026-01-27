@@ -431,6 +431,16 @@ export default function WorkOrderDetail() {
                 .eq("id", id);
 
             if (error) throw error;
+
+            // Explicitly mark Delivery stage as completed
+            await supabase.from("work_order_stages")
+                .upsert({
+                    work_order_id: id,
+                    stage: 'Delivery',
+                    status: 'completed',
+                    completed_at: new Date().toISOString()
+                }, { onConflict: 'work_order_id,stage' });
+
             toast({ title: "Work Delivered", description: "Work order marked as Completed" });
             fetchDetails();
         } catch (error: any) {
@@ -631,7 +641,40 @@ export default function WorkOrderDetail() {
                                 {workOrder.notes && (
                                     <div className="bg-muted/50 p-3 rounded-lg border">
                                         <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-1">Internal Notes</h4>
-                                        <pre className="text-sm font-sans whitespace-pre-wrap">{workOrder.notes}</pre>
+                                        <div className="text-sm font-sans">
+                                            {(() => {
+                                                try {
+                                                    const parsed = JSON.parse(workOrder.notes);
+                                                    if (typeof parsed === 'object' && parsed !== null) {
+                                                        return (
+                                                            <div className="space-y-2">
+                                                                {parsed.service_types && Array.isArray(parsed.service_types) && (
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {parsed.service_types.map((type: string, i: number) => (
+                                                                            <Badge key={i} variant="secondary" className="bg-white/50">{type}</Badge>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                                {Object.entries(parsed).map(([key, value]) => {
+                                                                    if (key === 'service_types') return null;
+                                                                    return (
+                                                                        <div key={key} className="flex gap-2">
+                                                                            <span className="font-semibold capitalize text-muted-foreground">
+                                                                                {key.replace(/_/g, ' ')}:
+                                                                            </span>
+                                                                            <span>{String(value)}</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return <pre className="whitespace-pre-wrap font-sans">{workOrder.notes}</pre>;
+                                                } catch (e) {
+                                                    return <pre className="whitespace-pre-wrap font-sans">{workOrder.notes}</pre>;
+                                                }
+                                            })()}
+                                        </div>
                                     </div>
                                 )}
                             </CardContent>
@@ -1164,12 +1207,7 @@ export default function WorkOrderDetail() {
                                                     };
 
                                                     if (checked) {
-                                                        updates.status = 'Completed';
-                                                        updates.completed_at = new Date().toISOString();
                                                         updates.customer_visible = true; // Ensure customer can see it
-                                                    } else {
-                                                        updates.status = 'Pending Approval';
-                                                        updates.completed_at = null;
                                                     }
 
                                                     const { error: woError } = await supabase.from("work_orders").update(updates).eq("id", id);
@@ -1197,7 +1235,7 @@ export default function WorkOrderDetail() {
 
                                                     toast({
                                                         title: checked ? "Customer Alerted" : "Alert Cancelled",
-                                                        description: checked ? "Customer has been notified. Work order marked as Completed." : "Customer notification cancelled"
+                                                        description: checked ? "Customer has been notified." : "Customer notification cancelled"
                                                     });
                                                     fetchDetails();
                                                 } catch (error: any) {

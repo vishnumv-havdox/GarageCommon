@@ -230,7 +230,12 @@ export default function AdminWorkOrders() {
               <h1 className="text-3xl font-bold">Work Orders</h1>
               <p className="text-muted-foreground">Manage service work orders and approvals</p>
             </div>
-            <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-2" />Create Work Order</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="icon" onClick={fetchWorkOrders} title="Refresh List">
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+              <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-2" />Create Work Order</Button>
+            </div>
           </div>
 
           {/* Stats Cards */}

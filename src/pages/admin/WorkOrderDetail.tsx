@@ -576,6 +576,9 @@ export default function WorkOrderDetail() {
                         </div>
                     </div>
                     <div className="flex gap-2">
+                        <Button variant="outline" size="icon" onClick={() => fetchDetails()} title="Refresh Details">
+                            <RefreshCw className="h-4 w-4" />
+                        </Button>
                         {canAccept && (
                             <Button className="bg-green-600 hover:bg-green-700" onClick={handleAcceptOrder}>
                                 <CheckCircle2 className="h-4 w-4 mr-2" /> Accept for Workshop

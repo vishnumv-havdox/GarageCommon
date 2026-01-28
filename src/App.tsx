@@ -18,6 +18,7 @@ import AdminProgress from "./pages/admin/Progress";
 import AdminInventory from "./pages/admin/Inventory";
 import AdminInvoices from "./pages/admin/Invoices";
 import AdminInvoiceEditor from "./pages/admin/InvoiceEditor";
+import InvoiceAnalytics from "./pages/admin/InvoiceAnalytics";
 import AdminUsers from "./pages/admin/Users";
 import AdminAccessControl from "./pages/admin/AccessControl";
 import AdminSettings from "./pages/admin/Settings";
@@ -42,6 +43,7 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/inventory": AdminInventory,
   "/admin/invoices": AdminInvoices,
   "/admin/invoices/:id": AdminInvoiceEditor,
+  "/admin/invoice-analytics": InvoiceAnalytics,
   "/admin/users": AdminUsers,
   "/admin/access-control": AdminAccessControl,
   "/admin/settings": AdminSettings,

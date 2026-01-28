@@ -34,6 +34,8 @@ export default function Settings() {
             const { data: profileData, error: profileError } = await supabase
                 .from('company_profiles')
                 .select('*')
+                .order('updated_at', { ascending: false })
+                .limit(1)
                 .maybeSingle(); // Use maybeSingle to avoid error if empty
 
             if (profileError && profileError.code !== 'PGRST116') throw profileError;
@@ -68,16 +70,19 @@ export default function Settings() {
             delete payload.updated_at;
 
             // Upsert
-            const { data, error } = await supabase
+            // Singleton Pattern: Check if ANY profile exists
+            const { data: existing } = await supabase
                 .from('company_profiles')
-                .upsert(payload, { onConflict: 'id' as any }) // We handle id manually if it was populated
-                .select()
-                .single();
+                .select('id')
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
 
-            // Actually simpler: check if we have an ID
-            if (profile.id) {
-                await supabase.from('company_profiles').update(payload).eq('id', profile.id);
+            if (existing?.id) {
+                // Update existing
+                await supabase.from('company_profiles').update(payload).eq('id', existing.id);
             } else {
+                // Insert new
                 await supabase.from('company_profiles').insert(payload);
             }
 

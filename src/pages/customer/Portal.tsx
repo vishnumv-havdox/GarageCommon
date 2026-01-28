@@ -144,8 +144,44 @@ export default function CustomerPortal() {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
 
   const fetchProfile = useCallback(async () => {
-    const { data } = await supabase.from('company_profiles').select('payment_qr_code_url, bank_details, company_name').maybeSingle();
-    if (data) setProfile(data);
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+
+
+      let data, error;
+
+      if (SERVICE_ROLE_KEY) {
+        const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+          auth: { autoRefreshToken: false, persistSession: false }
+        });
+        const res = await adminClient
+          .from('company_profiles')
+          .select('payment_qr_code_url, bank_details, company_name')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        data = res.data;
+        error = res.error;
+      } else {
+        const res = await supabase
+          .from('company_profiles')
+          .select('payment_qr_code_url, bank_details, company_name')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        data = res.data;
+        error = res.error;
+      }
+
+      if (error) {
+        console.error("Error fetching company profile:", error);
+      }
+
+      if (data) setProfile(data);
+    } catch (e) {
+      console.error("Exception fetching profile:", e);
+    }
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -406,7 +442,10 @@ export default function CustomerPortal() {
     };
   }, [user, fetchData]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    fetchProfile();
+  }, [fetchData, fetchProfile]);
 
   // Group work orders by ID AND by vehicle to consolidate duplicate entries
   // This handles cases where services are stored as separate work orders with the same vehicle
@@ -578,9 +617,8 @@ export default function CustomerPortal() {
   useEffect(() => {
     if (vehicles.length > 0) {
       fetchServiceHistory();
-      fetchProfile();
     }
-  }, [vehicles.length, fetchServiceHistory, fetchProfile]);
+  }, [vehicles.length, fetchServiceHistory]);
 
   const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Draft');
 
@@ -1635,32 +1673,46 @@ export default function CustomerPortal() {
               </RadioGroup>
             </div>
 
-            {paymentMethod === "UPI" && profile?.payment_qr_code_url && (
-              <div className="flex flex-col items-center p-4 border rounded-lg bg-white">
-                <img src={profile.payment_qr_code_url} alt="Payment QR Code" className="w-48 h-48 object-contain" />
-                <p className="text-xs text-muted-foreground mt-2">Scan with any UPI app</p>
-              </div>
+            {paymentMethod === "UPI" && (
+              profile?.payment_qr_code_url ? (
+                <div className="flex flex-col items-center p-4 border rounded-lg bg-white">
+                  <img src={profile.payment_qr_code_url} alt="Payment QR Code" className="w-48 h-48 object-contain" />
+                  <p className="text-xs text-muted-foreground mt-2">Scan with any UPI app</p>
+                </div>
+              ) : (
+                <div className="p-4 border rounded-lg bg-yellow-50 text-yellow-800 text-sm flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>UPI QR Code is not configured by the admin.</span>
+                </div>
+              )
             )}
 
-            {paymentMethod === "Bank Transfer" && profile?.bank_details && (
-              <div className="p-4 border rounded-lg bg-muted/50 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Bank Name:</span>
-                  <span className="font-medium">{profile.bank_details.bank_name || 'N/A'}</span>
+            {paymentMethod === "Bank Transfer" && (
+              profile?.bank_details ? (
+                <div className="p-4 border rounded-lg bg-muted/50 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Bank Name:</span>
+                    <span className="font-medium">{profile.bank_details.bankName || profile.bank_details.bank_name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Account Name:</span>
+                    <span className="font-medium">{profile.bank_details.accountName || profile.bank_details.account_name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Account Number:</span>
+                    <span className="font-mono">{profile.bank_details.accountNumber || profile.bank_details.account_number || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">IFSC Code:</span>
+                    <span className="font-mono">{profile.bank_details.ifscCode || profile.bank_details.ifsc_code || 'N/A'}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Account Name:</span>
-                  <span className="font-medium">{profile.bank_details.account_name || 'N/A'}</span>
+              ) : (
+                <div className="p-4 border rounded-lg bg-yellow-50 text-yellow-800 text-sm flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Bank details are not configured by the admin.</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Account Number:</span>
-                  <span className="font-mono">{profile.bank_details.account_number || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">IFSC Code:</span>
-                  <span className="font-mono">{profile.bank_details.ifsc_code || 'N/A'}</span>
-                </div>
-              </div>
+              )
             )}
 
             <div className="space-y-2">

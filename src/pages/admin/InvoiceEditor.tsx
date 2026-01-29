@@ -90,6 +90,20 @@ export default function InvoiceEditor() {
     // Settings (could come from DB)
     const [taxRate, setTaxRate] = useState(18); // Default 18% GST (should be configurable)
 
+    // Quotation specific
+    const isQuotation = invoice?.type === 'quotation';
+    const isFinalized = invoice?.status !== 'Draft';
+
+    // Effect to set initial tax rate based on type
+    useEffect(() => {
+        if (invoice?.type === 'quotation' && !invoice.subtotal) {
+            // If new quotation, default tax to 0
+            setTaxRate(0);
+        } else if (invoice?.type === 'quotation' && invoice.tax === 0) {
+            setTaxRate(0);
+        }
+    }, [invoice?.type]);
+
     useEffect(() => {
         if (id) fetchInvoiceData();
         fetchCatalogs();
@@ -273,7 +287,19 @@ export default function InvoiceEditor() {
         }
     };
 
-    const isFinalized = invoice?.status !== 'Draft';
+    const handleConvertToInvoice = async () => {
+        if (!confirm("Convert this Quotation to a Tax Invoice? This will change the document type.")) return;
+        setSaving(true);
+        try {
+            await supabase.from('invoices').update({ type: 'invoice', status: 'Draft' } as any).eq('id', id);
+            toast({ title: "Converted", description: "Document converted to Tax Invoice." });
+            window.location.reload(); // Simple reload to refresh all state
+        } catch (e: any) {
+            toast({ variant: "destructive", title: "Error", description: e.message });
+        } finally {
+            setSaving(false);
+        }
+    };
 
     // Helper to get filtered tasks based on category
     const getTasksForCategory = (categoryName?: string) => {
@@ -306,10 +332,11 @@ export default function InvoiceEditor() {
                             </Button>
                             <div>
                                 <h1 className="text-2xl font-bold flex items-center gap-2">
-                                    {invoice.bill_number ? `Invoice #${invoice.bill_number}` : 'Draft Invoice'}
-                                    <Badge variant={isFinalized ? "default" : "secondary"} className="ml-2">
+                                    {isQuotation ? (invoice.quotation_number ? `Quotation #${invoice.quotation_number}` : (invoice.id ? `Draft Quotation` : 'New Quotation')) : (invoice.bill_number ? `Invoice #${invoice.bill_number}` : 'Draft Invoice')}
+                                    <Badge variant={isFinalized ? "default" : "secondary"} className={`ml-2 ${isQuotation ? 'bg-orange-500' : ''}`}>
                                         {invoice.status}
                                     </Badge>
+                                    {isQuotation && <Badge variant="outline" className="ml-2 border-orange-500 text-orange-600">Estimate</Badge>}
                                 </h1>
                                 <p className="text-muted-foreground">
                                     {invoice.customer?.name} • {invoice.work_order?.vehicle?.vehicle_number}
@@ -326,9 +353,14 @@ export default function InvoiceEditor() {
                                 </Button>
                             )}
                             {!isFinalized && (
-                                <Button onClick={() => handleSave(true)} disabled={saving}>
+                                <Button onClick={() => handleSave(true)} disabled={saving} className={isQuotation ? "bg-orange-600 hover:bg-orange-700 text-white" : ""}>
                                     {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    <Lock className="h-4 w-4 mr-2" /> Finalize
+                                    <Lock className="h-4 w-4 mr-2" /> {isQuotation ? 'Finalize Quotation' : 'Finalize Invoice'}
+                                </Button>
+                            )}
+                            {!isFinalized && isQuotation && (
+                                <Button onClick={handleConvertToInvoice} disabled={saving} className="bg-orange-600 hover:bg-orange-700 text-white">
+                                    <RefreshCw className="h-4 w-4 mr-2" /> Convert to Invoice
                                 </Button>
                             )}
                             <Button
@@ -636,7 +668,7 @@ export default function InvoiceEditor() {
                                         <span>₹{subtotal.toFixed(2)}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-muted-foreground">Tax ({taxRate}%)</span>
+                                        <span className="text-muted-foreground">Tax ({taxRate}%) {isQuotation && "(Estimate)"}</span>
                                         <span>₹{taxAmount.toFixed(2)}</span>
                                     </div>
                                     {/* Configurable Tax Rate */}
@@ -650,6 +682,11 @@ export default function InvoiceEditor() {
                                                 className="h-6 w-16 text-xs"
                                             />
                                             <span className="text-xs text-muted-foreground">%</span>
+                                        </div>
+                                    )}
+                                    {isQuotation && (
+                                        <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                                            * Valid for 30 days. This is not a tax invoice.
                                         </div>
                                     )}
                                     <Separator className="my-2" />

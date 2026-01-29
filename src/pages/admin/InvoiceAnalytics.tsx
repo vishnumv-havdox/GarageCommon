@@ -48,6 +48,7 @@ export default function InvoiceAnalytics() {
     const [selectedCustomerForAnalytics, setSelectedCustomerForAnalytics] = useState<any>(null);
 
     // Filter State
+    const [documentTypeFilter, setDocumentTypeFilter] = useState("invoice"); // 'invoice' | 'quotation' | 'all'
     const [timeRange, setTimeRange] = useState("thisMonth");
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: startOfMonth(new Date()),
@@ -96,16 +97,31 @@ export default function InvoiceAnalytics() {
 
         const filteredInvoices = invoices.filter(inv => {
             const date = new Date(inv.created_at);
-            return isWithinInterval(date, { start: from, end: to });
+            const typeMatch = documentTypeFilter === 'all' || inv.type === documentTypeFilter; // Strict check for quotation vs invoice
+            // If type is missing in DB (legacy), treat as 'invoice'
+            const effectiveType = inv.type || 'invoice';
+            const strictTypeMatch = documentTypeFilter === 'all' || effectiveType === documentTypeFilter;
+
+            return isWithinInterval(date, { start: from, end: to }) && strictTypeMatch;
         });
 
         const filteredPayments = payments.filter(pay => {
             const date = new Date(pay.created_at);
-            return isWithinInterval(date, { start: from, end: to });
+            if (!isWithinInterval(date, { start: from, end: to })) return false;
+
+            // Check if payment belongs to an invoice of the selected type
+            if (documentTypeFilter === 'all') return true;
+
+            // Find the linked invoice
+            const invoice = invoices.find(inv => inv.id === pay.invoice_id);
+            if (!invoice) return false; // Orphan payment or data issue
+
+            const effectiveType = invoice.type || 'invoice';
+            return effectiveType === documentTypeFilter;
         });
 
         return { invoices: filteredInvoices, payments: filteredPayments };
-    }, [invoices, payments, dateRange]);
+    }, [invoices, payments, dateRange, documentTypeFilter]);
 
     // --- Metrics Calculation ---
     const metrics = useMemo(() => {
@@ -445,6 +461,17 @@ export default function InvoiceAnalytics() {
                                 <SelectItem value="lastMonth">Last Month</SelectItem>
                                 <SelectItem value="thisYear">This Year</SelectItem>
                                 <SelectItem value="custom">Custom Range</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <Select value={documentTypeFilter} onValueChange={setDocumentTypeFilter}>
+                            <SelectTrigger className="w-[150px]">
+                                <SelectValue placeholder="Document Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="invoice">Tax Invoices</SelectItem>
+                                <SelectItem value="quotation">Quotations</SelectItem>
+                                <SelectItem value="all">All Documents</SelectItem>
                             </SelectContent>
                         </Select>
 

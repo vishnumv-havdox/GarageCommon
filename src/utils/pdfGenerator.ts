@@ -63,8 +63,10 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
                 finalTax = invoiceData.tax;
                 finalTotal = invoiceData.total;
 
-                // Use Bill Number if available
-                if (invoiceData.bill_number) {
+                // Use Bill Number or Quotation Number if available
+                if (invoiceData.type === 'quotation' && invoiceData.quotation_number) {
+                    billNumberDisplay = `QTN: ${invoiceData.quotation_number}`;
+                } else if (invoiceData.bill_number) {
                     billNumberDisplay = `BILL NO: ${invoiceData.bill_number}`;
                 }
             } else {

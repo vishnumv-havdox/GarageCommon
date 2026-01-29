@@ -35,28 +35,30 @@ import {
 import {
   FileText,
   Plus,
-  Search,
-  Download,
   Eye,
-  Receipt,
-  Calendar as CalendarIcon,
-  IndianRupee,
-  Loader2,
-  Edit,
+  Download,
   Trash2,
-  ExternalLink,
+  Edit,
+  Loader2,
+  Search,
+  Receipt,
   XCircle,
-  CheckCircle
+  CheckCircle,
+  IndianRupee,
+  ExternalLink
 } from "lucide-react";
 import { format } from "date-fns";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
+import { Separator } from "@/components/ui/separator";
 import { useNavigate } from "react-router-dom"; // Add import
 
 export default function AdminInvoices() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("drafts");
+  const [activeTab, setActiveTab] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all"); // 'all', 'invoice', 'quotation'
   const navigate = useNavigate(); // Add hook
 
   // Data
@@ -70,6 +72,7 @@ export default function AdminInvoices() {
   // Create Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<string>("");
+  const [creationType, setCreationType] = useState<'invoice' | 'quotation'>('invoice'); // New state
   const [creatingInvoice, setCreatingInvoice] = useState(false);
 
   // Verification State
@@ -83,6 +86,7 @@ export default function AdminInvoices() {
 
   const fetchData = async () => {
     setLoading(true);
+    let currentInvoices: any[] = [];
     try {
       // 1. Fetch Invoices based on tab
       if (activeTab === 'verification') {
@@ -115,11 +119,14 @@ export default function AdminInvoices() {
           query = query.eq('status', 'Draft');
         } else if (activeTab === 'finalized') {
           query = query.neq('status', 'Draft'); // Show all non-drafts
+        } else if (activeTab === 'all') {
+          // No filter, show all
         }
 
         const { data: invoicesData, error: invoicesError } = await query;
         if (invoicesError) throw invoicesError;
-        setInvoices(invoicesData || []);
+        currentInvoices = invoicesData || [];
+        setInvoices(currentInvoices);
       }
 
       // 2. Fetch Pending Work Orders
@@ -140,9 +147,13 @@ export default function AdminInvoices() {
 
       if (woError) throw woError;
 
-      // Filter WOs that don't have an invoice yet (optional logic depending on requirements)
-      // For now, list all eligible WOs 
-      setPendingWorkOrders(woData || []);
+      // Filter WOs that don't have an invoice yet
+      // We check against the invoice list we just fetched (assuming it contains ALL relevant invoices or we fetch check)
+      // Note: If pagination existed, this client-side filtering would be insufficient. For now it's fine.
+      const existingInvoiceWoIds = new Set(currentInvoices.map((i: any) => i.work_order_id));
+      const unbilledWOs = (woData || []).filter((wo: any) => !existingInvoiceWoIds.has(wo.id));
+
+      setPendingWorkOrders(unbilledWOs);
 
     } catch (error: any) {
       console.error("Error fetching data:", error);
@@ -247,14 +258,14 @@ export default function AdminInvoices() {
       const { data: newInvoice, error: invError } = await supabase
         .from('invoices')
         .insert({
-          invoice_number: `INV-${Date.now()}`, // Temporary unique ID until finalized or replaced by bill_number
-          customer_id: wo.vehicle_id ? (await getCustomerId(wo.vehicle_id)) : null, // Helper needed or fetch WO with customer
+          invoice_number: `${creationType === 'quotation' ? 'QTN' : 'INV'}-${Date.now()}`,
+          customer_id: wo.vehicle_id ? (await getCustomerId(wo.vehicle_id)) : null,
           work_order_id: wo.id,
           status: 'Draft',
-          subtotal: 0, // Will update after items
+          type: creationType, // 'invoice' or 'quotation'
+          subtotal: 0,
           total: 0,
-          bill_number: undefined // Let DB sequence handle it (or trigger) -> Wait, we defined default nextval
-        })
+        } as any)
         .select()
         .single();
 
@@ -334,23 +345,50 @@ export default function AdminInvoices() {
     });
 
     if (invoiceItems.length > 0) {
-      const { error } = await supabase.from('invoice_items').insert(invoiceItems);
+      const { error } = await supabase.from('invoice_items').insert(invoiceItems as any);
       if (error) console.error("Error syncing items:", error);
 
       // Update Invoice Totals
       const total = invoiceItems.reduce((acc, item) => acc + (item.total || 0), 0);
-      await supabase.from('invoices').update({ subtotal: total, total: total }).eq('id', invoiceId);
+      await supabase.from('invoices').update({ subtotal: total, total: total } as any).eq('id', invoiceId);
     }
   }
 
-  const filteredInvoices = invoices.filter(inv => {
+  // Merge Invoices and Unbilled WOs for "All" view
+  const allItems = activeTab === 'all'
+    ? [
+      ...invoices,
+      ...pendingWorkOrders.map(wo => ({
+        id: `virtual-${wo.id}`,
+        is_virtual: true,
+        work_order_id: wo.id,
+        created_at: wo.created_at,
+        status: 'Ready to Bill',
+        type: 'invoice', // Default virtual type
+        invoice_number: 'Pending',
+        bill_number: null,
+        total: 0,
+        customer: wo.vehicle?.customer,
+        work_order: wo
+      }))
+    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    : invoices;
+
+  const filteredInvoices = allItems.filter(inv => {
     const query = searchTerm.toLowerCase();
-    return (
+    const statusMatch = statusFilter === 'all' || inv.status === statusFilter;
+    const typeMatch = typeFilter === 'all' || inv.type === typeFilter;
+
+    // For "Ready to Bill", map specific status
+    if (statusFilter === 'Ready to Bill' && inv.status !== 'Ready to Bill') return false;
+
+    const searchMatch = (
       inv.invoice_number?.toLowerCase().includes(query) ||
       inv.bill_number?.toString().includes(query) ||
       inv.customer?.name?.toLowerCase().includes(query) ||
       inv.work_order?.vehicle?.vehicle_number?.toLowerCase().includes(query)
     );
+    return statusMatch && searchMatch && typeMatch;
   });
 
   return (
@@ -377,6 +415,32 @@ export default function AdminInvoices() {
                   <DialogTitle>Create New Invoice</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
+
+                  {/* Type Selection */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Document Type</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div
+                        className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'invoice' ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted'}`}
+                        onClick={() => setCreationType('invoice')}
+                      >
+                        <FileText className="h-6 w-6 text-primary" />
+                        <span className="font-medium">Tax Invoice</span>
+                        <span className="text-xs text-muted-foreground text-center">With GST & Final Bill</span>
+                      </div>
+                      <div
+                        className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'quotation' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-muted'}`}
+                        onClick={() => setCreationType('quotation')}
+                      >
+                        <FileText className="h-6 w-6 text-orange-500" />
+                        <span className="font-medium">Quotation</span>
+                        <span className="text-xs text-muted-foreground text-center">Estimate (No GST initially)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Select Work Order</label>
                     <Select onValueChange={setSelectedWorkOrder} value={selectedWorkOrder}>
@@ -398,7 +462,7 @@ export default function AdminInvoices() {
                     className="w-full"
                   >
                     {creatingInvoice && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Generate Invoice
+                    Generate {creationType === 'quotation' ? 'Quotation' : 'Invoice'}
                   </Button>
                 </div>
               </DialogContent>
@@ -407,6 +471,7 @@ export default function AdminInvoices() {
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList>
+              <TabsTrigger value="all">All Invoices</TabsTrigger>
               <TabsTrigger value="drafts">Drafts</TabsTrigger>
               <TabsTrigger value="finalized">Finalized & Paid</TabsTrigger>
               <TabsTrigger value="verification">Verification & Payments</TabsTrigger>
@@ -422,7 +487,46 @@ export default function AdminInvoices() {
                   className="pl-8"
                 />
               </div>
+              {activeTab === 'all' && (
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Filter by Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="Ready to Bill">Ready to Bill</SelectItem>
+                    <SelectItem value="Draft">Draft</SelectItem>
+                    <SelectItem value="Generated">Generated (Pending)</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
+                    <SelectItem value="Cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {activeTab === 'all' && (
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Filter by Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="invoice">Invoices</SelectItem>
+                    <SelectItem value="quotation">Quotations</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
+
+            <TabsContent value="all" className="space-y-4">
+              <InvoiceTable
+                invoices={filteredInvoices}
+                type="all"
+                onRefresh={fetchData}
+                onGenerate={(woId) => {
+                  setSelectedWorkOrder(woId);
+                  setIsCreateOpen(true);
+                }}
+              />
+            </TabsContent>
 
             <TabsContent value="drafts" className="space-y-4">
               <InvoiceTable invoices={filteredInvoices} type="draft" onRefresh={fetchData} />
@@ -590,7 +694,7 @@ export default function AdminInvoices() {
   );
 }
 
-function InvoiceTable({ invoices, type, onRefresh }: { invoices: any[], type: 'draft' | 'finalized', onRefresh: () => void }) {
+function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any[], type: 'draft' | 'finalized' | 'all', onRefresh: () => void, onGenerate?: (woId: string) => void }) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -610,6 +714,7 @@ function InvoiceTable({ invoices, type, onRefresh }: { invoices: any[], type: 'd
         <TableHeader>
           <TableRow>
             <TableHead>Bill No.</TableHead>
+            <TableHead>Type</TableHead>
             <TableHead>Date</TableHead>
             <TableHead>Customer</TableHead>
             <TableHead>Vehicle</TableHead>
@@ -621,7 +726,17 @@ function InvoiceTable({ invoices, type, onRefresh }: { invoices: any[], type: 'd
         <TableBody>
           {invoices.map((inv) => (
             <TableRow key={inv.id}>
-              <TableCell className="font-medium">#{inv.bill_number || '-'}</TableCell>
+              <TableCell className="font-medium">
+                {inv.type === 'quotation'
+                  ? (inv.quotation_number ? `QTN-${inv.quotation_number}` : 'Draft QTN')
+                  : (inv.bill_number ? `INV-${inv.bill_number}` : `Draft #${inv.invoice_number}`)
+                }
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline" className={inv.type === 'quotation' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
+                  {inv.type === 'quotation' ? 'Quotation' : 'Invoice'}
+                </Badge>
+              </TableCell>
               <TableCell>{format(new Date(inv.created_at), "MMM d, yyyy")}</TableCell>
               <TableCell>
                 <div>{inv.customer?.name}</div>
@@ -635,52 +750,73 @@ function InvoiceTable({ invoices, type, onRefresh }: { invoices: any[], type: 'd
                 ₹{inv.total?.toLocaleString()}
               </TableCell>
               <TableCell>
-                <Badge variant={inv.status === 'Paid' ? 'default' : inv.status === 'Draft' ? 'secondary' : 'destructive'}>
+                <Badge
+                  variant={
+                    inv.status === 'Paid' ? 'default' :
+                      inv.status === 'Draft' ? 'secondary' :
+                        inv.status === 'Ready to Bill' ? 'outline' :
+                          'destructive'
+                  }
+                  className={inv.status === 'Ready to Bill' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
+                >
                   {inv.status}
                 </Badge>
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">
-                  {/* Link to Editor - implementation pending */}
-                  <Button variant="ghost" size="icon" title="Edit/View" onClick={() => {
-                    const cleanPath = `/admin/invoices/${inv.id}`.trim();
-                    console.log("Navigating to:", cleanPath);
-                    navigate(cleanPath);
-                  }}>
-                    <Eye className="h-4 w-4 text-primary" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => generateInvoicePDF(inv.work_order_id)} title="Download PDF">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => navigate(`/admin/invoices/${inv.id}`)} title="Edit Invoice">
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (confirm(`Are you sure you want to DELETE Invoice #${inv.bill_number ?? 'Draft'}?`)) {
-                        const { error } = await supabase.from('invoices').delete().eq('id', inv.id);
-                        if (error) {
-                          toast({ variant: "destructive", title: "Error", description: error.message });
-                        } else {
-                          toast({ title: "Deleted", description: "Invoice deleted successfully." });
-                          onRefresh();
-                        }
-                      }
-                    }}
-                    title="Delete Invoice"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {inv.is_virtual ? (
+                    <>
+                      <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => navigate(`/admin/work-orders/${inv.work_order_id}`)}>
+                        <Eye className="h-3.5 w-3.5" /> View
+                      </Button>
+                      <Button size="sm" className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => onGenerate?.(inv.work_order_id)}>
+                        <Plus className="h-3.5 w-3.5" /> Generate
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Link to Editor - implementation pending */}
+                      <Button variant="ghost" size="icon" title="Edit/View" onClick={() => {
+                        const cleanPath = `/admin/invoices/${inv.id}`.trim();
+                        console.log("Navigating to:", cleanPath);
+                        navigate(cleanPath);
+                      }}>
+                        <Eye className="h-4 w-4 text-primary" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => generateInvoicePDF(inv.work_order_id)} title="Download PDF">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => navigate(`/admin/invoices/${inv.id}`)} title="Edit Invoice">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (confirm(`Are you sure you want to DELETE Invoice #${inv.bill_number ?? 'Draft'}?`)) {
+                            const { error } = await supabase.from('invoices').delete().eq('id', inv.id);
+                            if (error) {
+                              toast({ variant: "destructive", title: "Error", description: error.message });
+                            } else {
+                              toast({ title: "Deleted", description: "Invoice deleted successfully." });
+                              onRefresh();
+                            }
+                          }
+                        }}
+                        title="Delete Invoice"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-    </div>
+    </div >
   );
 }

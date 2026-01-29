@@ -1175,6 +1175,7 @@ export default function CustomerPortal() {
             <TabsTrigger value="workorders">Work Orders</TabsTrigger>
             <TabsTrigger value="history">Work History</TabsTrigger>
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
+            <TabsTrigger value="quotations">Quotations</TabsTrigger>
           </TabsList>
 
           <TabsContent value="vehicles">
@@ -1560,11 +1561,11 @@ export default function CustomerPortal() {
             <Card>
               <CardHeader><CardTitle>My Invoices</CardTitle></CardHeader>
               <CardContent>
-                {invoices.length === 0 ? (
+                {invoices.filter(i => i.type !== 'quotation').length === 0 ? (
                   <p className="text-muted-foreground text-center py-8">No invoices yet</p>
                 ) : (
                   <div className="space-y-4">
-                    {invoices.map((invoice) => (
+                    {invoices.filter(i => i.type !== 'quotation').map((invoice) => (
                       <div key={invoice.id} className="border p-4 rounded-lg bg-card/50">
                         <div className="flex justify-between items-start">
                           <div>
@@ -1604,6 +1605,7 @@ export default function CustomerPortal() {
                               <Eye className="h-4 w-4" />
                               View
                             </Button>
+                            {/* Allow payment for Unpaid Invoices AND Quotations */}
                             {(invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending')) && (
                               <Button
                                 size="sm"
@@ -1611,7 +1613,83 @@ export default function CustomerPortal() {
                                 onClick={() => setPayingInvoice(invoice)}
                               >
                                 <CreditCard className="h-4 w-4" />
-                                Pay Now
+                                {invoice.type === 'quotation' ? 'Pay Advance' : 'Pay Now'}
+                              </Button>
+                            )}
+                            {(invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending')) && (
+                              <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
+                                <Hourglass className="h-3 w-3 mr-1" /> Verifying
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="quotations">
+            <Card>
+              <CardHeader><CardTitle>My Quotations</CardTitle></CardHeader>
+              <CardContent>
+                {invoices.filter(i => i.type === 'quotation').length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No quotations yet</p>
+                ) : (
+                  <div className="space-y-4">
+                    {invoices.filter(i => i.type === 'quotation').map((invoice) => (
+                      <div key={invoice.id} className="border p-4 rounded-lg bg-card/50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-semibold text-lg">
+                                Quotation #{invoice.invoice_number}
+                              </h3>
+                              <Badge variant="outline" className="border-orange-500 text-orange-600">
+                                Estimate
+                              </Badge>
+                              <Badge variant={
+                                invoice.status === 'Paid' ? 'default' :
+                                  invoice.status === 'Draft' ? 'secondary' :
+                                    'destructive' // Finalized/Unpaid
+                              } className={invoice.status === 'Paid' ? 'bg-green-600' : ''}>
+                                {invoice.status}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {format(new Date(invoice.created_at), "MMM d, yyyy")}
+                            </p>
+                            <p className="text-lg font-bold mt-2">₹{(invoice.total || 0).toLocaleString()}</p>
+                          </div>
+                          <div className="flex items-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center gap-2"
+                              onClick={() => generateInvoicePDF(invoice.work_order_id)}
+                            >
+                              <Download className="h-4 w-4" />
+                              Download PDF
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center gap-2 ml-2"
+                              onClick={() => handleViewInvoice(invoice)}
+                            >
+                              <Eye className="h-4 w-4" />
+                              View
+                            </Button>
+                            {(invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending')) && (
+                              <Button
+                                size="sm"
+                                className="flex items-center gap-2 ml-2 bg-green-600 hover:bg-green-700"
+                                onClick={() => setPayingInvoice(invoice)}
+                              >
+                                <CreditCard className="h-4 w-4" />
+                                Pay Advance
                               </Button>
                             )}
                             {(invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending')) && (
@@ -1637,7 +1715,7 @@ export default function CustomerPortal() {
           <DialogHeader>
             <DialogTitle>Make Payment</DialogTitle>
             <DialogDescription>
-              Submit payment details for Invoice #{payingInvoice?.bill_number || payingInvoice?.invoice_number}
+              Submit payment details for {payingInvoice?.type === 'quotation' ? 'Quotation' : 'Invoice'} #{payingInvoice?.type === 'quotation' ? payingInvoice?.invoice_number : (payingInvoice?.bill_number || payingInvoice?.invoice_number)}
             </DialogDescription>
           </DialogHeader>
 

@@ -295,54 +295,71 @@ export default function AdminInvoices() {
 
   const syncWorkOrderItems = async (invoiceId: string, workOrderId: string) => {
     // 1. Fetch Services
-    const { data: services } = await supabase
+    const { data: services }: any = await supabase
       .from('work_order_services')
       .select('*')
       .eq('work_order_id', workOrderId);
 
-    if (!services || services.length === 0) return;
-
     // 2. Fetch Tasks
-    const { data: tasks } = await supabase
+    const { data: tasks }: any = await supabase
       .from('work_order_tasks')
+      .select('*')
+      .eq('work_order_id', workOrderId);
+
+    // 3. Fetch Parts
+    const { data: parts }: any = await supabase
+      .from('work_order_parts')
       .select('*')
       .eq('work_order_id', workOrderId);
 
     const invoiceItems: any[] = [];
 
-    services.forEach(service => {
-      // Find tasks for this service
-      const serviceTasks = tasks?.filter(t => t.service_id === service.id) || [];
-
-      if (serviceTasks.length > 0) {
-        // Create items for each task
-        serviceTasks.forEach((task, index) => {
+    // Add Services and Tasks
+    if (services && services.length > 0) {
+      services.forEach(service => {
+        const serviceTasks = tasks?.filter(t => t.service_id === service.id) || [];
+        if (serviceTasks.length > 0) {
+          serviceTasks.forEach((task, index) => {
+            invoiceItems.push({
+              invoice_id: invoiceId,
+              work_order_service_id: service.id,
+              description: task.task_name,
+              quantity: 1,
+              unit_price: index === 0 ? service.estimated_cost : 0,
+              total: index === 0 ? service.estimated_cost : 0,
+              type: 'service',
+              category: service.service_type
+            });
+          });
+        } else {
           invoiceItems.push({
             invoice_id: invoiceId,
             work_order_service_id: service.id,
-            description: task.task_name, // Use specific task name
+            description: "",
             quantity: 1,
-            // Assign cost to the first task to preserve total (user can redistribute)
-            unit_price: index === 0 ? service.estimated_cost : 0,
-            total: index === 0 ? service.estimated_cost : 0,
+            unit_price: service.estimated_cost,
+            total: service.estimated_cost,
             type: 'service',
             category: service.service_type
           });
-        });
-      } else {
-        // No tasks? Fallback to Service Type
+        }
+      });
+    }
+
+    // Add Parts
+    if (parts && parts.length > 0) {
+      parts.forEach(part => {
         invoiceItems.push({
           invoice_id: invoiceId,
-          work_order_service_id: service.id,
-          description: "", // Leave empty for manual entry
-          quantity: 1,
-          unit_price: service.estimated_cost,
-          total: service.estimated_cost,
-          type: 'service',
-          category: service.service_type
+          description: part.part_name,
+          quantity: part.quantity,
+          unit_price: part.unit_price,
+          total: part.quantity * part.unit_price,
+          type: 'part',
+          category: 'Spare'
         });
-      }
-    });
+      });
+    }
 
     if (invoiceItems.length > 0) {
       const { error } = await supabase.from('invoice_items').insert(invoiceItems as any);

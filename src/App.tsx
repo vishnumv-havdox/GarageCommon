@@ -23,6 +23,8 @@ import AnalyticsDashboard from "./pages/admin/AnalyticsDashboard";
 import AdminUsers from "./pages/admin/Users";
 import AdminAccessControl from "./pages/admin/AccessControl";
 import AdminSettings from "./pages/admin/Settings";
+import InventoryLogin from "./pages/inventory/Login";
+import InventoryRoom from "./pages/inventory/InventoryRoom";
 import StaffDashboard from "./pages/staff/Dashboard";
 import CustomerPortal from "./pages/customer/Portal";
 import NotFound from "./pages/NotFound";
@@ -49,6 +51,9 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/users": AdminUsers,
   "/admin/access-control": AdminAccessControl,
   "/admin/settings": AdminSettings,
+  "/inventory": AdminInventory,
+  "/inventory/login": InventoryLogin,
+  "/inventory/room": InventoryRoom,
   "/staff": StaffDashboard,
   "/customer": CustomerPortal,
 };
@@ -62,10 +67,11 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/auth" element={<Login />} />
+          <Route path="/inventory/login" element={<InventoryLogin />} />
 
           {/* Generate routes from centralized access control config */}
           {accessControlConfig
-            .filter(rule => rule.path !== "*" && routeComponents[rule.path])
+            .filter(rule => rule.path !== "*" && rule.path !== "/inventory/login" && routeComponents[rule.path])
             .map(rule => (
               <Route
                 key={rule.path}

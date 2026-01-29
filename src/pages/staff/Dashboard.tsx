@@ -16,9 +16,11 @@ import { useToast } from "@/hooks/use-toast"
 import {
   LogOut, CheckCircle2, Clock, AlertTriangle,
   Briefcase, User, RefreshCw, Eye, EyeOff,
-  Wrench, Shield, Lock, LockOpen, Activity
+  Wrench, Shield, Lock, LockOpen, Activity, QrCode,
+  Package, ChevronRight
 } from "lucide-react"
 import { format } from "date-fns"
+import { PartRequestList } from "@/components/inventory/PartRequestList"
 
 interface RepairTask {
   id: string
@@ -61,6 +63,7 @@ export default function StaffDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("active")
   const [notificationCount, setNotificationCount] = useState(0)
+  const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({})
 
   const fetchWorkItems = useCallback(async () => {
     if (!user?.id) {
@@ -142,9 +145,9 @@ export default function StaffDashboard() {
   const workItemsByOrderId = workItems.reduce((acc, item) => {
     // Create a composite key: work_order_id OR vehicle_id
     // This groups work orders with the same vehicle together
-    const key = item.work_order_id || 
+    const key = item.work_order_id ||
       (item.vehicle_number ? `vehicle-${item.vehicle_number}` : `unknown-${Math.random()}`);
-    
+
     if (!acc[key]) {
       acc[key] = { ...item, service_types: new Set([item.service_type].filter(Boolean)) };
     } else {
@@ -375,6 +378,10 @@ export default function StaffDashboard() {
               </Button>
             )}
             <Badge variant="secondary">Staff</Badge>
+            <Button variant="outline" onClick={() => window.location.href = "/inventory/room"}>
+              <QrCode className="h-4 w-4 mr-2" />
+              Inventory Room
+            </Button>
             <Button onClick={signOut} variant="outline">
               <LogOut className="h-4 w-4 mr-2" />
               Logout
@@ -660,12 +667,12 @@ export default function StaffDashboard() {
                                   }
                                   return acc;
                                 }, []);
-                                
+
                                 const inspectionTasks = uniqueTasks.filter(t => t.task_type === 'inspection');
                                 const repairTasks = uniqueTasks.filter(t => t.task_type !== 'inspection');
                                 const currentTasks = repairsAvailable ? repairTasks : inspectionTasks;
                                 const allCurrentCompleted = currentTasks.every(t => t.is_completed) && currentTasks.length > 0;
-                                
+
                                 return (
                                   <>
                                     {currentTasks.length > 0 && (
@@ -679,7 +686,7 @@ export default function StaffDashboard() {
                                             {currentTasks.filter(t => t.is_completed).length}/{currentTasks.length} tasks
                                           </Badge>
                                         </div>
-                                        
+
                                         <div className="space-y-2">
                                           {currentTasks.map((task: RepairTask, index: number) => (
                                             <div
@@ -769,8 +776,34 @@ export default function StaffDashboard() {
 
 
                           {/* Description */}
-                          <div className="p-4 text-sm text-muted-foreground">
+                          <div className="p-4 text-sm text-muted-foreground border-b bg-muted/5">
+                            <span className="font-semibold block mb-1">Service Description:</span>
                             {work.description}
+                          </div>
+
+                          {/* Parts Section */}
+                          <div className="p-4 border-b">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full flex justify-between items-center group"
+                              onClick={() => setExpandedParts(prev => ({
+                                ...prev,
+                                [work.work_order_id]: !prev[work.work_order_id]
+                              }))}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-primary" />
+                                <span>Parts & Inventory</span>
+                              </div>
+                              <ChevronRight className={`h-4 w-4 transition-transform ${expandedParts[work.work_order_id] ? 'rotate-90' : ''}`} />
+                            </Button>
+
+                            {expandedParts[work.work_order_id] && (
+                              <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <PartRequestList workOrderId={work.work_order_id} isAdmin={false} />
+                              </div>
+                            )}
                           </div>
 
                           {/* Footer Actions */}

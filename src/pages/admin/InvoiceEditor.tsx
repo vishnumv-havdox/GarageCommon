@@ -33,6 +33,7 @@ import {
     Calendar as CalendarIcon,
     Printer,
     Download,
+    Eye,
     Lock,
     RefreshCw
 } from "lucide-react";
@@ -45,6 +46,27 @@ import {
 import { format } from "date-fns";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { Separator } from "@/components/ui/separator";
+import { ToWords } from 'to-words';
+
+const toWords = new ToWords({
+    localeCode: 'en-IN',
+    converterOptions: {
+        currency: true,
+        ignoreDecimal: false,
+        ignoreZeroCurrency: false,
+        doNotAddOnly: false,
+        currencyOptions: {
+            name: 'Rupee',
+            plural: 'Rupees',
+            symbol: '₹',
+            fractionalUnit: {
+                name: 'Paisa',
+                plural: 'Paise',
+                symbol: '',
+            }
+        }
+    }
+});
 
 interface InvoiceItem {
     id: string;
@@ -54,6 +76,13 @@ interface InvoiceItem {
     total: number;
     type: string;
     category?: string;
+    hsn_code?: string;
+    taxable_value?: number;
+    gst_rate?: number;
+    cgst_rate?: number;
+    sgst_rate?: number;
+    cgst_amount?: number;
+    sgst_amount?: number;
 }
 
 interface ServiceType {
@@ -86,6 +115,7 @@ export default function InvoiceEditor() {
     const [subtotal, setSubtotal] = useState(0);
     const [taxAmount, setTaxAmount] = useState(0);
     const [grandTotal, setGrandTotal] = useState(0);
+    const [companyProfile, setCompanyProfile] = useState<any>(null);
 
     // Settings (could come from DB)
     const [taxRate, setTaxRate] = useState(18); // Default 18% GST (should be configurable)
@@ -107,7 +137,13 @@ export default function InvoiceEditor() {
     useEffect(() => {
         if (id) fetchInvoiceData();
         fetchCatalogs();
+        fetchCompanyProfile();
     }, [id]);
+
+    const fetchCompanyProfile = async () => {
+        const { data } = await supabase.from('company_profiles').select('*').single();
+        setCompanyProfile(data);
+    };
 
     useEffect(() => {
         calculateTotals();
@@ -164,27 +200,55 @@ export default function InvoiceEditor() {
     };
 
     const calculateTotals = () => {
-        const sub = items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
-        const tax = (sub * taxRate) / 100;
-        const total = sub + tax;
+        let sub = 0;
+        let cgst_total = 0;
+        let sgst_total = 0;
+
+        items.forEach(item => {
+            const taxable = item.quantity * item.unit_price;
+            const cgst_rate = item.cgst_rate ?? (taxRate / 2);
+            const sgst_rate = item.sgst_rate ?? (taxRate / 2);
+
+            const cgst = taxable * (cgst_rate / 100);
+            const sgst = taxable * (sgst_rate / 100);
+
+            sub += taxable;
+            cgst_total += cgst;
+            sgst_total += sgst;
+
+            // Note: We don't update state here to avoid loops, 
+            // the individual item amounts should be set in handleItemChange
+        });
 
         setSubtotal(sub);
-        setTaxAmount(tax);
-        setGrandTotal(total);
+        setTaxAmount(cgst_total + sgst_total);
+        setGrandTotal(sub + cgst_total + sgst_total);
     };
 
     const handleItemChange = (index: number, field: keyof InvoiceItem, value: any) => {
         const newItems = [...items];
         const item = { ...newItems[index] };
 
-        if (field === 'quantity' || field === 'unit_price') {
-            const val = parseFloat(value) || 0;
-            // @ts-ignore
-            item[field] = val;
-            item.total = item.quantity * item.unit_price;
-        } else {
-            // @ts-ignore
-            item[field] = value;
+        // @ts-ignore
+        item[field] = field === 'description' ? value : (parseFloat(value) || 0);
+
+        if (field === 'quantity' || field === 'unit_price' || field === 'gst_rate' || field === 'cgst_rate' || field === 'sgst_rate') {
+            const taxable = item.quantity * item.unit_price;
+            const gst = item.gst_rate ?? taxRate;
+
+            // If HSN changed or we are initializing, we might set these
+            if (field === 'gst_rate') {
+                item.cgst_rate = gst / 2;
+                item.sgst_rate = gst / 2;
+            }
+
+            const cgst_r = item.cgst_rate ?? (gst / 2);
+            const sgst_r = item.sgst_rate ?? (gst / 2);
+
+            item.taxable_value = taxable;
+            item.cgst_amount = taxable * (cgst_r / 100);
+            item.sgst_amount = taxable * (sgst_r / 100);
+            item.total = taxable + item.cgst_amount + item.sgst_amount;
         }
 
         newItems[index] = item;
@@ -225,9 +289,16 @@ export default function InvoiceEditor() {
                     description: item.description,
                     quantity: item.quantity,
                     unit_price: item.unit_price,
-                    total: item.quantity * item.unit_price,
+                    total: item.total,
                     type: item.type,
-                    category: item.category
+                    category: item.category,
+                    hsn_code: item.hsn_code,
+                    taxable_value: item.taxable_value || (item.quantity * item.unit_price),
+                    gst_rate: item.gst_rate ?? taxRate,
+                    cgst_rate: item.cgst_rate ?? ((item.gst_rate ?? taxRate) / 2),
+                    sgst_rate: item.sgst_rate ?? ((item.gst_rate ?? taxRate) / 2),
+                    cgst_amount: item.cgst_amount ?? ((item.quantity * item.unit_price) * ((item.cgst_rate ?? taxRate / 2) / 100)),
+                    sgst_amount: item.sgst_amount ?? ((item.quantity * item.unit_price) * ((item.sgst_rate ?? taxRate / 2) / 100)),
                 };
                 if (!item.id.startsWith('temp-')) {
                     payload.id = item.id;
@@ -269,8 +340,7 @@ export default function InvoiceEditor() {
                 updatePayload.status = 'Sent'; // Or 'Unpaid'/'Finalized'
             }
 
-            const { error: headerError } = await supabase
-                .from('invoices')
+            const { error: headerError } = await (supabase.from('invoices') as any)
                 .update(updatePayload)
                 .eq('id', id);
 
@@ -291,7 +361,7 @@ export default function InvoiceEditor() {
         if (!confirm("Convert this Quotation to a Tax Invoice? This will change the document type.")) return;
         setSaving(true);
         try {
-            await supabase.from('invoices').update({ type: 'invoice', status: 'Draft' } as any).eq('id', id);
+            await (supabase.from('invoices') as any).update({ type: 'invoice', status: 'Draft' }).eq('id', id);
             toast({ title: "Converted", description: "Document converted to Tax Invoice." });
             window.location.reload(); // Simple reload to refresh all state
         } catch (e: any) {
@@ -344,8 +414,11 @@ export default function InvoiceEditor() {
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => generateInvoicePDF(invoice.work_order_id)}>
+                            <Button variant="outline" onClick={() => generateInvoicePDF(invoice.work_order_id, 'save')} title="Download PDF">
                                 <Download className="h-4 w-4 mr-2" /> PDF
+                            </Button>
+                            <Button variant="outline" onClick={() => generateInvoicePDF(invoice.work_order_id, 'preview')} className="bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-200">
+                                <Eye className="h-4 w-4 mr-2" /> Preview
                             </Button>
                             {!isFinalized && (
                                 <Button onClick={() => handleSave(false)} disabled={saving} variant="outline">
@@ -363,6 +436,9 @@ export default function InvoiceEditor() {
                                     <RefreshCw className="h-4 w-4 mr-2" /> Convert to Invoice
                                 </Button>
                             )}
+                            <Button variant="outline" onClick={() => generateInvoicePDF(invoice.work_order_id, 'preview')} className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20">
+                                <Printer className="h-4 w-4 mr-2" /> Print
+                            </Button>
                             <Button
                                 variant="destructive"
                                 size="icon"
@@ -389,18 +465,15 @@ export default function InvoiceEditor() {
                                         setLoading(true);
                                         // Delete existing items
                                         await supabase.from('invoice_items').delete().eq('invoice_id', id);
-                                        // Trigger sync (we need to call the sync logic here or in backend)
-                                        // Since logic is in Invoices.tsx, let's duplicate strictly for this fix or call an RPC?
-                                        // Easier: manually re-create items here from WO services.
 
-                                        // Fetch services again
-                                        const { data: services } = await supabase.from('work_order_services').select('*').eq('work_order_id', invoice.work_order_id);
-                                        // Fetch tasks
-                                        const { data: tasks } = await supabase.from('work_order_tasks').select('*').eq('work_order_id', invoice.work_order_id);
+                                        // Fetch services, tasks, and parts
+                                        const { data: services }: any = await supabase.from('work_order_services').select('*').eq('work_order_id', invoice.work_order_id);
+                                        const { data: tasks }: any = await supabase.from('work_order_tasks').select('*').eq('work_order_id', invoice.work_order_id);
+                                        const { data: parts }: any = await supabase.from('work_order_parts').select('*').eq('work_order_id', invoice.work_order_id);
+
+                                        const newItems: any[] = [];
 
                                         if (services && services.length > 0) {
-                                            const newItems: any[] = [];
-
                                             services.forEach(service => {
                                                 const serviceTasks = tasks?.filter(t => t.service_id === service.id) || [];
 
@@ -430,11 +503,28 @@ export default function InvoiceEditor() {
                                                     });
                                                 }
                                             });
-
-                                            await supabase.from('invoice_items').insert(newItems);
-                                            toast({ title: "Reset Complete", description: "Items synced from Work Order (Tasks Included)." });
-                                            fetchInvoiceData();
                                         }
+
+                                        if (parts && parts.length > 0) {
+                                            parts.forEach(part => {
+                                                newItems.push({
+                                                    invoice_id: id,
+                                                    description: part.part_name,
+                                                    quantity: part.quantity,
+                                                    unit_price: part.unit_price,
+                                                    total: part.quantity * part.unit_price,
+                                                    type: 'part',
+                                                    category: 'Spare'
+                                                });
+                                            });
+                                        }
+
+                                        if (newItems.length > 0) {
+                                            await (supabase.from('invoice_items') as any).insert(newItems);
+                                        }
+
+                                        toast({ title: "Reset Complete", description: "Items synced from Work Order (Services & Parts)." });
+                                        fetchInvoiceData();
                                     }
                                 }}>
                                     <RefreshCw className="h-4 w-4 text-orange-500" />
@@ -470,148 +560,172 @@ export default function InvoiceEditor() {
                                         )}
                                     </div>
                                 </CardHeader>
-                                <CardContent className="space-y-6 pt-0">
-                                    {/* Helper to group items */}
-                                    {(() => {
-                                        // Get unique categories from items, plus any that might be manually added via a state if we wanted "empty" sections (skipped for now)
-                                        // We'll iterate through existing item categories
-                                        const categories = Array.from(new Set(items.map(i => i.category || 'General')));
-
-                                        return categories.sort().map(category => {
-                                            const categoryItems = items
-                                                .map((item, originalIndex) => ({ ...item, originalIndex }))
-                                                .filter(i => (i.category || 'General') === category);
-
-                                            if (categoryItems.length === 0) return null;
-
-                                            return (
-                                                <div key={category} className="border rounded-lg overflow-hidden">
-                                                    <div className="bg-muted px-4 py-2 font-semibold text-sm flex justify-between items-center">
-                                                        <span>{category}</span>
-                                                        <span className="text-xs text-muted-foreground">
-                                                            Subtotal: ₹{categoryItems.reduce((sum, i) => sum + (i.quantity * i.unit_price), 0).toFixed(2)}
-                                                        </span>
-                                                    </div>
-                                                    <Table>
-                                                        <TableHeader>
-                                                            <TableRow>
-                                                                <TableHead className="w-[45%]">Description</TableHead>
-                                                                <TableHead className="w-[15%]">Qty</TableHead>
-                                                                <TableHead className="w-[20%]">Price</TableHead>
-                                                                <TableHead className="w-[15%] text-right">Total</TableHead>
-                                                                <TableHead className="w-[5%]"></TableHead>
-                                                            </TableRow>
-                                                        </TableHeader>
-                                                        <TableBody>
-                                                            {categoryItems.map((item, idx) => (
-                                                                <TableRow key={item.id || `${category}-${idx}`}>
-                                                                    <TableCell>
-                                                                        {isFinalized ? (
-                                                                            <span>{item.description}</span>
-                                                                        ) : (
-                                                                            <div className="relative flex gap-2">
-                                                                                {/* Task Selector: Improved Visibility */}
-                                                                                <DropdownMenu>
-                                                                                    <DropdownMenuTrigger asChild>
-                                                                                        <Button variant="ghost" className="h-8 w-[24px] px-0 justify-center border-dashed border-primary/50 hover:bg-primary/10 rounded-sm" title="Pick from Task List">
-                                                                                            <Plus className="h-4 w-4 text-primary" />
-                                                                                        </Button>
-                                                                                    </DropdownMenuTrigger>
-                                                                                    <DropdownMenuContent align="start" className="w-[200px]">
-                                                                                        {getTasksForCategory(category).length > 0 ? (
-                                                                                            getTasksForCategory(category).map(t => (
-                                                                                                <DropdownMenuItem
-                                                                                                    key={t.id}
-                                                                                                    onClick={() => handleItemChange(item.originalIndex, "description", t.name)}
-                                                                                                >
-                                                                                                    {t.name}
-                                                                                                </DropdownMenuItem>
-                                                                                            ))
-                                                                                        ) : (
-                                                                                            <div className="p-2 text-xs text-muted-foreground text-center">No standard tasks found</div>
-                                                                                        )}
-                                                                                    </DropdownMenuContent>
-                                                                                </DropdownMenu>
-
-                                                                                {/* Input with Datalist for Autocomplete */}
-                                                                                <Input
-                                                                                    list={`tasks-${category.replace(/\s+/g, '-')}`}
-                                                                                    value={item.description}
-                                                                                    onChange={(e) => handleItemChange(item.originalIndex, "description", e.target.value)}
-                                                                                    className="h-8 flex-1"
-                                                                                    placeholder="Description (Type or Select)"
-                                                                                />
-                                                                                <datalist id={`tasks-${category.replace(/\s+/g, '-')}`}>
-                                                                                    {getTasksForCategory(category).map(t => (
-                                                                                        <option key={t.id} value={t.name} />
-                                                                                    ))}
-                                                                                </datalist>
-                                                                            </div>
-                                                                        )}
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {isFinalized ? (
-                                                                            <span>{item.quantity}</span>
-                                                                        ) : (
-                                                                            <Input
-                                                                                type="number"
-                                                                                value={item.quantity}
-                                                                                onChange={(e) => handleItemChange(item.originalIndex, "quantity", e.target.value)}
-                                                                                className="h-8"
-                                                                                min="0"
-                                                                                step="0.1"
-                                                                            />
-                                                                        )}
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {isFinalized ? (
-                                                                            <span>{item.unit_price}</span>
-                                                                        ) : (
-                                                                            <Input
-                                                                                type="number"
-                                                                                value={item.unit_price}
-                                                                                onChange={(e) => handleItemChange(item.originalIndex, "unit_price", e.target.value)}
-                                                                                className="h-8"
-                                                                                min="0"
-                                                                            />
-                                                                        )}
-                                                                    </TableCell>
-                                                                    <TableCell className="text-right font-medium">
-                                                                        ₹{(item.quantity * item.unit_price).toFixed(2)}
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {!isFinalized && (
-                                                                            <Button
-                                                                                variant="ghost"
-                                                                                size="icon"
-                                                                                className="h-8 w-8 text-destructive"
-                                                                                onClick={() => handleRemoveItem(item.originalIndex)}
-                                                                            >
-                                                                                <Trash2 className="h-4 w-4" />
-                                                                            </Button>
-                                                                        )}
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                            {!isFinalized && (
-                                                                <TableRow>
-                                                                    <TableCell colSpan={5}>
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            className="w-full h-8 text-xs text-muted-foreground border-dashed border hover:text-primary"
-                                                                            onClick={() => handleAddItem(category)}
-                                                                        >
-                                                                            <Plus className="h-3 w-3 mr-2" /> Add Item to {category}
+                                <CardContent className="space-y-8 pt-0">
+                                    {/* Service Bill Section */}
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b pb-2">
+                                            <h3 className="text-lg font-bold text-primary">I. SERVICE BILL</h3>
+                                            {!isFinalized && (
+                                                <Button size="sm" variant="outline" onClick={() => handleAddItem("service")}>
+                                                    <Plus className="h-4 w-4 mr-2" /> Add Service
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <div className="border rounded-xl shadow-sm bg-white overflow-hidden">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow className="bg-primary/5 hover:bg-primary/5 border-b-2 border-primary/20">
+                                                        <TableHead className="w-[40px] font-bold text-primary py-4 px-2 text-center border-x">#</TableHead>
+                                                        <TableHead className="font-bold text-primary px-3 border-x">Particulars</TableHead>
+                                                        <TableHead className="w-[90px] font-bold text-primary px-2 border-x">HSN</TableHead>
+                                                        <TableHead className="w-[100px] font-bold text-primary text-right px-2 border-x">Taxable</TableHead>
+                                                        <TableHead className="w-[50px] font-bold text-primary text-center px-1 border-x">%</TableHead>
+                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">CGST</TableHead>
+                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">SGST</TableHead>
+                                                        <TableHead className="w-[110px] text-right font-bold text-primary pr-4 border-x">Total</TableHead>
+                                                        <TableHead className="w-[40px] border-x"></TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {items.filter(i => i.type === 'service').map((item, idx) => {
+                                                        const originalIndex = items.findIndex(orig => orig.id === item.id);
+                                                        return (
+                                                            <TableRow key={item.id}>
+                                                                <TableCell className="px-2 font-medium text-muted-foreground text-center border-x">{idx + 1}</TableCell>
+                                                                <TableCell className="px-2 border-x">
+                                                                    <Input
+                                                                        value={item.description}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'description', e.target.value)}
+                                                                        className="h-8 border-none focus-visible:ring-1 px-1"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="px-1 border-x">
+                                                                    <Input
+                                                                        value={item.hsn_code || ''}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'hsn_code', e.target.value)}
+                                                                        className="h-8 border-none focus-visible:ring-1 px-1"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="text-right px-1 border-x">
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={item.unit_price}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'unit_price', e.target.value)}
+                                                                        className="h-8 text-right font-medium border-none focus-visible:ring-1 px-1"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="px-1 border-x">
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={item.gst_rate || taxRate}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'gst_rate', e.target.value)}
+                                                                        className="h-8 text-center border-none focus-visible:ring-1 px-1"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.cgst_amount?.toFixed(2)}</TableCell>
+                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.sgst_amount?.toFixed(2)}</TableCell>
+                                                                <TableCell className="text-right font-bold text-primary pr-4 whitespace-nowrap border-x">₹{item.total.toFixed(2)}</TableCell>
+                                                                <TableCell className="px-1 border-x text-center">
+                                                                    {!isFinalized && (
+                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveItem(originalIndex)}>
+                                                                            <Trash2 className="h-4 w-4" />
                                                                         </Button>
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            )}
-                                                        </TableBody>
-                                                    </Table>
-                                                </div>
-                                            );
-                                        });
-                                    })()}
+                                                                    )}
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </div>
+
+                                    {/* Inventory Bill Section */}
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b pb-2">
+                                            <h3 className="text-lg font-bold text-primary">II. INVENTORY BILL</h3>
+                                            {!isFinalized && (
+                                                <Button size="sm" variant="outline" onClick={() => handleAddItem("part")}>
+                                                    <Plus className="h-4 w-4 mr-2" /> Add Part
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <div className="border rounded-xl shadow-sm bg-white overflow-hidden">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow className="bg-primary/5 hover:bg-primary/5 border-b-2 border-primary/20">
+                                                        <TableHead className="w-[40px] font-bold text-primary py-4 px-2 text-center border-x">#</TableHead>
+                                                        <TableHead className="font-bold text-primary px-3 border-x">Particulars</TableHead>
+                                                        <TableHead className="w-[90px] font-bold text-primary px-2 border-x">HSN</TableHead>
+                                                        <TableHead className="w-[100px] font-bold text-primary text-right px-2 border-x">Taxable</TableHead>
+                                                        <TableHead className="w-[50px] font-bold text-primary text-center px-1 border-x">%</TableHead>
+                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">CGST</TableHead>
+                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">SGST</TableHead>
+                                                        <TableHead className="w-[110px] text-right font-bold text-primary pr-4 border-x">Total</TableHead>
+                                                        <TableHead className="w-[40px] border-x"></TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {items.filter(i => i.type === 'part').map((item, idx) => {
+                                                        const originalIndex = items.findIndex(orig => orig.id === item.id);
+                                                        return (
+                                                            <TableRow key={item.id}>
+                                                                <TableCell className="px-2 font-medium text-muted-foreground text-center border-x">{idx + 1}</TableCell>
+                                                                <TableCell className="px-2 border-x">
+                                                                    <Input
+                                                                        value={item.description}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'description', e.target.value)}
+                                                                        className="h-8 border-transparent hover:border-slate-200 focus-visible:ring-1 px-1 text-slate-900 font-medium"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="px-1 border-x">
+                                                                    <Input
+                                                                        value={item.hsn_code || ''}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'hsn_code', e.target.value)}
+                                                                        className="h-8 border-none focus-visible:ring-1 px-1"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="text-right px-1 border-x">
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={item.unit_price}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'unit_price', e.target.value)}
+                                                                        className="h-8 text-right font-medium border-none focus-visible:ring-1 px-1"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="px-1 border-x">
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={item.gst_rate || taxRate}
+                                                                        onChange={(e) => handleItemChange(originalIndex, 'gst_rate', e.target.value)}
+                                                                        className="h-8 text-center border-none focus-visible:ring-1 px-1"
+                                                                        disabled={isFinalized}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.cgst_amount?.toFixed(2)}</TableCell>
+                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.sgst_amount?.toFixed(2)}</TableCell>
+                                                                <TableCell className="text-right font-bold text-primary pr-4 whitespace-nowrap border-x">₹{item.total.toFixed(2)}</TableCell>
+                                                                <TableCell className="px-1 border-x text-center">
+                                                                    {!isFinalized && (
+                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveItem(originalIndex)}>
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </Button>
+                                                                    )}
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </div>
 
                                     {items.length === 0 && (
                                         <div className="text-center py-8 text-muted-foreground border-dashed border-2 rounded-lg">
@@ -700,8 +814,27 @@ export default function InvoiceEditor() {
                                         <span>Total</span>
                                         <span>₹{grandTotal.toFixed(2)}</span>
                                     </div>
+                                    <div className="mt-4 pt-4 border-t">
+                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Amount in Words:</p>
+                                        <p className="text-xs font-semibold">{toWords.convert(grandTotal)}</p>
+                                    </div>
                                 </CardContent>
                             </Card>
+
+                            {!isQuotation && companyProfile && (
+                                <Card>
+                                    <CardHeader className="py-3">
+                                        <CardTitle className="text-sm">Bank Account Details</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="text-xs space-y-1">
+                                        <div className="flex justify-between"><span className="text-muted-foreground">Acc Name:</span> <span className="font-medium">{companyProfile.acc_name || companyProfile.company_name}</span></div>
+                                        <div className="flex justify-between"><span className="text-muted-foreground">Acc No:</span> <span className="font-medium font-mono">{companyProfile.acc_number}</span></div>
+                                        <div className="flex justify-between"><span className="text-muted-foreground">IFSC:</span> <span className="font-medium font-mono">{companyProfile.ifsc}</span></div>
+                                        <div className="flex justify-between"><span className="text-muted-foreground">Bank:</span> <span className="font-medium">{companyProfile.bank_name}</span></div>
+                                        {companyProfile.upi_id && <div className="flex justify-between"><span className="text-muted-foreground">UPI ID:</span> <span className="font-medium">{companyProfile.upi_id}</span></div>}
+                                    </CardContent>
+                                </Card>
+                            )}
                         </div>
                     </div>
                 </main>

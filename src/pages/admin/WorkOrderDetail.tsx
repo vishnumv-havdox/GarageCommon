@@ -22,6 +22,7 @@ import {
     Bell, ShieldCheck, FileText, Calendar as CalendarIcon
 } from "lucide-react";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
+import { PartRequestList } from "@/components/inventory/PartRequestList";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -884,6 +885,12 @@ export default function WorkOrderDetail() {
                                     </CardContent>
                                 </Card>
                             ))}
+
+                            {/* [PART REQUEST SYSTEM] */}
+                            <PartRequestList
+                                workOrderId={id!}
+                                isAdmin={user?.role === 'admin' || user?.role === 'manager'}
+                            />
                         </div>
                     </div>
 

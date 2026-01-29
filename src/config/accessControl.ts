@@ -31,6 +31,13 @@ export const accessControlConfig: AccessRule[] = [
     description: "Login page - accessible to all (redirects if logged in)",
     exact: true,
   },
+  {
+    path: "/inventory/login",
+    allowedRoles: [],
+    redirectTo: "/inventory/room",
+    description: "Inventory Room specialized login",
+    exact: true,
+  },
 
   // Dashboard - accessible to all authenticated users
   {
@@ -139,6 +146,18 @@ export const accessControlConfig: AccessRule[] = [
     redirectTo: "/dashboard",
     description: "Company profile and document settings - admin and manager",
   },
+  {
+    path: "/inventory",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Inventory management shortcut",
+  },
+  {
+    path: "/inventory/room",
+    allowedRoles: ["admin", "manager", "staff"],
+    redirectTo: "/dashboard",
+    description: "Physical inventory room scanning - staff access",
+  },
 
   // Staff routes
   {
@@ -246,6 +265,7 @@ export const navConfig: NavItem[] = [
   { label: "Performance", path: "/admin/analytics", icon: BarChart3, roles: ["admin"] },
   { label: "Progress", path: "/admin/progress", icon: Activity, roles: ["admin", "manager", "staff"] },
   { label: "Inventory", path: "/admin/inventory", icon: Package, roles: ["admin"] },
+  { label: "Inventory Room", path: "/inventory/room", icon: QrCode, roles: ["admin", "manager", "staff"] },
   { label: "Invoices", path: "/admin/invoices", icon: Receipt, roles: ["admin", "manager", "staff"] },
   { label: "Financials", path: "/admin/invoice-analytics", icon: BarChart3, roles: ["admin", "manager"] },
   { label: "360° Analytics", path: "/admin/analytics-dashboard", icon: PieChart, roles: ["admin", "manager"] },
@@ -258,6 +278,6 @@ export const navConfig: NavItem[] = [
 // Import icons
 import {
   Shield, UserCog, Users, Truck, FileText, Package, Receipt,
-  Briefcase, User, Settings, Activity, BarChart3, PieChart
+  Briefcase, User, Settings, Activity, BarChart3, PieChart, QrCode
 } from "lucide-react";
 

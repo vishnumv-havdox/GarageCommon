@@ -22,6 +22,7 @@ interface Customer {
   phone?: string;
   address?: string;
   company_name?: string;
+  gst_number?: string;
   created_at: string;
 }
 
@@ -58,6 +59,7 @@ export default function AdminCustomers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
   const toggleExpand = (customerId: string) => {
     setExpandedCustomers((prev) => {
@@ -239,9 +241,19 @@ export default function AdminCustomers() {
             </Button>
           </div>
 
-          {showForm && (
+          {(showForm || editingCustomer) && (
             <div className="mb-8">
-              <CustomerForm onSuccess={handleFormSuccess} onCancel={() => setShowForm(false)} />
+              <CustomerForm
+                onSuccess={() => {
+                  handleFormSuccess();
+                  setEditingCustomer(null);
+                }}
+                onCancel={() => {
+                  setShowForm(false);
+                  setEditingCustomer(null);
+                }}
+                initialData={editingCustomer}
+              />
             </div>
           )}
 
@@ -296,6 +308,12 @@ export default function AdminCustomers() {
                                 <p className="flex items-center gap-2 text-muted-foreground">
                                   <Building2 className="h-4 w-4" />
                                   {customer.company_name}
+                                </p>
+                              )}
+                              {customer.gst_number && (
+                                <p className="flex items-center gap-2 text-muted-foreground">
+                                  <Receipt className="h-4 w-4" />
+                                  GST: {customer.gst_number}
                                 </p>
                               )}
                               <p className="flex items-center gap-2 text-muted-foreground">
@@ -405,14 +423,28 @@ export default function AdminCustomers() {
                               </div>
                             )}
                           </div>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDelete(customer)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingCustomer(customer);
+                                setShowForm(false); // Ensure create mode is off
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDelete(customer)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Delete
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );

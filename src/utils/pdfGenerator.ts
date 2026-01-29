@@ -25,9 +25,9 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
             supabase.from('document_settings').select('*').eq('doc_type', type).single(),
             supabase.from('work_orders').select(`
         *,
-        vehicle:vehicles(
+        vehicle:vehicles!vehicle_id(
           vehicle_number, model, kilometers_driven, next_service_km, fc_expiry_date,
-          customers(name, phone, address)
+          customers(name, phone, address, gst_number)
         )
       `).eq('id', workOrderId).single(),
             supabase.from('work_order_services').select('*').eq('work_order_id', workOrderId),
@@ -53,7 +53,7 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
 
             if (invItems && invItems.length > 0) {
                 // Map invoice items to the structure we need for table
-                finalItems = invItems.map(item => ({
+                finalItems = invItems.map((item: any) => ({
                     service_type: item.description,
                     estimated_cost: item.total // Use total as cost for display
                 }));
@@ -168,6 +168,13 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
         doc.text(workOrder.vehicle?.customers?.phone || '', 20, startY + 22);
         if (workOrder.vehicle?.customers?.address) {
             doc.text(workOrder.vehicle.customers.address, 20, startY + 28);
+        }
+
+        // Show GSTIN only for Tax Invoices
+        if (type === 'invoice' && workOrder.vehicle?.customers?.gst_number) {
+            doc.setFont('helvetica', 'bold');
+            doc.text(`GSTIN: ${workOrder.vehicle.customers.gst_number}`, 20, startY + 34);
+            doc.setFont('helvetica', 'normal');
         }
 
         // Vehicle Box

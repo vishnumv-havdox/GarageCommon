@@ -121,6 +121,12 @@ export const accessControlConfig: AccessRule[] = [
     description: "Invoice Analytics and Financial Insights - admin and manager",
   },
   {
+    path: "/admin/analytics-dashboard",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Unified Customer & Vehicle Analytics - admin and manager",
+  },
+  {
     path: "/admin/access-control",
     allowedRoles: ["admin"],
     redirectTo: "/dashboard",
@@ -242,6 +248,7 @@ export const navConfig: NavItem[] = [
   { label: "Inventory", path: "/admin/inventory", icon: Package, roles: ["admin"] },
   { label: "Invoices", path: "/admin/invoices", icon: Receipt, roles: ["admin", "manager", "staff"] },
   { label: "Financials", path: "/admin/invoice-analytics", icon: BarChart3, roles: ["admin", "manager"] },
+  { label: "360° Analytics", path: "/admin/analytics-dashboard", icon: PieChart, roles: ["admin", "manager"] },
   { label: "Configuration", path: "/admin/settings", icon: Settings, roles: ["admin", "manager"] },
   { label: "Access Control", path: "/admin/access-control", icon: Shield, roles: ["admin"] },
   { label: "Staff Portal", path: "/staff", icon: Briefcase, roles: ["staff"] },
@@ -251,6 +258,6 @@ export const navConfig: NavItem[] = [
 // Import icons
 import {
   Shield, UserCog, Users, Truck, FileText, Package, Receipt,
-  Briefcase, User, Settings, Activity, BarChart3
+  Briefcase, User, Settings, Activity, BarChart3, PieChart
 } from "lucide-react";
 

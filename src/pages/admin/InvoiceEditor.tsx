@@ -136,7 +136,7 @@ export default function InvoiceEditor() {
                     customer:customers(*),
                     work_order:work_orders(
                         *,
-                        vehicle:vehicles(*)
+                        vehicle:vehicles!vehicle_id(*)
                     )
                 `)
                 .eq('id', id)
@@ -648,6 +648,12 @@ export default function InvoiceEditor() {
                                     <div>
                                         <div className="font-semibold">{invoice.customer?.name}</div>
                                         <div className="text-muted-foreground">{invoice.customer?.company_name}</div>
+                                        {/* Show GST only for Tax Invoices */}
+                                        {!isQuotation && invoice.customer?.gst_number && (
+                                            <div className="text-xs mt-1 text-muted-foreground">
+                                                <span className="font-medium">GSTIN:</span> {invoice.customer.gst_number}
+                                            </div>
+                                        )}
                                     </div>
                                     <Separator />
                                     <div>

@@ -14,7 +14,15 @@ export default function InventoryLogin() {
     const [loading, setLoading] = useState(false);
     const [loginData, setLoginData] = useState({ email: "", password: "" });
 
+    const [profile, setProfile] = useState<any>(null);
+
     useEffect(() => {
+        const fetchProfile = async () => {
+            const { data } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
+            if (data) setProfile(data);
+        };
+        fetchProfile();
+
         // Check if user is already logged in
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
@@ -63,10 +71,14 @@ export default function InventoryLogin() {
                 <CardHeader className="space-y-2 text-center">
                     <div className="flex justify-center mb-4">
                         <div className="p-4 bg-primary rounded-2xl shadow-lg shadow-primary/20">
-                            <QrCode className="h-10 w-10 text-white" />
+                            {profile?.logo_url ? (
+                                <img src={profile.logo_url} alt="Logo" className="h-10 w-10 object-contain" />
+                            ) : (
+                                <QrCode className="h-10 w-10 text-white" />
+                            )}
                         </div>
                     </div>
-                    <CardTitle className="text-3xl font-bold tracking-tight">Inventory Room</CardTitle>
+                    <CardTitle className="text-3xl font-bold tracking-tight uppercase">{profile?.company_name || 'Inventory Room'}</CardTitle>
                     <CardDescription className="text-slate-400">Authorized Personnel Only</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -76,7 +88,7 @@ export default function InventoryLogin() {
                             <Input
                                 id="email"
                                 type="email"
-                                placeholder="staff@ammaauto.com"
+                                placeholder="staff@example.com"
                                 className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 h-12"
                                 value={loginData.email}
                                 onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
@@ -106,7 +118,7 @@ export default function InventoryLogin() {
                             )}
                         </Button>
                         <div className="pt-4 text-center">
-                            <p className="text-xs text-slate-500 uppercase tracking-widest">Amma Auto Inventory Management</p>
+                            <p className="text-xs text-slate-500 uppercase tracking-widest">{profile?.company_name || 'AMMA AUTO'} Inventory Management</p>
                         </div>
                     </form>
                 </CardContent>

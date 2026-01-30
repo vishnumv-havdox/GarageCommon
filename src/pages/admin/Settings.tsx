@@ -195,13 +195,50 @@ export default function Settings() {
                                                 onChange={e => setProfile({ ...profile, tax_id: e.target.value })}
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label>Logo URL</Label>
-                                            <Input
-                                                value={profile.logo_url || ''}
-                                                onChange={e => setProfile({ ...profile, logo_url: e.target.value })}
-                                                placeholder="https://..."
-                                            />
+                                        <div className="space-y-4 md:col-span-2">
+                                            <Label>Company Logo</Label>
+                                            <div className="flex items-center gap-6 p-4 border rounded-lg bg-muted/50">
+                                                {profile.logo_url ? (
+                                                    <img
+                                                        src={profile.logo_url}
+                                                        alt="Logo Preview"
+                                                        className="h-20 w-20 object-contain rounded border bg-white"
+                                                    />
+                                                ) : (
+                                                    <div className="h-20 w-20 flex items-center justify-center border-2 border-dashed rounded bg-muted">
+                                                        <Building2 className="h-8 w-8 text-muted-foreground/50" />
+                                                    </div>
+                                                )}
+                                                <div className="flex-1 space-y-2">
+                                                    <Input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={async (e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (!file) return;
+                                                            setSaving(true);
+                                                            try {
+                                                                const fileExt = file.name.split('.').pop();
+                                                                const fileName = `logo-${Date.now()}.${fileExt}`;
+                                                                const { error: uploadError } = await supabase.storage
+                                                                    .from('public-assets')
+                                                                    .upload(fileName, file);
+                                                                if (uploadError) throw uploadError;
+                                                                const { data: { publicUrl } } = supabase.storage
+                                                                    .from('public-assets')
+                                                                    .getPublicUrl(fileName);
+                                                                setProfile({ ...profile, logo_url: publicUrl });
+                                                                toast({ title: "Logo Uploaded", description: "Remember to save your profile." });
+                                                            } catch (error: any) {
+                                                                toast({ variant: "destructive", title: "Upload Failed", description: error.message });
+                                                            } finally {
+                                                                setSaving(false);
+                                                            }
+                                                        }}
+                                                    />
+                                                    <p className="text-[10px] text-muted-foreground">Recommended: Square PNG with transparent background.</p>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                     <Button onClick={handeSaveProfile} disabled={saving} className="mt-4">
@@ -466,8 +503,8 @@ export default function Settings() {
                                                 <Label htmlFor="bankName">Bank Name</Label>
                                                 <Input
                                                     id="bankName"
-                                                    value={profile.bank_details?.bankName || ''}
-                                                    onChange={(e) => setProfile({ ...profile, bank_details: { ...profile.bank_details, bankName: e.target.value } })}
+                                                    value={profile.bank_name || ''}
+                                                    onChange={(e) => setProfile({ ...profile, bank_name: e.target.value })}
                                                     placeholder="e.g. HDFC Bank"
                                                 />
                                             </div>
@@ -475,8 +512,8 @@ export default function Settings() {
                                                 <Label htmlFor="accountName">Account Holder Name</Label>
                                                 <Input
                                                     id="accountName"
-                                                    value={profile.bank_details?.accountName || ''}
-                                                    onChange={(e) => setProfile({ ...profile, bank_details: { ...profile.bank_details, accountName: e.target.value } })}
+                                                    value={profile.acc_name || ''}
+                                                    onChange={(e) => setProfile({ ...profile, acc_name: e.target.value })}
                                                     placeholder="e.g. Amma Auto Service"
                                                 />
                                             </div>
@@ -484,8 +521,8 @@ export default function Settings() {
                                                 <Label htmlFor="accountNumber">Account Number</Label>
                                                 <Input
                                                     id="accountNumber"
-                                                    value={profile.bank_details?.accountNumber || ''}
-                                                    onChange={(e) => setProfile({ ...profile, bank_details: { ...profile.bank_details, accountNumber: e.target.value } })}
+                                                    value={profile.acc_number || ''}
+                                                    onChange={(e) => setProfile({ ...profile, acc_number: e.target.value })}
                                                     placeholder="xxxxxxxxxxxx"
                                                 />
                                             </div>
@@ -493,9 +530,18 @@ export default function Settings() {
                                                 <Label htmlFor="ifscCode">IFSC Code</Label>
                                                 <Input
                                                     id="ifscCode"
-                                                    value={profile.bank_details?.ifscCode || ''}
-                                                    onChange={(e) => setProfile({ ...profile, bank_details: { ...profile.bank_details, ifscCode: e.target.value } })}
+                                                    value={profile.ifsc || ''}
+                                                    onChange={(e) => setProfile({ ...profile, ifsc: e.target.value })}
                                                     placeholder="HDFC0001234"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="upiId">UPI ID</Label>
+                                                <Input
+                                                    id="upiId"
+                                                    value={profile.upi_id || ''}
+                                                    onChange={(e) => setProfile({ ...profile, upi_id: e.target.value })}
+                                                    placeholder="example@okaxis"
                                                 />
                                             </div>
                                         </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -51,6 +51,7 @@ import { format } from "date-fns";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { Separator } from "@/components/ui/separator";
 import { useNavigate } from "react-router-dom"; // Add import
+import { SearchInput } from "@/components/shared/SearchInput";
 
 export default function AdminInvoices() {
   const { user } = useAuth();
@@ -403,10 +404,27 @@ export default function AdminInvoices() {
       inv.invoice_number?.toLowerCase().includes(query) ||
       inv.bill_number?.toString().includes(query) ||
       inv.customer?.name?.toLowerCase().includes(query) ||
-      inv.work_order?.vehicle?.vehicle_number?.toLowerCase().includes(query)
+      inv.customer?.company_name?.toLowerCase().includes(query) ||
+      inv.customer?.phone?.toLowerCase().includes(query) ||
+      inv.work_order?.vehicle?.vehicle_number?.toLowerCase().includes(query) ||
+      inv.work_order?.vehicle?.model?.toLowerCase().includes(query) ||
+      inv.work_order_id?.toLowerCase().includes(query)
     );
     return statusMatch && searchMatch && typeMatch;
   });
+
+  // Collect suggestions
+  const suggestions = useMemo(() => {
+    const sets = [
+      new Set(invoices.map(i => i.customer?.name)),
+      new Set(invoices.map(i => i.customer?.company_name)),
+      new Set(invoices.map(i => i.bill_number?.toString())),
+      new Set(invoices.map(i => i.work_order?.vehicle?.vehicle_number)),
+      new Set(pendingWorkOrders.map(wo => wo.vehicle?.vehicle_number)),
+      new Set(pendingWorkOrders.map(wo => wo.vehicle?.customer?.name))
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [invoices, pendingWorkOrders]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -496,12 +514,11 @@ export default function AdminInvoices() {
 
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search invoices..."
+                <SearchInput
+                  placeholder="Search invoices by customer, vehicle, bill #, etc..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
+                  onChange={setSearchTerm}
+                  suggestions={suggestions}
                 />
               </div>
               {activeTab === 'all' && (

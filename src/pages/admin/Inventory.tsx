@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { InventoryForm } from "@/components/inventory/InventoryForm";
+import { SearchInput } from "@/components/shared/SearchInput";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -262,9 +263,12 @@ export default function AdminInventory() {
   };
 
   const generateQRCodeSheet = async () => {
+    const { data: profile } = await supabase.from('company_profiles').select('company_name').limit(1).maybeSingle();
+    const companyTitle = profile?.company_name || "Amma Auto";
+
     const doc = new jsPDF();
     doc.setFontSize(16);
-    doc.text("Amma Auto Inventory QR Codes", 20, 20);
+    doc.text(`${companyTitle} Inventory QR Codes`, 20, 20);
 
     let x = 20;
     let y = 30;
@@ -373,6 +377,26 @@ export default function AdminInventory() {
     const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const inventorySuggestions = useMemo(() => {
+    const sets = [
+      new Set(inventory.map(i => i.item_name)),
+      new Set(inventory.map(i => i.sku)),
+      new Set(inventory.map(i => i.location)),
+      new Set(inventory.map(i => i.category)),
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [inventory]);
+
+  const historySuggestions = useMemo(() => {
+    const sets = [
+      new Set(history.map(h => h.item_name)),
+      new Set(history.map(h => h.sku)),
+      new Set(history.map(h => h.customer_name)),
+      new Set(history.map(h => h.vehicle_number)),
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [history]);
 
   const lowStockItems = inventory.filter(item => item.available_qty <= item.reorder_level);
 
@@ -493,12 +517,11 @@ export default function AdminInventory() {
 
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
+                <SearchInput
                   placeholder="Search by name or SKU..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  onChange={setSearchTerm}
+                  suggestions={inventorySuggestions}
                 />
               </div>
               <div className="flex gap-2">
@@ -665,12 +688,11 @@ export default function AdminInventory() {
           <TabsContent value="history" className="space-y-6">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
+                <SearchInput
                   placeholder="Filter history by part, employee, WO, or vehicle..."
                   value={historySearch}
-                  onChange={(e) => setHistorySearch(e.target.value)}
-                  className="pl-10"
+                  onChange={setHistorySearch}
+                  suggestions={historySuggestions}
                 />
               </div>
             </div>

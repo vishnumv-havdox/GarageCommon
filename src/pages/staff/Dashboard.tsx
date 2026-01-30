@@ -64,6 +64,7 @@ export default function StaffDashboard() {
   const [activeTab, setActiveTab] = useState("active")
   const [notificationCount, setNotificationCount] = useState(0)
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({})
+  const [employeeProfile, setEmployeeProfile] = useState<any>(null)
 
   const fetchWorkItems = useCallback(async () => {
     if (!user?.id) {
@@ -122,6 +123,20 @@ export default function StaffDashboard() {
       })
 
       setWorkItems(workItemsData)
+
+      // Fetch personal profile details
+      const { data: profileData, error: profileError } = await supabase
+        .from("employees")
+        .select(`
+          *,
+          position:positions(*)
+        `)
+        .eq("user_id", user.id)
+        .single()
+
+      if (!profileError) {
+        setEmployeeProfile(profileData)
+      }
 
       // Count pending acceptance tasks
       const pendingCount = workItemsData.filter(w =>
@@ -475,6 +490,15 @@ export default function StaffDashboard() {
             >
               Completed History ({completedWorkItems.length})
             </button>
+            <button
+              onClick={() => setActiveTab("profile")}
+              className={`w-full rounded-lg py-2.5 text-sm font-medium leading-5 ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${activeTab === "profile"
+                ? "bg-background text-foreground shadow"
+                : "text-muted-foreground hover:bg-white/[0.12] hover:text-white"
+                }`}
+            >
+              My Profile
+            </button>
           </div>
 
           <Card>
@@ -518,6 +542,95 @@ export default function StaffDashboard() {
                     </div>
                   </CardContent>
                 </Card>
+              ) : activeTab === "profile" ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                          <User className="h-4 w-4 text-primary" />
+                          Personal Information
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Full Name</p>
+                            <p className="font-medium">{employeeProfile?.name || "N/A"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Blood Group</p>
+                            <p className="font-medium text-destructive">{employeeProfile?.blood_group || "Not Set"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Date of Birth</p>
+                            <p className="font-medium">{employeeProfile?.date_of_birth ? format(new Date(employeeProfile.date_of_birth), "PPP") : "Not Set"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Joining Date</p>
+                            <p className="font-medium">{employeeProfile?.joining_date ? format(new Date(employeeProfile.joining_date), "PPP") : "N/A"}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Address</p>
+                          <p className="font-medium text-sm">{employeeProfile?.address || "No address on record"}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                          <Shield className="h-4 w-4 text-primary" />
+                          Official Details & Identity
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Position</p>
+                            <p className="font-medium">{employeeProfile?.position?.name || "Not Assigned"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Department</p>
+                            <p className="font-medium">{employeeProfile?.position?.department || "N/A"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Access Level</p>
+                            <Badge variant="outline" className="capitalize">{employeeProfile?.access_level || "Staff"}</Badge>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Monthly Salary</p>
+                            <p className="font-medium">₹{employeeProfile?.salary?.toLocaleString() || "Private"}</p>
+                          </div>
+                        </div>
+                        <div className="pt-2 border-t space-y-3">
+                          <div className="flex justify-between items-center">
+                            <p className="text-xs text-muted-foreground">Aadhaar Number</p>
+                            <p className="font-mono text-xs">{employeeProfile?.aadhaar_number || "Pending Verification"}</p>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <p className="text-xs text-muted-foreground">PAN Number</p>
+                            <p className="font-mono text-xs uppercase">{employeeProfile?.pan_number || "Pending Verification"}</p>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <p className="text-xs text-muted-foreground">Emergency Contact</p>
+                            <p className="text-xs font-medium">{employeeProfile?.emergency_contact || "Not Set"}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="bg-muted/30 p-4 rounded-lg flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5" />
+                    <div className="text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground mb-1">Data Privacy Notice</p>
+                      Your identity information (Aadhaar, PAN) and salary details are encrypted and visible only to you and the payroll administration.
+                      If any information is incorrect, please contact the HR manager.
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {(activeTab === "active" ? activeWorkItems : completedWorkItems).map((work) => {

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, LogOut, Menu } from "lucide-react";
+import { Shield, LogOut, Menu, Building2 } from "lucide-react";
 import { navConfig } from "@/config/accessControl";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
@@ -14,6 +15,15 @@ export function AdminSidebar() {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [company, setCompany] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
+      if (data) setCompany(data);
+    };
+    fetchProfile();
+  }, []);
 
   // Filter nav items based on user role
   const filteredNav = navConfig.filter(
@@ -24,12 +34,16 @@ export function AdminSidebar() {
     <div className="flex flex-col h-full bg-card">
       <div className="p-4 border-b">
         <NavLink to="/admin" className="flex items-center gap-3" onClick={() => setOpen(false)}>
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Shield className="h-6 w-6 text-primary" />
+          <div className="p-2 bg-primary/10 rounded-lg shrink-0">
+            {company?.logo_url ? (
+              <img src={company.logo_url} alt="Logo" className="h-6 w-6 object-contain" />
+            ) : (
+              <Shield className="h-6 w-6 text-primary" />
+            )}
           </div>
-          <div>
-            <h1 className="font-bold">AMMA AUTO</h1>
-            <p className="text-xs text-muted-foreground">Admin Panel</p>
+          <div className="truncate">
+            <h1 className="font-bold truncate text-sm uppercase">{company?.company_name || 'AMMA AUTO'}</h1>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Admin Panel</p>
           </div>
         </NavLink>
       </div>
@@ -48,8 +62,8 @@ export function AdminSidebar() {
               end={item.end}
               onClick={() => setOpen(false)}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
             >
               <Icon className="h-5 w-5" />

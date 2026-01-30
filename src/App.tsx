@@ -23,6 +23,8 @@ import AnalyticsDashboard from "./pages/admin/AnalyticsDashboard";
 import AdminUsers from "./pages/admin/Users";
 import AdminAccessControl from "./pages/admin/AccessControl";
 import AdminSettings from "./pages/admin/Settings";
+import AdminAttendance from "./pages/admin/Attendance";
+import AdminSalary from "./pages/admin/SalaryManagement";
 import InventoryLogin from "./pages/inventory/Login";
 import InventoryRoom from "./pages/inventory/InventoryRoom";
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -51,6 +53,8 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/users": AdminUsers,
   "/admin/access-control": AdminAccessControl,
   "/admin/settings": AdminSettings,
+  "/admin/attendance": AdminAttendance,
+  "/admin/salary": AdminSalary,
   "/inventory": AdminInventory,
   "/inventory/login": InventoryLogin,
   "/inventory/room": InventoryRoom,

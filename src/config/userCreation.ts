@@ -232,7 +232,111 @@ export async function createUser(
     // admin: No additional table (already in profiles)
 
     return { success: true, authUserId: userId };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
 
+/**
+ * Update existing user across all tables
+ */
+export async function updateUser(
+  userType: UserType,
+  userId: string,
+  data: {
+    email?: string;
+    fullName?: string;
+    phone?: string;
+    // Employee-specific
+    positionId?: string;
+    accessLevel?: "admin" | "manager" | "staff";
+    salary?: number;
+    address?: string;
+    joiningDate?: string;
+    emergencyContact?: string;
+    aadhaarNumber?: string;
+    panNumber?: string;
+    dateOfBirth?: string;
+    bloodGroup?: string;
+    payType?: string;
+    // Customer-specific
+    companyName?: string;
+    address_customer?: string;
+  },
+  supabaseAdmin: any
+): Promise<CreateUserResult> {
+  const config = getUserConfig(userType);
+
+  try {
+    // Step 1: Update auth user metadata if needed
+    if (data.fullName || data.phone || data.email) {
+      const updateData: any = {};
+      if (data.fullName) updateData.user_metadata = { ...updateData.user_metadata, [config.authMetaField]: data.fullName };
+      if (data.phone) updateData.user_metadata = { ...updateData.user_metadata, phone: data.phone };
+      if (data.email) updateData.email = data.email;
+
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, updateData);
+      if (authError) return { success: false, error: authError.message };
+    }
+
+    // Step 2: Update role if access level changed (for employees)
+    if (userType === "employee" && data.accessLevel) {
+      // NOTE: We keep the auth role as 'staff' but the domain access_level can vary
+      // In this system, user_roles.role stays 'staff', but employees.access_level defines granular permissions
+    }
+
+    // Step 3: Update profile
+    if (data.fullName || data.email || data.phone) {
+      const { error: profileError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          email: data.email,
+          full_name: data.fullName,
+          phone: data.phone,
+        })
+        .eq("id", userId);
+      if (profileError) return { success: false, error: profileError.message };
+    }
+
+    // Step 4: Update domain-specific table
+    if (userType === "employee") {
+      const { error: employeeError } = await supabaseAdmin
+        .from("employees")
+        .update({
+          name: data.fullName,
+          email: data.email,
+          phone: data.phone,
+          position_id: data.positionId,
+          access_level: data.accessLevel,
+          salary: data.salary,
+          address: data.address,
+          joining_date: data.joiningDate,
+          emergency_contact: data.emergencyContact,
+          aadhaar_number: data.aadhaarNumber,
+          pan_number: data.panNumber,
+          date_of_birth: data.dateOfBirth,
+          blood_group: data.bloodGroup,
+          pay_type: data.payType,
+        })
+        .eq("user_id", userId);
+
+      if (employeeError) return { success: false, error: employeeError.message };
+    } else if (userType === "customer") {
+      const { error: customerError } = await supabaseAdmin
+        .from("customers")
+        .update({
+          name: data.fullName,
+          email: data.email,
+          phone: data.phone,
+          company_name: data.companyName,
+          address: data.address_customer,
+        })
+        .eq("user_id", userId);
+
+      if (customerError) return { success: false, error: customerError.message };
+    }
+
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -263,12 +367,21 @@ export function getPageFields(userType: UserType): FieldConfig[] {
     return [
       ...baseFields,
       { name: "positionId", label: "Position", required: true, options: [] }, // Options populated from positions table
-      { name: "accessLevel", label: "Access Level", required: true, options: [
-        { value: "staff", label: "Staff" },
-        { value: "manager", label: "Manager" },
-        // Admin NOT included for employees
-      ]},
+      {
+        name: "accessLevel", label: "Access Level", required: true, options: [
+          { value: "staff", label: "Staff" },
+          { value: "manager", label: "Manager" },
+          // Admin NOT included for employees
+        ]
+      },
       { name: "salary", label: "Monthly Salary", required: false, type: "number", placeholder: "Salary" },
+      { name: "joiningDate", label: "Joining Date", required: true, type: "date" },
+      { name: "address", label: "Address", required: false, type: "textarea", placeholder: "Full address" },
+      { name: "emergencyContact", label: "Emergency Contact", required: false, placeholder: "Name & Phone" },
+      { name: "aadhaarNumber", label: "Aadhaar Card", required: false, placeholder: "12-digit Aadhaar" },
+      { name: "panNumber", label: "PAN Card", required: false, placeholder: "PAN number" },
+      { name: "dateOfBirth", label: "Date of Birth", required: false, type: "date" },
+      { name: "bloodGroup", label: "Blood Group", required: false, placeholder: "e.g., A+ve" },
     ];
   }
 
@@ -290,7 +403,7 @@ export function getPageFields(userType: UserType): FieldConfig[] {
 
 export function getAccessControlInfo(userType: UserType) {
   const config = getUserConfig(userType);
-  
+
   return {
     role: config.role,
     routes: [

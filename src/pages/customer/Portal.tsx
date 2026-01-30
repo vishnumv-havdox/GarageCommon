@@ -720,9 +720,13 @@ export default function CustomerPortal() {
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <Truck className="h-8 w-8 text-primary" />
+            {profile?.logo_url ? (
+              <img src={profile.logo_url} alt="Logo" className="h-10 w-10 object-contain rounded" />
+            ) : (
+              <Truck className="h-8 w-8 text-primary" />
+            )}
             <div>
-              <h1 className="text-2xl font-bold">Customer Portal</h1>
+              <h1 className="text-2xl font-bold uppercase">{profile?.company_name || 'Customer Portal'}</h1>
               <p className="text-sm text-muted-foreground">Welcome, {user?.full_name || user?.email}</p>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { NavLink } from "react-router-dom";
 import { LogOut, Users, Shield, Plus, Search, Truck } from "lucide-react";
 import { VehicleForm } from "@/components/forms/VehicleForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { SearchInput } from "@/components/shared/SearchInput";
 import {
   Dialog,
   DialogContent,
@@ -104,6 +105,15 @@ export default function AdminVehicles() {
     v.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) || v.model?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const suggestions = useMemo(() => {
+    const sets = [
+      new Set(vehicles.map(v => v.vehicle_number)),
+      new Set(vehicles.map(v => v.model)),
+      new Set(vehicles.map(v => v.customer?.name)),
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [vehicles]);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="flex flex-col lg:flex-row">
@@ -128,12 +138,11 @@ export default function AdminVehicles() {
 
           <div className="mb-6">
             <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search vehicles..."
+              <SearchInput
+                placeholder="Search vehicles by number, model, or owner..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                onChange={setSearchTerm}
+                suggestions={suggestions}
               />
             </div>
           </div>
@@ -261,8 +270,8 @@ export default function AdminVehicles() {
                   <Label className="text-muted-foreground">FC Expiry Date</Label>
                   <div className="flex items-center gap-2">
                     <p className={`font-medium ${viewingVehicle.fc_expiry_date && new Date(viewingVehicle.fc_expiry_date) < new Date()
-                        ? 'text-destructive'
-                        : 'text-foreground'
+                      ? 'text-destructive'
+                      : 'text-foreground'
                       }`}>
                       {viewingVehicle.fc_expiry_date ? new Date(viewingVehicle.fc_expiry_date).toLocaleDateString() : 'N/A'}
                     </p>

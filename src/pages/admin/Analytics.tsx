@@ -217,7 +217,7 @@ export default function AdminAnalytics() {
                                     <tbody className="divide-y">
                                         {empData.map((emp, idx) => {
                                             const time = parseFloat(emp.avg_task_completion_minutes);
-                                            const efficiency = time > 0 ? (60 / time * 100) : 0; // Simple ratio
+                                            const efficiency = time > 0.5 ? Math.min(200, (60 / time * 100)) : (time > 0 ? 100 : 0);
 
                                             return (
                                                 <tr key={idx} className="hover:bg-muted/50 transition-colors">
@@ -226,20 +226,24 @@ export default function AdminAnalytics() {
                                                     <td className="py-4 text-center">{emp.completed_tasks}</td>
                                                     <td className="py-4 text-center">{time ? `${time.toFixed(1)}m` : '-'}</td>
                                                     <td className="py-4 text-center">
-                                                        <Badge variant={parseFloat(emp.acceptance_rate) > 90 ? 'outline' : 'secondary'} className={parseFloat(emp.acceptance_rate) > 90 ? 'text-green-600 bg-green-50' : ''}>
-                                                            {parseFloat(emp.acceptance_rate).toFixed(0)}%
+                                                        <Badge variant={emp.acceptance_rate && parseFloat(emp.acceptance_rate) > 90 ? 'outline' : 'secondary'} className={emp.acceptance_rate && parseFloat(emp.acceptance_rate) > 90 ? 'text-green-600 bg-green-50' : ''}>
+                                                            {emp.acceptance_rate ? `${parseFloat(emp.acceptance_rate).toFixed(0)}%` : '100%'}
                                                         </Badge>
                                                     </td>
                                                     <td className="py-4 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
-                                                                <div
-                                                                    className={`h-full ${efficiency > 80 ? 'bg-green-500' : efficiency > 50 ? 'bg-blue-500' : 'bg-orange-500'}`}
-                                                                    style={{ width: `${Math.min(efficiency, 100)}%` }}
-                                                                />
+                                                        {time > 0 ? (
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
+                                                                    <div
+                                                                        className={`h-full ${efficiency > 80 ? 'bg-green-500' : efficiency > 50 ? 'bg-blue-500' : 'bg-orange-500'}`}
+                                                                        style={{ width: `${Math.min(efficiency, 100)}%` }}
+                                                                    />
+                                                                </div>
+                                                                <span className="text-[10px] font-mono">{efficiency.toFixed(0)}%</span>
                                                             </div>
-                                                            <span className="text-[10px] font-mono">{efficiency.toFixed(0)}%</span>
-                                                        </div>
+                                                        ) : (
+                                                            <span className="text-muted-foreground text-xs italic">N/A</span>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             );

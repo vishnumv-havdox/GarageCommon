@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
 import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { CompactProgressTracker } from "@/components/work-orders/ProgressTracker";
+import { SearchInput } from "@/components/shared/SearchInput";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -208,6 +209,15 @@ export default function AdminWorkOrders() {
     o.id.includes(searchTerm)
   );
 
+  const suggestions = useMemo(() => {
+    const sets = [
+      new Set(workOrders.map(o => o.service_type)),
+      new Set(workOrders.map(o => o.vehicle?.vehicle_number)),
+      new Set(workOrders.map(o => o.customer?.name)),
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [workOrders]);
+
   // Get status badge variant
   const getStatusBadge = (status: string) => {
     const s = status.toLowerCase();
@@ -290,8 +300,12 @@ export default function AdminWorkOrders() {
 
           <div className="mb-6 flex gap-4">
             <div className="relative max-w-md flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search work orders..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+              <SearchInput
+                placeholder="Search work orders by type, vehicle, or customer..."
+                value={searchTerm}
+                onChange={setSearchTerm}
+                suggestions={suggestions}
+              />
             </div>
           </div>
 

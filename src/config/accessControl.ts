@@ -139,6 +139,18 @@ export const accessControlConfig: AccessRule[] = [
     redirectTo: "/dashboard",
     description: "Access control settings - admins only",
   },
+  {
+    path: "/admin/attendance",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Attendance management - admin and manager only",
+  },
+  {
+    path: "/admin/salary",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Salary and payout management - admin and manager only",
+  },
 
   {
     path: "/admin/settings",
@@ -270,6 +282,8 @@ export const navConfig: NavItem[] = [
   { label: "Financials", path: "/admin/invoice-analytics", icon: BarChart3, roles: ["admin", "manager"] },
   { label: "360° Analytics", path: "/admin/analytics-dashboard", icon: PieChart, roles: ["admin", "manager"] },
   { label: "Configuration", path: "/admin/settings", icon: Settings, roles: ["admin", "manager"] },
+  { label: "Attendance", path: "/admin/attendance", icon: CalendarCheck, roles: ["admin", "manager"] },
+  { label: "Salary & Payouts", path: "/admin/salary", icon: Banknote, roles: ["admin", "manager"] },
   { label: "Access Control", path: "/admin/access-control", icon: Shield, roles: ["admin"] },
   { label: "Staff Portal", path: "/staff", icon: Briefcase, roles: ["staff"] },
   { label: "My Portal", path: "/customer", icon: User, roles: ["customer"] },
@@ -278,6 +292,7 @@ export const navConfig: NavItem[] = [
 // Import icons
 import {
   Shield, UserCog, Users, Truck, FileText, Package, Receipt,
-  Briefcase, User, Settings, Activity, BarChart3, PieChart, QrCode
+  Briefcase, User, Settings, Activity, BarChart3, PieChart, QrCode,
+  CalendarCheck, Banknote
 } from "lucide-react";
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import {
 import { NavLink, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { SearchInput } from "@/components/shared/SearchInput";
 
 interface WorkOrderProgress {
   id: string;
@@ -206,6 +207,16 @@ export default function AdminProgress() {
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
+  const suggestions = useMemo(() => {
+    const sets = [
+      new Set(workOrders.map(wo => wo.service_type)),
+      new Set(workOrders.map(wo => wo.vehicle_number)),
+      new Set(workOrders.map(wo => wo.vehicle_model)),
+      new Set(workOrders.map(wo => wo.customer_name)),
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [workOrders]);
+
   const stats = {
     active: workOrders.filter(wo => wo.status !== 'Completed' && wo.status !== 'Delivered').length,
     pendingApproval: workOrders.filter(wo => wo.status === 'Pending Approval').length,
@@ -356,12 +367,11 @@ export default function AdminProgress() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="relative w-48">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
+                    <SearchInput
                       placeholder="Search orders..."
                       value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
+                      onChange={setSearchTerm}
+                      suggestions={suggestions}
                     />
                   </div>
                   <select

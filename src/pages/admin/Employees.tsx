@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { supabaseAdmin } from "@/integrations/supabase/adminClient";
@@ -21,7 +21,10 @@ import {
   User,
 } from "lucide-react";
 import { EmployeeForm } from "@/components/forms/EmployeeForm";
+import { EmployeeTracker } from "@/components/employees/EmployeeTracker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TrendingUp } from "lucide-react";
+import { SearchInput } from "@/components/shared/SearchInput";
 
 interface Position {
   id: string;
@@ -40,6 +43,7 @@ interface Employee {
   salary?: number;
   status?: string;
   position?: Position;
+  joining_date?: string;
   created_at?: string;
 }
 
@@ -54,6 +58,8 @@ export default function AdminEmployees() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
+  const [selectedEmployeeForTracker, setSelectedEmployeeForTracker] = useState<Employee | null>(null);
+  const [isTrackerOpen, setIsTrackerOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -123,7 +129,7 @@ export default function AdminEmployees() {
 
   const handleConfirmDelete = async () => {
     if (!deletingEmployee) return;
-    
+
     const employeeId = deletingEmployee.id;
 
     try {
@@ -152,7 +158,7 @@ export default function AdminEmployees() {
       if (userId) {
         await supabaseAdmin.from("user_roles").delete().eq("user_id", userId);
         await supabaseAdmin.from("profiles").delete().eq("id", userId);
-        
+
         // Delete auth user using admin client
         try {
           await supabaseAdmin.auth.admin.deleteUser(userId);
@@ -212,6 +218,16 @@ export default function AdminEmployees() {
       emp.position?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const suggestions = useMemo(() => {
+    const sets = [
+      new Set(employees.map(e => e.name)),
+      new Set(employees.map(e => e.email)),
+      new Set(employees.map(e => e.position?.name)),
+      new Set(employees.map(e => e.position?.department)),
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [employees]);
+
   const activeEmployees = employees.filter((e) => e.status === "active").length;
   const totalPositions = positions.length;
 
@@ -237,10 +253,9 @@ export default function AdminEmployees() {
               to="/admin"
               end
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`
               }
             >
@@ -250,10 +265,9 @@ export default function AdminEmployees() {
             <NavLink
               to="/admin/employees"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`
               }
             >
@@ -263,10 +277,9 @@ export default function AdminEmployees() {
             <NavLink
               to="/admin/customers"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`
               }
             >
@@ -276,10 +289,9 @@ export default function AdminEmployees() {
             <NavLink
               to="/admin/vehicles"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`
               }
             >
@@ -289,10 +301,9 @@ export default function AdminEmployees() {
             <NavLink
               to="/admin/work-orders"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`
               }
             >
@@ -302,10 +313,9 @@ export default function AdminEmployees() {
             <NavLink
               to="/admin/inventory"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`
               }
             >
@@ -315,10 +325,9 @@ export default function AdminEmployees() {
             <NavLink
               to="/admin/invoices"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`
               }
             >
@@ -405,12 +414,11 @@ export default function AdminEmployees() {
           {/* Search */}
           <div className="mb-6">
             <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search employees..."
+              <SearchInput
+                placeholder="Search employees by name, position, email..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                onChange={setSearchTerm}
+                suggestions={suggestions}
               />
             </div>
           </div>
@@ -498,9 +506,27 @@ export default function AdminEmployees() {
                                 {employee.salary.toLocaleString()}
                               </span>
                             )}
+                            {employee.joining_date && (
+                              <span className="text-sm">
+                                <span className="font-medium">Joined:</span>{" "}
+                                {new Date(employee.joining_date).toLocaleDateString()}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-primary hover:text-primary hover:bg-primary/5"
+                            onClick={() => {
+                              setSelectedEmployeeForTracker(employee);
+                              setIsTrackerOpen(true);
+                            }}
+                          >
+                            <TrendingUp className="h-4 w-4 mr-1" />
+                            Tracker
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -569,6 +595,13 @@ export default function AdminEmployees() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Employee Tracker Dialog */}
+      <EmployeeTracker
+        employee={selectedEmployeeForTracker}
+        open={isTrackerOpen}
+        onOpenChange={setIsTrackerOpen}
+      />
     </div>
   );
 }

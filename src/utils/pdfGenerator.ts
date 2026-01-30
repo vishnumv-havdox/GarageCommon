@@ -103,6 +103,22 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
             phone: ''
         };
 
+        // 1.5 Pre-load Logo if exists
+        let logoBase64 = "";
+        if (company.logo_url) {
+            try {
+                logoBase64 = await fetch(company.logo_url).then(r => r.blob()).then(blob => {
+                    return new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                    });
+                });
+            } catch (e) {
+                console.error("Failed to pre-load logo:", e);
+            }
+        }
+
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.width;
         const pageHeight = doc.internal.pageSize.height;
@@ -127,10 +143,21 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
             d.setFillColor(41, 128, 185);
             if (type === 'invoice') d.setFillColor(39, 60, 117);
             d.rect(0, 0, pageWidth, isNewPage ? 30 : 40, 'F');
+
+            let nameX = 15;
+            if (logoBase64 && !isNewPage) {
+                try {
+                    d.addImage(logoBase64, 'PNG', 15, 6, 12, 12);
+                    nameX = 32;
+                } catch (e) {
+                    console.error("Failed to add logo to PDF:", e);
+                }
+            }
+
             d.setTextColor(255, 255, 255);
             d.setFontSize(isNewPage ? 18 : 24);
             d.setFont('helvetica', 'bold');
-            d.text(company.company_name.toUpperCase(), 15, isNewPage ? 12 : 18);
+            d.text(company.company_name.toUpperCase(), nameX, isNewPage ? 12 : 18);
             d.setFontSize(isNewPage ? 20 : 30);
             d.text(settings.title || (type === 'invoice' ? 'INVOICE' : 'WORK SLIP'), pageWidth - 15, isNewPage ? 20 : 28, { align: 'right' });
 
@@ -139,7 +166,7 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
                 d.setFont('helvetica', 'normal');
                 d.setTextColor(240, 240, 240);
                 d.text(company.address || '', 15, 26);
-                d.text(`Phone: ${company.phone || ''}`, 15, 31);
+                d.text(`Phone: ${company.phone || ''} | Email: ${company.email || ''}`, 15, 31);
                 d.setFillColor(245, 245, 245);
                 d.rect(0, 40, pageWidth, 25, 'F');
                 d.setTextColor(50, 50, 50);

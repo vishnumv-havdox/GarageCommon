@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { supabaseAdmin } from "@/integrations/supabase/adminClient";
@@ -13,6 +13,7 @@ import { Plus, Search, Trash2, Edit, Mail, Phone, Building2, MapPin, Calendar, C
 import { CustomerForm } from "@/components/forms/CustomerForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { format } from "date-fns";
+import { SearchInput } from "@/components/shared/SearchInput";
 
 interface Customer {
   id: string;
@@ -225,6 +226,16 @@ export default function AdminCustomers() {
       c.company_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const suggestions = useMemo(() => {
+    const sets = [
+      new Set(customers.map(c => c.name)),
+      new Set(customers.map(c => c.company_name)),
+      new Set(customers.map(c => c.phone)),
+      new Set(customers.map(c => c.email)),
+    ];
+    return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
+  }, [customers]);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="flex flex-col lg:flex-row">
@@ -259,12 +270,11 @@ export default function AdminCustomers() {
 
           <div className="mb-6">
             <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search customers..."
+              <SearchInput
+                placeholder="Search customers by name, company, phone, etc..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                onChange={setSearchTerm}
+                suggestions={suggestions}
               />
             </div>
           </div>

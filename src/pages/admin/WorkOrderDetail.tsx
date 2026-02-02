@@ -51,6 +51,7 @@ interface ServiceDetail {
     tasks: {
         id: string;
         task_name: string;
+        price: number;
         completed: boolean;
         is_predefined: boolean;
         completed_at?: string | null;
@@ -218,6 +219,7 @@ export default function WorkOrderDetail() {
                     .map((t: any) => ({
                         id: t.id,
                         task_name: t.task_name,
+                        price: t.price || 0,
                         completed: t.completed,
                         is_predefined: t.is_predefined,
                         completed_at: t.completed_at,
@@ -814,10 +816,11 @@ export default function WorkOrderDetail() {
                                                                 />
                                                                 <label
                                                                     htmlFor={`service-task-${task.id}`}
-                                                                    className={cn("cursor-pointer", task.completed && "line-through text-muted-foreground")}
+                                                                    className={cn("cursor-pointer flex-1", task.completed && "line-through text-muted-foreground")}
                                                                 >
                                                                     {task.task_name}
                                                                 </label>
+                                                                <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1 rounded">₹{task.price || 0}</span>
                                                             </div>
                                                             {task.completed ? (
                                                                 <Badge variant="default" className="bg-green-600 text-[10px] h-5">Done</Badge>

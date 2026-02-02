@@ -27,6 +27,7 @@ interface RepairTask {
   task_name: string
   task_type: 'inspection' | 'repair' | 'testing' | 'quality'
   service_id?: string | null
+  price?: number
   is_completed: boolean
   completed_at: string | null
 }
@@ -832,7 +833,7 @@ export default function StaffDashboard() {
                                                 disabled={isPendingApproval || repairsApproved || isFinished}
                                                 className="h-5 w-5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
                                               />
-                                              <div className="flex-1">
+                                              <div className="flex-1 flex items-center gap-2">
                                                 <label
                                                   htmlFor={`task-${task.id}`}
                                                   className={`text-sm cursor-pointer ${task.is_completed ? "line-through text-muted-foreground" : ""
@@ -840,6 +841,11 @@ export default function StaffDashboard() {
                                                 >
                                                   {index + 1}. {task.task_name}
                                                 </label>
+                                                {task.price !== undefined && task.price > 0 && (
+                                                  <Badge variant="outline" className="text-[10px] h-4 px-1 bg-blue-50/50 text-blue-700 border-blue-100">
+                                                    ₹{task.price}
+                                                  </Badge>
+                                                )}
                                                 <div className="flex items-center gap-2 mt-1">
                                                   <Badge variant="outline" className="text-[10px] uppercase">
                                                     {task.task_type}

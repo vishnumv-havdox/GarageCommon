@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,14 +12,14 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity } from "lucide-react"
-import { serviceTypeConfig, ServiceType } from "@/config/serviceTypeConfig"
+import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings } from "lucide-react"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
 import { format } from "date-fns"
 import { Calendar as CalendarIcon, Clock } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import { calculateServicePrice, checkServiceApplicability } from "@/utils/pricingEngine"
 
 interface Customer {
   id: string
@@ -35,15 +35,45 @@ interface Vehicle {
   customer_name: string
   kilometers_driven?: number
   next_service_km?: number
+  vehicle_type_name?: string
+  vehicle_category_name?: string
+  manufacturer_name?: string
+  vehicle_type_id?: string
+  vehicle_category_id?: string
+  model_id?: string
+  manufacturer_id?: string
 }
 
 interface Employee {
   id: string
   name: string
   email: string
-  position_name: string
-  department: string
+  position_id: string
+  access_level: string
   status: string
+}
+
+interface Manufacturer {
+  id: string
+  name: string
+}
+
+interface Category {
+  id: string
+  name: string
+}
+
+interface VehicleType {
+  id: string
+  name: string
+  category_id: string
+}
+
+interface VehicleModel {
+  id: string
+  name: string
+  manufacturer_id: string
+  vehicle_type_id: string
 }
 
 interface WorkOrderFormProps {
@@ -60,7 +90,13 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const [employees, setEmployees] = useState<Employee[]>([])
 
   // Dynamic Service Types
-  interface DBServiceType { id: string; name: string }
+  interface DBServiceType {
+    id: string;
+    name: string;
+    category?: string;
+    base_price?: number;
+    required_fields?: string[];
+  }
   const [dbServiceTypes, setDbServiceTypes] = useState<DBServiceType[]>([])
   const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([])
 
@@ -100,16 +136,24 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState<Date | undefined>(undefined)
   const [estimatedDeliveryTime, setEstimatedDeliveryTime] = useState("18:00")
 
+  const [lifecycleData, setLifecycleData] = useState({
+    odometer_reading: 0,
+    next_service_due_km: 0,
+    is_fc_renewal: false
+  })
+
   // Multi-service state
-  const [selectedServices, setSelectedServices] = useState<ServiceType[]>([])
+  const [selectedServices, setSelectedServices] = useState<string[]>([])
   const [serviceSections, setServiceSections] = useState<Record<string, ServiceSectionData>>({})
 
   // New Vehicle Dialog State
   const [showAddVehicleDialog, setShowAddVehicleDialog] = useState(false)
   const [newVehicleData, setNewVehicleData] = useState({
     vehicle_number: "",
-    vehicle_type: "Truck",
-    model: "",
+    manufacturer_id: "",
+    category_id: "",
+    vehicle_type_id: "",
+    model_id: "",
     year: new Date().getFullYear(),
     color: "",
     vin: "",
@@ -127,25 +171,79 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     company_name: "",
     address: "",
   })
+  const [includeVehicle, setIncludeVehicle] = useState(true)
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
   const [newCustomerVehicleData, setNewCustomerVehicleData] = useState({
     vehicle_number: "",
-    vehicle_type: "Truck",
-    model: "",
+    vehicle_type_id: "",
+    manufacturer_id: "",
+    category_id: "",
+    model_id: "",
     year: new Date().getFullYear(),
     color: "",
     vin: "",
     engine_number: "",
     kilometers_driven: 0,
   })
-  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
-  const [includeVehicle, setIncludeVehicle] = useState(true)
 
-  // Lifecycle State
-  const [lifecycleData, setLifecycleData] = useState({
-    odometer_reading: 0,
-    next_service_due_km: 0,
-    is_fc_renewal: false
-  })
+  // Normalized catalogs
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([])
+  const [vehicleModels, setVehicleModels] = useState<VehicleModel[]>([])
+
+  // Master Data Add Dialog State
+  const [showAddMasterDialog, setShowAddMasterDialog] = useState(false)
+  const [masterType, setMasterType] = useState<'Manufacturer' | 'Category' | 'Type' | 'Model'>('Manufacturer')
+  const [masterName, setMasterName] = useState("")
+  const [isAddingMaster, setIsAddingMaster] = useState(false)
+
+  const [applicableServiceIds, setApplicableServiceIds] = useState<string[] | null>(null)
+
+  // Applicability Rules Cache
+  interface ApplicabilityRule {
+    service_type_id: string;
+    vehicle_category_id?: string;
+    vehicle_type_id?: string;
+    vehicle_manufacturer_id?: string;
+  }
+  const [applicabilityRules, setApplicabilityRules] = useState<ApplicabilityRule[]>([]);
+
+  const selectedVehicle = useMemo(() => vehicles.find(v => v.id === vehicleId), [vehicles, vehicleId]);
+
+  const displayedServices = useMemo(() => {
+    return dbServiceTypes.filter(service => {
+      if (!selectedVehicle) return true; // Show all if no vehicle selected
+
+      // Filter strict applicability
+      const serviceRules = applicabilityRules.filter(r => r.service_type_id === service.id);
+      if (serviceRules.length === 0) return true; // Universal (No rules defined)
+
+      // Check if ANY rule matches the current vehicle (OR logic between rules)
+      const matches = serviceRules.some(rule => {
+        // Within a rule, ALL defined constraints must match (AND logic)
+        if (rule.vehicle_manufacturer_id && rule.vehicle_manufacturer_id !== selectedVehicle.manufacturer_id) return false;
+        if (rule.vehicle_type_id && rule.vehicle_type_id !== selectedVehicle.vehicle_type_id) return false;
+        if (rule.vehicle_category_id && rule.vehicle_category_id !== selectedVehicle.vehicle_category_id) return false;
+        return true;
+      });
+
+      return matches;
+    });
+  }, [dbServiceTypes, applicabilityRules, selectedVehicle]);
+
+  // Derived lists for cascading dropdowns
+  const availableTypes = useMemo(() => {
+    return vehicleTypes.filter(t => !newVehicleData.category_id || t.category_id === newVehicleData.category_id)
+  }, [vehicleTypes, newVehicleData.category_id])
+
+  const availableModels = useMemo(() => {
+    return vehicleModels.filter(m => {
+      const matchMfr = !newVehicleData.manufacturer_id || m.manufacturer_id === newVehicleData.manufacturer_id
+      const matchType = !newVehicleData.vehicle_type_id || m.vehicle_type_id === newVehicleData.vehicle_type_id
+      return matchMfr && matchType
+    })
+  }, [vehicleModels, newVehicleData.manufacturer_id, newVehicleData.vehicle_type_id])
 
   useEffect(() => {
     fetchAllData()
@@ -157,25 +255,80 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     setLoadingEmployees(true)
 
     try {
-      const [customersRes, vehiclesRes, employeesRes, serviceTypesRes, taskTemplatesRes] = await Promise.all([
+      const [
+        customersRes,
+        vehiclesRes,
+        employeesRes,
+        serviceTypesRes,
+        taskTemplatesRes,
+        mfrsRes,
+        catsRes,
+        typesRes,
+        modelsRes,
+        rulesRes
+      ] = await Promise.all([
         supabase.from('customers').select('id, name, company_name').order('name'),
-        supabase.from('vehicles').select('id, vehicle_number, model, customer_id, kilometers_driven, next_service_km, customers(name)'),
+        supabase.from('vehicles').select(`
+          id, 
+          vehicle_number, 
+          model_id, 
+          customer_id, 
+          kilometers_driven, 
+          next_service_km, 
+          customers(name),
+          vehicle_models (
+            id,
+            name,
+            manufacturer_id,
+            vehicle_type_id,
+            vehicle_manufacturers (id, name),
+            vehicle_types (
+              id,
+              name,
+              category_id,
+              vehicle_categories (id, name)
+            )
+          )
+        `),
         supabase.from('employees').select('id, name, email, position_id, access_level, status').eq('status', 'active'),
-        supabase.from('service_types').select('id, name').order('name'),
-        supabase.from('task_templates').select('id, name, service_type_id').eq('is_active', true),
+        supabase.from('service_types').select('*').order('name'),
+        supabase.from('task_templates').select('id, name, service_type_id, price, is_active').eq('is_active', true),
+        supabase.from('vehicle_manufacturers').select('*').order('name'),
+        supabase.from('vehicle_categories').select('*').order('name'),
+        supabase.from('vehicle_types').select('*').order('name'),
+        supabase.from('vehicle_models').select('*').order('name'),
+        supabase.from('service_vehicle_applicability').select('*')
       ])
+
+      if (rulesRes.data) setApplicabilityRules(rulesRes.data);
+
+      if (mfrsRes.data) setManufacturers(mfrsRes.data)
+      if (catsRes.data) setCategories(catsRes.data)
+      if (typesRes.data) setVehicleTypes(typesRes.data)
+      if (modelsRes.data) setVehicleModels(modelsRes.data)
+
 
       if (customersRes.data) setCustomers(customersRes.data)
       if (vehiclesRes.data) {
-        const formatted = vehiclesRes.data.map((v: any) => ({
-          id: v.id,
-          vehicle_number: v.vehicle_number,
-          model: v.model,
-          customer_id: v.customer_id,
-          customer_name: v.customers?.name,
-          kilometers_driven: v.kilometers_driven,
-          next_service_km: v.next_service_km
-        }))
+        const formatted = vehiclesRes.data.map((v: any) => {
+          const m = v.vehicle_models;
+          return {
+            id: v.id,
+            vehicle_number: v.vehicle_number,
+            model: m?.name || "Unknown",
+            model_id: v.model_id,
+            vehicle_type_id: m?.vehicle_type_id || m?.vehicle_types?.id,
+            vehicle_category_id: m?.vehicle_types?.category_id || m?.vehicle_types?.vehicle_categories?.id,
+            manufacturer_id: m?.manufacturer_id || m?.vehicle_manufacturers?.id,
+            customer_id: v.customer_id,
+            customer_name: v.customers?.name || "Unknown",
+            kilometers_driven: v.kilometers_driven,
+            next_service_km: v.next_service_km,
+            vehicle_type_name: m?.vehicle_types?.name,
+            vehicle_category_name: m?.vehicle_types?.vehicle_categories?.name,
+            manufacturer_name: m?.vehicle_manufacturers?.name
+          }
+        })
         setVehicles(formatted)
       }
       if (employeesRes.data) {
@@ -227,7 +380,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     setVehicleId("")
   }
 
-  const handleVehicleSelect = (id: string) => {
+  const handleVehicleSelect = async (id: string) => {
     setVehicleId(id)
     setVehicleSearch("")
     setVehicleSearchOpen(false)
@@ -240,31 +393,74 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         odometer_reading: selectedVehicle.kilometers_driven || 0,
         next_service_due_km: selectedVehicle.next_service_km || 0
       }))
+
+      setApplicableServiceIds(null); // Reset as we are using client-side calculation now
+      // The filtered list is calculated below in the render or via a memo
     }
   }
 
-  const handleServiceToggle = (type: string, checked: boolean) => {
-    // Cast to ServiceType for compatibility with existing types, 
-    // effectively treating new dynamic types as ServiceType
-    const serviceType = type as ServiceType;
+
+
+  const handleServiceToggle = async (type: string, checked: boolean) => {
+    const serviceMaster = dbServiceTypes.find(s => s.name === type);
+    if (!serviceMaster) return;
 
     if (checked) {
-      setSelectedServices(prev => [...prev, serviceType])
-      // Initialize section data
+      // Calculate dynamic price
+      const priceResult = await calculateServicePrice(serviceMaster.id, vehicleId, customerId);
+
+      let initialTasks: TaskItem[] = [];
+
+      // Tasks should not be auto-added unless there are mandatory one.
+      // Current requirement: "only the user should select"
+      // So we start with empty tasks, but user can add them from the selector.
+      initialTasks = [];
+
+      // We still calculate priceResult to get base/calculated price metadata if needed, 
+      // but we override the tasks list to be empty.
+
+      /* 
+      // Original Auto-Add Logic (Commented out)
+      if (priceResult.taskBreakdown && priceResult.taskBreakdown.length > 0) {
+        initialTasks = priceResult.taskBreakdown.map(tb => ({
+          id: crypto.randomUUID(),
+          name: tb.name,
+          price: tb.calculatedPrice,
+          isPredefined: true,
+          appliedRuleName: tb.appliedRule
+        }));
+      } else {
+        // Find master tasks for this service (Fallback)
+        const serviceTemplates = taskTemplates.filter(t => t.service_type_id === serviceMaster.id);
+        initialTasks = serviceTemplates.map(t => ({
+          id: crypto.randomUUID(),
+          name: t.name,
+          price: t.price || 0,
+          isPredefined: true
+        }));
+      }
+      */
+
+      setSelectedServices(prev => [...prev, type])
       setServiceSections(prev => ({
         ...prev,
-        [serviceType]: {
-          serviceType: serviceType,
-          tasks: [], // Pre-defined tasks can be auto-added here if needed? No, let user select.
+        [type]: {
+          serviceType: type,
+          serviceTypeId: serviceMaster.id, // Ensure ID is stored
+          tasks: initialTasks,
           selectedEmployeeIds: [],
           notes: "",
-          cost: 0
+          cost: priceResult.calculatedPrice,
+          calculatedPrice: priceResult.calculatedPrice,
+          basePrice: priceResult.basePrice,
+          appliedRules: priceResult.appliedRules,
+          taskBreakdown: priceResult.taskBreakdown
         }
       }))
     } else {
-      setSelectedServices(prev => prev.filter(t => t !== serviceType))
+      setSelectedServices(prev => prev.filter(t => t !== type))
       const newSections = { ...serviceSections }
-      delete newSections[serviceType]
+      delete newSections[type]
       setServiceSections(newSections)
     }
   }
@@ -332,10 +528,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       // Complex if name is used as key. WorkOrderForm uses name as key currently.
       // Updating name in `selectedServices` and `serviceSections` is needed.
 
-      if (selectedServices.includes(editingService.name as ServiceType)) {
+      if (selectedServices.includes(editingService.name)) {
         const newName = editServiceName.trim();
         // Update selectedServices
-        setSelectedServices(prev => prev.map(s => s === editingService.name ? newName as ServiceType : s));
+        setSelectedServices(prev => prev.map(s => s === editingService.name ? newName : s));
         // Update serviceSections key and serviceType field
         setServiceSections(prev => {
           const section = prev[editingService.name];
@@ -368,7 +564,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     setIsDeletingService(true);
     try {
       // Deselect if selected
-      if (selectedServices.includes(deletingService.name as ServiceType)) {
+      if (selectedServices.includes(deletingService.name)) {
         handleServiceToggle(deletingService.name, false);
       }
 
@@ -393,13 +589,18 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     return dbServiceTypes.find(s => s.name === name)?.id;
   }
 
-  const handleCustomTaskAdd = async (serviceTypeId: string, taskName: string): Promise<TaskTemplate | null> => {
+  const handleCustomTaskAdd = async (serviceTypeId: string, taskName: string, price: number): Promise<TaskTemplate | null> => {
+    console.log("handleCustomTaskAdd called with:", { serviceTypeId, taskName, price });
+    console.log("Selected Vehicle Context:", selectedVehicle);
+
     try {
-      const { data, error } = await supabase
+      // 1. Create Base Task (Price 0)
+      const { data: newTask, error } = await supabase
         .from('task_templates')
         .insert({
           service_type_id: serviceTypeId,
           name: taskName,
+          price: 0, // Base price is 0 for custom tasks, specific price is via rule
           is_active: true
         })
         .select()
@@ -407,12 +608,36 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
 
       if (error) throw error;
 
-      // Update local state
-      if (data) {
-        setTaskTemplates(prev => [...prev, data]);
-        return data;
+      let finalTask = newTask;
+
+      // 2. If vehicle has category and price > 0, create Pricing Rule
+      if (price > 0 && selectedVehicle && selectedVehicle.vehicle_category_id) {
+        const { error: ruleError } = await supabase
+          .from('pricing_rules')
+          .insert({
+            service_type_id: serviceTypeId,
+            task_template_id: newTask.id,
+            vehicle_category_id: selectedVehicle.vehicle_category_id,
+            modifier_type: 'override',
+            modifier_value: price,
+            name: `${taskName} - ${selectedVehicle.vehicle_category_name} Override`,
+            is_active: true,
+            priority: 10
+          });
+
+        if (ruleError) {
+          console.error("Failed to create pricing rule for custom task:", ruleError);
+          toast({ variant: "destructive", title: "Warning", description: "Task added but pricing rule failed." });
+        } else {
+          // Return the task WITH the specific price so the UI updates immediately
+          finalTask = { ...newTask, price: price };
+        }
       }
-      return null;
+
+      // Update local state and return
+      setTaskTemplates(prev => [...prev, finalTask]);
+      return finalTask;
+
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: "Failed to create task template" });
       console.error(error);
@@ -420,21 +645,66 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     }
   }
 
-  const handleUpdateTaskTemplate = async (task: TaskTemplate, newName: string) => {
+  const handleUpdateTaskTemplate = async (task: TaskTemplate, newName: string, newPrice?: number) => {
     try {
-      const { error } = await supabase
-        .from('task_templates')
-        .update({ name: newName })
-        .eq('id', task.id);
+      // 1. Update Name (Global)
+      if (newName !== task.name) {
+        const { error } = await supabase
+          .from('task_templates')
+          .update({ name: newName })
+          .eq('id', task.id);
 
-      if (error) throw error;
+        if (error) throw error;
+        setTaskTemplates(prev => prev.map(t => t.id === task.id ? { ...t, name: newName } : t));
+      }
 
-      setTaskTemplates(prev => prev.map(t => t.id === task.id ? { ...t, name: newName } : t));
-      toast({ title: "Task Updated", description: "Task template name updated." });
+      // 2. Update Price (Category Specific)
+      if (newPrice !== undefined && selectedVehicle && selectedVehicle.vehicle_category_id) {
+        const catId = selectedVehicle.vehicle_category_id;
 
-      // Note: This won't automatically update tasks already added to the list (TaskItem[]) 
-      // because they are copied by value (name string). 
-      // That's acceptable behavior for now (snapshots).
+        // Check for existing rule
+        const { data: existingRules } = await supabase
+          .from('pricing_rules')
+          .select('id')
+          .eq('task_template_id', task.id)
+          .eq('vehicle_category_id', catId)
+          .eq('is_active', true);
+
+        if (existingRules && existingRules.length > 0) {
+          // Update existing
+          const { error: ruleError } = await supabase
+            .from('pricing_rules')
+            .update({
+              modifier_type: 'override',
+              modifier_value: newPrice
+            })
+            .eq('id', existingRules[0].id);
+          if (ruleError) throw ruleError;
+        } else {
+          // Create new rule
+          const { error: ruleError } = await supabase
+            .from('pricing_rules')
+            .insert({
+              service_type_id: task.service_type_id,
+              task_template_id: task.id,
+              vehicle_category_id: catId,
+              modifier_type: 'override',
+              modifier_value: newPrice,
+              name: `${newName || task.name} - ${selectedVehicle.vehicle_category_name} Override`,
+              is_active: true,
+              priority: 10
+            });
+          if (ruleError) throw ruleError;
+        }
+        toast({ title: "Price Updated", description: "Updated price for this vehicle category." });
+
+        // Trigger re-calculation of current service section by toggling it off and on? 
+        // Or just wait for next interaction. 
+        // Ideally we should update local state, but recalculation is complex.
+        // Re-selecting the service type might be easiest user flow or we simply notify.
+      }
+
+      toast({ title: "Task Updated", description: "Task template details updated." });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     }
@@ -442,35 +712,34 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
 
   const handleDeleteTaskTemplate = async (taskId: string) => {
     try {
+      const task = taskTemplates.find(t => t.id === taskId);
       const { error } = await supabase
         .from('task_templates')
-        .update({ is_active: false }) // Soft delete or hard delete? User might prefer hard delete if unused.
-        // Let's stick to Soft Delete based on schema 'is_active' usually implies soft delete.
-        // Actually, for cleanup, maybe delete? 
-        // If I delete, it might break integrity if I have FKs.
-        // Schema didn't specify cascade on 'task_templates' for work_orders... wait, work_order_tasks doesn't copy ID?
-        // work_order_tasks usually copies values.
-        // Let's restart: schema usually implies soft delete if is_active exists.
-        // But user asked to "Delete".
-        // Let's try Delete and let DB strictness decide. 
-        // If we want to hide it from dropdown, setting is_active=false is safer.
-        // But let's try delete to keep list clean.
         .delete()
         .eq('id', taskId);
 
       if (error) {
-        // Fallback to soft delete if FK constraint fails
-        console.warn("Hard delete failed, trying soft delete", error);
         const { error: softError } = await supabase
           .from('task_templates')
           .update({ is_active: false })
           .eq('id', taskId);
-
         if (softError) throw softError;
       }
 
+      // Sync base_price if we deleted a master task
+      if (task) {
+        const serviceId = task.service_type_id;
+        const remainingTasks = taskTemplates.filter(t => t.service_type_id === serviceId && t.id !== taskId);
+        const newTotal = remainingTasks.reduce((sum, t) => sum + (t.price || 0), 0);
+
+        await supabase
+          .from('service_types')
+          .update({ base_price: newTotal } as any)
+          .eq('id', serviceId);
+      }
+
       setTaskTemplates(prev => prev.filter(t => t.id !== taskId));
-      toast({ title: "Task Deleted", description: "Task template removed." });
+      toast({ title: "Task Deleted", description: "Task template removed and master base price recalculated." });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     }
@@ -483,7 +752,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     }))
   }
 
-  const handleRemoveSection = (type: ServiceType) => {
+  const handleRemoveSection = (type: string) => {
     handleServiceToggle(type, false)
   }
 
@@ -498,10 +767,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       return
     }
 
-    if (!newVehicleData.vehicle_number || !newVehicleData.vehicle_type) {
+    if (!newVehicleData.vehicle_number || !newVehicleData.model_id) {
       toast({
         title: "Error",
-        description: "Please fill in required fields (Vehicle Number, Type)",
+        description: "Please fill in required fields (Vehicle Number, Model)",
         variant: "destructive",
       })
       return
@@ -514,8 +783,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         .insert({
           customer_id: customerId,
           vehicle_number: newVehicleData.vehicle_number,
-          vehicle_type: newVehicleData.vehicle_type,
-          model: newVehicleData.model || null,
+          model_id: newVehicleData.model_id,
           year: newVehicleData.year || null,
           color: newVehicleData.color || null,
           vin: newVehicleData.vin || null,
@@ -529,22 +797,44 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       if (error) throw error
 
       // Refresh vehicles list
-      const { data: vehiclesRes } = await supabase
-        .from('vehicles')
-        .select('id, vehicle_number, model, customer_id, kilometers_driven, next_service_km, customers(name)')
-        .eq('customer_id', customerId)
+      const { data: vRes } = await supabase.from('vehicles').select(`
+          id, 
+          vehicle_number, 
+          model_id, 
+          customer_id, 
+          kilometers_driven, 
+          next_service_km, 
+          customers(name),
+          vehicle_models (
+            name,
+            vehicle_manufacturers (name),
+            vehicle_types (
+              name,
+              vehicle_categories (name)
+            )
+          )
+        `)
 
-      if (vehiclesRes) {
-        const formatted = vehiclesRes.map((v: any) => ({
-          id: v.id,
-          vehicle_number: v.vehicle_number,
-          model: v.model,
-          customer_id: v.customer_id,
-          customer_name: v.customers?.name,
-          kilometers_driven: v.kilometers_driven,
-          next_service_km: v.next_service_km
-        }))
-        setVehicles(prev => [...prev, ...formatted])
+      if (vRes) {
+        const formatted = vRes.map((v: any) => {
+          const m = v.vehicle_models;
+          return {
+            id: v.id,
+            vehicle_number: v.vehicle_number,
+            model: m?.name || "Unknown",
+            model_id: v.model_id,
+            vehicle_type_id: m?.vehicle_type_id,
+            vehicle_category_id: m?.vehicle_types?.category_id,
+            customer_id: v.customer_id,
+            customer_name: v.customers?.name || "Unknown",
+            kilometers_driven: v.kilometers_driven,
+            next_service_km: v.next_service_km,
+            vehicle_type_name: m?.vehicle_types?.name,
+            vehicle_category_name: m?.vehicle_types?.vehicle_categories?.name,
+            manufacturer_name: m?.vehicle_manufacturers?.name
+          }
+        })
+        setVehicles(formatted)
       }
 
       // Auto-select the new vehicle
@@ -561,12 +851,15 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       // Reset form and close dialog
       setNewVehicleData({
         vehicle_number: "",
-        vehicle_type: "Truck",
-        model: "",
+        manufacturer_id: "",
+        category_id: "",
+        vehicle_type_id: "",
+        model_id: "",
         year: new Date().getFullYear(),
         color: "",
         vin: "",
         engine_number: "",
+        kilometers_driven: 0,
       })
       setShowAddVehicleDialog(false)
 
@@ -586,6 +879,52 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     }
   }
 
+  // Create Master Data Helpers
+  const handleCreateManufacturerData = async (name: string) => {
+    try {
+      const { data, error } = await supabase.from('vehicle_manufacturers').insert({ name }).select().single()
+      if (error) throw error
+      setManufacturers(prev => [...prev, data as Manufacturer].sort((a, b) => a.name.localeCompare(b.name)))
+      return data.id
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    }
+  }
+
+  const handleCreateCategoryData = async (name: string) => {
+    try {
+      const { data, error } = await supabase.from('vehicle_categories').insert({ name }).select().single()
+      if (error) throw error
+      setCategories(prev => [...prev, data as Category].sort((a, b) => a.name.localeCompare(b.name)))
+      return data.id
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    }
+  }
+
+  const handleCreateTypeData = async (name: string, category_id: string) => {
+    try {
+      const { data, error } = await supabase.from('vehicle_types').insert({ name, category_id }).select().single()
+      if (error) throw error
+      setVehicleTypes(prev => [...prev, data as VehicleType].sort((a, b) => a.name.localeCompare(b.name)))
+      return data.id
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    }
+  }
+
+  const handleCreateModelData = async (name: string, manufacturer_id: string, vehicle_type_id: string) => {
+    try {
+      const { data, error } = await supabase.from('vehicle_models').insert({ name, manufacturer_id, vehicle_type_id }).select().single()
+      if (error) throw error
+      setVehicleModels(prev => [...prev, data as VehicleModel].sort((a, b) => a.name.localeCompare(b.name)))
+      return data.id
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    }
+  }
+
+
   // Handle creating a new customer with optional vehicle
   const handleCreateCustomer = async () => {
     // Validate customer fields
@@ -599,10 +938,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     }
 
     // Validate vehicle fields if includeVehicle is checked
-    if (includeVehicle && (!newCustomerVehicleData.vehicle_number || !newCustomerVehicleData.vehicle_type || !newCustomerVehicleData.model)) {
+    if (includeVehicle && (!newCustomerVehicleData.vehicle_number || !newCustomerVehicleData.model_id)) {
       toast({
         title: "Error",
-        description: "Please fill in required vehicle fields or uncheck 'Include Vehicle'",
+        description: "Please fill in required vehicle fields (Number, Model)",
         variant: "destructive",
       })
       return
@@ -634,8 +973,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           .insert({
             customer_id: newCustomer.id,
             vehicle_number: newCustomerVehicleData.vehicle_number,
-            vehicle_type: newCustomerVehicleData.vehicle_type,
-            model: newCustomerVehicleData.model,
+            model_id: newCustomerVehicleData.model_id,
             year: newCustomerVehicleData.year || null,
             color: newCustomerVehicleData.color || null,
             vin: newCustomerVehicleData.vin || null,
@@ -660,18 +998,43 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       }
 
       // 4. Refresh vehicles list
-      const { data: vehiclesRes } = await supabase
-        .from('vehicles')
-        .select('id, vehicle_number, model, customer_id, customers!inner(name)')
+      const { data: vRes } = await supabase.from('vehicles').select(`
+          id, 
+          vehicle_number, 
+          model_id, 
+          customer_id, 
+          kilometers_driven, 
+          next_service_km, 
+          customers(name),
+          vehicle_models (
+            name,
+            vehicle_manufacturers (name),
+            vehicle_types (
+              name,
+              vehicle_categories (name)
+            )
+          )
+        `)
 
-      if (vehiclesRes) {
-        const formatted = vehiclesRes.map((v: any) => ({
-          id: v.id,
-          vehicle_number: v.vehicle_number,
-          model: v.model,
-          customer_id: v.customer_id,
-          customer_name: v.customers?.name
-        }))
+      if (vRes) {
+        const formatted = vRes.map((v: any) => {
+          const m = v.vehicle_models;
+          return {
+            id: v.id,
+            vehicle_number: v.vehicle_number,
+            model: m?.name || "Unknown",
+            model_id: v.model_id,
+            vehicle_type_id: m?.vehicle_type_id,
+            vehicle_category_id: m?.vehicle_types?.category_id,
+            customer_id: v.customer_id,
+            customer_name: v.customers?.name || "Unknown",
+            kilometers_driven: v.kilometers_driven,
+            next_service_km: v.next_service_km,
+            vehicle_type_name: m?.vehicle_types?.name,
+            vehicle_category_name: m?.vehicle_types?.vehicle_categories?.name,
+            manufacturer_name: m?.vehicle_manufacturers?.name
+          }
+        })
         setVehicles(formatted)
       }
 
@@ -693,12 +1056,15 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       })
       setNewCustomerVehicleData({
         vehicle_number: "",
-        vehicle_type: "Truck",
-        model: "",
+        manufacturer_id: "",
+        category_id: "",
+        vehicle_type_id: "",
+        model_id: "",
         year: new Date().getFullYear(),
         color: "",
         vin: "",
         engine_number: "",
+        kilometers_driven: 0,
       })
       setShowAddCustomerDialog(false)
 
@@ -793,6 +1159,9 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
             work_order_id: workOrder.id,
             service_type: type,
             estimated_cost: sectionData.cost,
+            calculated_price: sectionData.calculatedPrice,
+            base_price_snapshot: sectionData.basePrice,
+            billing_price: sectionData.cost, // Initially, billing price is the same as cost/estimated_cost
             status: 'Pending'
           })
           .select()
@@ -802,17 +1171,16 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         if (!serviceRecord) continue;
 
         // Create tasks
-        if (sectionData.tasks.length > 0) {
-          const tasksPayload = sectionData.tasks.map(task => ({
-            work_order_id: workOrder.id,
-            service_id: serviceRecord.id,
-            task_name: task.name,
-            task_type: 'repair',
-            is_predefined: task.isPredefined,
-            completed: false
-          }))
-          await supabase.from('work_order_tasks').insert(tasksPayload)
-        }
+        const tasksPayload = sectionData.tasks.map(task => ({
+          work_order_id: workOrder.id,
+          service_id: serviceRecord.id,
+          task_name: task.name,
+          task_type: 'repair',
+          is_predefined: task.isPredefined,
+          price: task.price || 0,
+          completed: false
+        }))
+        await supabase.from('work_order_tasks').insert(tasksPayload)
 
         // Create employee assignments
         if (sectionData.selectedEmployeeIds.length > 0) {
@@ -935,8 +1303,20 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                           <CommandEmpty>No customer found.</CommandEmpty>
                           <CommandGroup>
                             {filteredCustomers.map((customer) => (
-                              <CommandItem key={customer.id} value={getCustomerDisplayName(customer)} onSelect={() => handleCustomerSelect(customer.id)}>
-                                {getCustomerDisplayName(customer)}
+                              <CommandItem key={customer.id} value={getCustomerDisplayName(customer)} onSelect={() => handleCustomerSelect(customer.id)} className="flex justify-between items-center group cursor-pointer">
+                                <span>{getCustomerDisplayName(customer)}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:bg-muted"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(`/admin/customers?edit=${customer.id}`, '_blank');
+                                  }}
+                                  title="Edit Customer"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -1002,8 +1382,20 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                           </CommandEmpty>
                           <CommandGroup>
                             {filteredVehicleList.map((vehicle) => (
-                              <CommandItem key={vehicle.id} value={`${vehicle.vehicle_number} ${vehicle.model}`} onSelect={() => handleVehicleSelect(vehicle.id)}>
-                                {vehicle.vehicle_number} - {vehicle.model}
+                              <CommandItem key={vehicle.id} value={`${vehicle.vehicle_number} ${vehicle.model}`} onSelect={() => handleVehicleSelect(vehicle.id)} className="flex justify-between items-center group cursor-pointer">
+                                <span>{vehicle.vehicle_number} - {vehicle.model}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:bg-muted"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(`/admin/vehicles?edit=${vehicle.id}`, '_blank');
+                                  }}
+                                  title="Edit Vehicle"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
                               </CommandItem>
                             ))}
                             {filteredVehicleList.length > 0 && (
@@ -1027,6 +1419,16 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                       </Command>
                     </PopoverContent>
                   </Popover>
+                  {/* Vehicle Type Display */}
+                  {vehicleId && selectedVehicle && (
+                    <div className="mt-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-md border flex items-center gap-2">
+                      <span className="font-semibold">Type:</span>
+                      {selectedVehicle.vehicle_type_name || 'N/A'}
+                      <span className="text-gray-300">|</span>
+                      <span className="font-semibold">Category:</span>
+                      {selectedVehicle.vehicle_category_name || 'N/A'}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1107,6 +1509,24 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                 <Layers className="h-4 w-4" />
                 Select Services Required
               </h3>
+              {selectedVehicle && (
+                <div className="text-xs flex items-center gap-2 ml-6 text-muted-foreground mb-4">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Type</span>
+                    <span className="font-medium text-foreground">{selectedVehicle.vehicle_type_name || 'N/A'}</span>
+                  </div>
+                  <div className="h-8 w-px bg-border mx-2"></div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Category</span>
+                    <span className="font-medium text-foreground">{selectedVehicle.vehicle_category_name || 'N/A'}</span>
+                  </div>
+                </div>
+              )}
+              {selectedVehicle && (
+                <div className="mx-6 mb-4 p-2 bg-yellow-50/50 border border-yellow-100 rounded text-[10px] text-yellow-700">
+                  <span className="font-semibold">Note:</span> Price updates for tasks will be applied to the <strong>{selectedVehicle.vehicle_category_name}</strong> category only.
+                </div>
+              )}
               <div className="flex justify-end mb-2">
                 <Popover open={showAddServiceDialog} onOpenChange={setShowAddServiceDialog}>
                   <PopoverTrigger asChild>
@@ -1236,48 +1656,49 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
 
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {dbServiceTypes.map((type) => (
-                  <div key={type.id} className="group relative flex items-center space-x-2 border rounded-md p-3 hover:bg-muted/50 transition-colors pr-12">
-                    <Checkbox
-                      id={`service-${type.id}`}
-                      checked={selectedServices.includes(type.name as ServiceType)}
-                      onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
-                    />
-                    <Label
-                      htmlFor={`service-${type.id}`}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer w-full select-none"
-                    >
-                      {type.name}
-                    </Label>
+                {displayedServices
+                  .map((type) => (
+                    <div key={type.id} className="group relative flex items-center space-x-2 border rounded-md p-3 hover:bg-muted/50 transition-colors pr-12">
+                      <Checkbox
+                        id={`service-${type.id}`}
+                        checked={selectedServices.includes(type.name)}
+                        onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
+                      />
+                      <Label
+                        htmlFor={`service-${type.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex-1"
+                      >
+                        {type.name}
+                      </Label>
 
-                    {/* Action Buttons */}
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 hover:text-blue-600"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingService(type);
-                          setEditServiceName(type.name);
-                        }}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteService(type);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      {/* Action Buttons */}
+                      < div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity" >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 hover:text-blue-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingService(type);
+                            setEditServiceName(type.name);
+                          }}
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteService(type);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
 
@@ -1303,14 +1724,15 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                     return (
                       <ServiceSection
                         key={type}
-                        serviceType={data.serviceType as ServiceType} // Keep cast until refactor
+                        serviceType={data.serviceType}
                         serviceId={serviceId}
+                        basePrice={dbServiceTypes.find(s => s.id === serviceId)?.base_price}
                         data={data}
                         availableEmployees={employees}
                         availableTasks={sectionTasks}
                         onChange={handleSectionUpdate}
                         onRemove={() => handleRemoveSection(type)}
-                        onCustomTaskAdd={serviceId ? (name) => handleCustomTaskAdd(serviceId, name) : undefined}
+                        onCustomTaskAdd={serviceId ? (name, price) => handleCustomTaskAdd(serviceId, name, price) : undefined}
                         onTaskUpdate={handleUpdateTaskTemplate}
                         onTaskDelete={handleDeleteTaskTemplate}
                       />
@@ -1388,10 +1810,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
 
           </form>
         </CardContent>
-      </Card>
+      </Card >
 
       {/* Add New Vehicle Dialog */}
-      <Dialog open={showAddVehicleDialog} onOpenChange={setShowAddVehicleDialog}>
+      < Dialog open={showAddVehicleDialog} onOpenChange={setShowAddVehicleDialog} >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1401,6 +1823,98 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           </DialogHeader>
 
           <form onSubmit={(e) => { e.preventDefault(); handleCreateVehicle(); }} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 border p-3 rounded-md bg-muted/20">
+              {/* Manufacturer */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Manufacturer *</Label>
+                  <Button
+                    type="button" variant="ghost" size="sm" className="h-6 w-6 p-0"
+                    onClick={() => { setMasterType('Manufacturer'); setShowAddMasterDialog(true); }}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Select
+                  value={newVehicleData.manufacturer_id}
+                  onValueChange={(val) => setNewVehicleData(prev => ({ ...prev, manufacturer_id: val }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select Manufacturer" /></SelectTrigger>
+                  <SelectContent>
+                    {manufacturers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Category */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Category *</Label>
+                  <Button
+                    type="button" variant="ghost" size="sm" className="h-6 w-6 p-0"
+                    onClick={() => { setMasterType('Category'); setShowAddMasterDialog(true); }}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Select
+                  value={newVehicleData.category_id}
+                  onValueChange={(val) => setNewVehicleData(prev => ({ ...prev, category_id: val, vehicle_type_id: "" }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Type */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Vehicle Type *</Label>
+                  <Button
+                    type="button" variant="ghost" size="sm" className="h-6 w-6 p-0"
+                    onClick={() => { setMasterType('Type'); setShowAddMasterDialog(true); }}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Select
+                  value={newVehicleData.vehicle_type_id}
+                  onValueChange={(val) => setNewVehicleData(prev => ({ ...prev, vehicle_type_id: val, model_id: "" }))}
+                  disabled={!newVehicleData.category_id}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select Type" /></SelectTrigger>
+                  <SelectContent>
+                    {availableTypes.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Model */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Model *</Label>
+                  <Button
+                    type="button" variant="ghost" size="sm" className="h-6 w-6 p-0"
+                    onClick={() => { setMasterType('Model'); setShowAddMasterDialog(true); }}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Select
+                  value={newVehicleData.model_id}
+                  onValueChange={(val) => setNewVehicleData(prev => ({ ...prev, model_id: val }))}
+                  disabled={!newVehicleData.manufacturer_id || !newVehicleData.vehicle_type_id}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select Model" /></SelectTrigger>
+                  <SelectContent>
+                    {availableModels.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="new_vehicle_number">Vehicle Number *</Label>
@@ -1409,39 +1923,6 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                   placeholder="e.g., TN09H5565"
                   value={newVehicleData.vehicle_number}
                   onChange={(e) => setNewVehicleData(prev => ({ ...prev, vehicle_number: e.target.value.toUpperCase() }))}
-                  disabled={isCreatingVehicle}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="new_vehicle_type">Vehicle Type *</Label>
-                <Select
-                  value={newVehicleData.vehicle_type}
-                  onValueChange={(value) => setNewVehicleData(prev => ({ ...prev, vehicle_type: value }))}
-                  disabled={isCreatingVehicle}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Truck">Truck</SelectItem>
-                    <SelectItem value="Bus">Bus</SelectItem>
-                    <SelectItem value="Heavy Machinery">Heavy Machinery</SelectItem>
-                    <SelectItem value="Commercial Van">Commercial Van</SelectItem>
-                    <SelectItem value="Trailer">Trailer</SelectItem>
-                    <SelectItem value="Construction Equipment">Construction Equipment</SelectItem>
-                    <SelectItem value="Agricultural Equipment">Agricultural Equipment</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="new_model">Model *</Label>
-                <Input
-                  id="new_model"
-                  placeholder="e.g., Tata 407"
-                  value={newVehicleData.model}
-                  onChange={(e) => setNewVehicleData(prev => ({ ...prev, model: e.target.value }))}
                   disabled={isCreatingVehicle}
                 />
               </div>
@@ -1527,223 +2008,129 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
             </div>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
+      {/* Add Master Data Dialog */}
+      <Dialog open={showAddMasterDialog} onOpenChange={setShowAddMasterDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add New {masterType}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{masterType} Name</Label>
+              <Input
+                value={masterName}
+                onChange={(e) => setMasterName(e.target.value)}
+                placeholder={`Enter ${masterType.toLowerCase()} name`}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddMasterDialog(false)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                if (!masterName.trim()) return;
+                setIsAddingMaster(true);
+                let newId = "";
+                if (masterType === 'Manufacturer') newId = await handleCreateManufacturerData(masterName.trim()) || "";
+                if (masterType === 'Category') newId = await handleCreateCategoryData(masterName.trim()) || "";
+                if (masterType === 'Type') newId = await handleCreateTypeData(masterName.trim(), newVehicleData.category_id || newCustomerVehicleData.category_id) || "";
+                if (masterType === 'Model') newId = await handleCreateModelData(masterName.trim(), newVehicleData.manufacturer_id || newCustomerVehicleData.manufacturer_id, newVehicleData.vehicle_type_id || newCustomerVehicleData.vehicle_type_id) || "";
+
+                if (newId) {
+                  // Auto select the newly created item in the corresponding data state
+                  if (masterType === 'Manufacturer') setNewVehicleData(prev => ({ ...prev, manufacturer_id: newId }));
+                  if (masterType === 'Category') setNewVehicleData(prev => ({ ...prev, category_id: newId }));
+                  if (masterType === 'Type') setNewVehicleData(prev => ({ ...prev, vehicle_type_id: newId }));
+                  if (masterType === 'Model') setNewVehicleData(prev => ({ ...prev, model_id: newId }));
+                }
+
+                setMasterName("");
+                setShowAddMasterDialog(false);
+                setIsAddingMaster(false);
+              }}
+              disabled={isAddingMaster || !masterName.trim()}
+            >
+              {isAddingMaster ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add Entry"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Add New Customer + Vehicle Dialog */}
       <Dialog open={showAddCustomerDialog} onOpenChange={setShowAddCustomerDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Add New Customer {includeVehicle ? '& Vehicle' : ''}
-            </DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={(e) => { e.preventDefault(); handleCreateCustomer(); }} className="space-y-6">
-            {/* Customer Section */}
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Add New Customer & Vehicle</DialogTitle></DialogHeader>
+          <form onSubmit={e => { e.preventDefault(); handleCreateCustomer(); }} className="space-y-6 py-4">
             <div className="space-y-4">
-              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">
-                Customer Details
-              </h4>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground border-b pb-1">Customer Details</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="customer_name">Name *</Label>
-                  <Input
-                    id="customer_name"
-                    placeholder="Customer name"
-                    value={newCustomerData.name}
-                    onChange={(e) => setNewCustomerData(prev => ({ ...prev, name: e.target.value }))}
-                    disabled={isCreatingCustomer}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="customer_phone">Phone *</Label>
-                  <Input
-                    id="customer_phone"
-                    placeholder="Phone number"
-                    value={newCustomerData.phone}
-                    onChange={(e) => setNewCustomerData(prev => ({ ...prev, phone: e.target.value }))}
-                    disabled={isCreatingCustomer}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="customer_email">Email</Label>
-                  <Input
-                    id="customer_email"
-                    type="email"
-                    placeholder="Email address"
-                    value={newCustomerData.email}
-                    onChange={(e) => setNewCustomerData(prev => ({ ...prev, email: e.target.value }))}
-                    disabled={isCreatingCustomer}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="customer_company">Company Name</Label>
-                  <Input
-                    id="customer_company"
-                    placeholder="Company name (optional)"
-                    value={newCustomerData.company_name}
-                    onChange={(e) => setNewCustomerData(prev => ({ ...prev, company_name: e.target.value }))}
-                    disabled={isCreatingCustomer}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="customer_address">Address</Label>
-                <Input
-                  id="customer_address"
-                  placeholder="Address (optional)"
-                  value={newCustomerData.address}
-                  onChange={(e) => setNewCustomerData(prev => ({ ...prev, address: e.target.value }))}
-                  disabled={isCreatingCustomer}
-                />
+                <div className="space-y-2"><Label>Name *</Label><Input value={newCustomerData.name} onChange={e => setNewCustomerData(p => ({ ...p, name: e.target.value }))} required /></div>
+                <div className="space-y-2"><Label>Phone *</Label><Input value={newCustomerData.phone} onChange={e => setNewCustomerData(p => ({ ...p, phone: e.target.value }))} required /></div>
               </div>
             </div>
 
-            {/* Include Vehicle Toggle */}
-            <div className="flex items-center gap-2 pb-2 border-b">
-              <Checkbox
-                id="include_vehicle"
-                checked={includeVehicle}
-                onCheckedChange={(checked) => setIncludeVehicle(checked as boolean)}
-                disabled={isCreatingCustomer}
-              />
-              <Label
-                htmlFor="include_vehicle"
-                className="text-sm font-medium cursor-pointer"
-              >
-                Include Vehicle Details
-              </Label>
+            <div className="flex items-center gap-2 py-2 border-y">
+              <Checkbox id="inc_v_cust" checked={includeVehicle} onCheckedChange={v => setIncludeVehicle(v as boolean)} />
+              <Label htmlFor="inc_v_cust" className="text-sm font-medium cursor-pointer">Register Vehicle now?</Label>
             </div>
 
-            {/* Vehicle Section */}
-            <div className={`space-y-4 ${includeVehicle ? '' : 'opacity-50 pointer-events-none'}`}>
-              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Vehicle Details
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cv_vehicle_number">Vehicle Number *</Label>
-                  <Input
-                    id="cv_vehicle_number"
-                    placeholder="e.g., TN09H5565"
-                    value={newCustomerVehicleData.vehicle_number}
-                    onChange={(e) => setNewCustomerVehicleData(prev => ({ ...prev, vehicle_number: e.target.value.toUpperCase() }))}
-                    disabled={isCreatingCustomer || !includeVehicle}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cv_vehicle_type">Vehicle Type *</Label>
-                  <Select
-                    value={newCustomerVehicleData.vehicle_type}
-                    onValueChange={(value) => setNewCustomerVehicleData(prev => ({ ...prev, vehicle_type: value }))}
-                    disabled={isCreatingCustomer || !includeVehicle}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Truck">Truck</SelectItem>
-                      <SelectItem value="Bus">Bus</SelectItem>
-                      <SelectItem value="Heavy Machinery">Heavy Machinery</SelectItem>
-                      <SelectItem value="Commercial Van">Commercial Van</SelectItem>
-                      <SelectItem value="Trailer">Trailer</SelectItem>
-                      <SelectItem value="Construction Equipment">Construction Equipment</SelectItem>
-                      <SelectItem value="Agricultural Equipment">Agricultural Equipment</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cv_model">Model *</Label>
-                  <Input
-                    id="cv_model"
-                    placeholder="e.g., Tata 407"
-                    value={newCustomerVehicleData.model}
-                    onChange={(e) => setNewCustomerVehicleData(prev => ({ ...prev, model: e.target.value }))}
-                    disabled={isCreatingCustomer || !includeVehicle}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cv_year">Year</Label>
-                  <Input
-                    id="cv_year"
-                    type="number"
-                    min="1990"
-                    max={new Date().getFullYear() + 1}
-                    value={newCustomerVehicleData.year}
-                    onChange={(e) => setNewCustomerVehicleData(prev => ({ ...prev, year: parseInt(e.target.value) || new Date().getFullYear() }))}
-                    disabled={isCreatingCustomer || !includeVehicle}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cv_color">Color</Label>
-                  <Input
-                    id="cv_color"
-                    placeholder="e.g., White"
-                    value={newCustomerVehicleData.color}
-                    onChange={(e) => setNewCustomerVehicleData(prev => ({ ...prev, color: e.target.value }))}
-                    disabled={isCreatingCustomer || !includeVehicle}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cv_vin">VIN / Chassis</Label>
-                  <Input
-                    id="cv_vin"
-                    placeholder="Chassis Number"
-                    value={newCustomerVehicleData.vin}
-                    onChange={(e) => setNewCustomerVehicleData(prev => ({ ...prev, vin: e.target.value.toUpperCase() }))}
-                    disabled={isCreatingCustomer || !includeVehicle}
-                  />
+            {includeVehicle && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Manufacturer *</Label>
+                    <Select value={newCustomerVehicleData.manufacturer_id} onValueChange={v => setNewCustomerVehicleData(p => ({ ...p, manufacturer_id: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{manufacturers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Category *</Label>
+                    <Select value={newCustomerVehicleData.category_id} onValueChange={v => setNewCustomerVehicleData(p => ({ ...p, category_id: v, vehicle_type_id: "" }))}>
+                      <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Type *</Label>
+                    <Select
+                      value={newCustomerVehicleData.vehicle_type_id}
+                      onValueChange={v => setNewCustomerVehicleData(p => ({ ...p, vehicle_type_id: v, model_id: "" }))}
+                      disabled={!newCustomerVehicleData.category_id}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{vehicleTypes.filter(t => t.category_id === newCustomerVehicleData.category_id).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Model *</Label>
+                    <Select
+                      value={newCustomerVehicleData.model_id}
+                      onValueChange={v => setNewCustomerVehicleData(p => ({ ...p, model_id: v }))}
+                      disabled={!newCustomerVehicleData.manufacturer_id || !newCustomerVehicleData.vehicle_type_id}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{vehicleModels.filter(m => m.manufacturer_id === newCustomerVehicleData.manufacturer_id && m.vehicle_type_id === newCustomerVehicleData.vehicle_type_id).map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Vehicle Number *</Label>
+                    <Input value={newCustomerVehicleData.vehicle_number} onChange={e => setNewCustomerVehicleData(p => ({ ...p, vehicle_number: e.target.value.toUpperCase() }))} />
+                  </div>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cv_engine_number">Engine Number</Label>
-                <Input
-                  id="cv_engine_number"
-                  placeholder="Engine Serial Number"
-                  value={newCustomerVehicleData.engine_number}
-                  onChange={(e) => setNewCustomerVehicleData(prev => ({ ...prev, engine_number: e.target.value.toUpperCase() }))}
-                  disabled={isCreatingCustomer || !includeVehicle}
-                />
-              </div>
-            </div>
+            )}
 
             <div className="flex gap-2 justify-end pt-4 border-t">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAddCustomerDialog(false)}
-                disabled={isCreatingCustomer}
-              >
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowAddCustomerDialog(false)}>Cancel</Button>
               <Button type="submit" disabled={isCreatingCustomer}>
-                {isCreatingCustomer ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4 mr-2" />
-                    {includeVehicle ? 'Create Customer & Vehicle' : 'Create Customer'}
-                  </>
-                )}
+                {isCreatingCustomer ? "Creating..." : "Create Customer & Vehicle"}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   )
 }

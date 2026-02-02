@@ -51,8 +51,11 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
         )
       `).eq('id', workOrderId).single(),
             supabase.from('work_order_services').select('*').eq('work_order_id', workOrderId),
-            supabase.from('invoices').select('*').eq('work_order_id', workOrderId).single()
+            supabase.from('invoices').select('*').eq('work_order_id', workOrderId).single(),
+            supabase.from('work_order_tasks').select('*').eq('work_order_id', workOrderId)
         ]);
+
+        const tasks = tasksData || [];
 
         if (!workOrder) throw new Error("Work Order not found");
 
@@ -83,7 +86,19 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
                 billNumberDisplay = `BILL NO: ${invoiceData.bill_number}`;
             }
         } else {
-            finalSubtotal = (services || []).reduce((sum: number, s: any) => sum + (s.estimated_cost || 0), 0);
+            // For Work Slip or New Invoice, use tasks as line items
+            if (tasks.length > 0) {
+                finalItems = tasks.map(t => ({
+                    description: t.task_name,
+                    taxable_value: t.price || 0,
+                    total: t.price || 0,
+                    type: 'service',
+                    hsn_code: '-'
+                }));
+            } else {
+                finalItems = services || [];
+            }
+            finalSubtotal = finalItems.reduce((sum: number, i: any) => sum + (i.taxable_value || i.estimated_cost || 0), 0);
             finalTax = finalSubtotal * 0.18;
             finalTotal = finalSubtotal + finalTax;
         }

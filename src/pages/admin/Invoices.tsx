@@ -321,25 +321,27 @@ export default function AdminInvoices() {
         const serviceTasks = tasks?.filter(t => t.service_id === service.id) || [];
         if (serviceTasks.length > 0) {
           serviceTasks.forEach((task, index) => {
+            const finalPrice = service.billing_price || service.estimated_cost;
             invoiceItems.push({
               invoice_id: invoiceId,
               work_order_service_id: service.id,
               description: task.task_name,
               quantity: 1,
-              unit_price: index === 0 ? service.estimated_cost : 0,
-              total: index === 0 ? service.estimated_cost : 0,
+              unit_price: index === 0 ? finalPrice : 0,
+              total: index === 0 ? finalPrice : 0,
               type: 'service',
               category: service.service_type
             });
           });
         } else {
+          const finalPrice = service.billing_price || service.estimated_cost;
           invoiceItems.push({
             invoice_id: invoiceId,
             work_order_service_id: service.id,
             description: "",
             quantity: 1,
-            unit_price: service.estimated_cost,
-            total: service.estimated_cost,
+            unit_price: finalPrice,
+            total: finalPrice,
             type: 'service',
             category: service.service_type
           });

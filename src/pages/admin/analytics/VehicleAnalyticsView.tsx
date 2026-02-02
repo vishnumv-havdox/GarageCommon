@@ -35,7 +35,7 @@ export default function VehicleAnalyticsView({ vehicleId }: VehicleAnalyticsView
                 { data: vehicle },
                 { data: workOrders }
             ]: any[] = await Promise.all([
-                supabase.from('vehicles').select('*, customers(*)').eq('id', vehicleId).single(),
+                supabase.from('vehicles').select('*, customers(*), vehicle_models(*)').eq('id', vehicleId).single(),
                 supabase.from('work_orders')
                     .select('*, work_order_services(*)') // Fetch services for drill down info
                     .eq('vehicle_id', vehicleId)
@@ -88,7 +88,7 @@ export default function VehicleAnalyticsView({ vehicleId }: VehicleAnalyticsView
                         <div>
                             <div className="flex items-center gap-3">
                                 <h2 className="text-3xl font-bold text-primary">{vehicle.vehicle_number}</h2>
-                                <Badge variant="outline" className="text-base">{vehicle.model}</Badge>
+                                <Badge variant="outline" className="text-base">{vehicle.vehicle_models?.name || "Unknown Model"}</Badge>
                             </div>
                             <p className="text-muted-foreground mt-2 flex items-center gap-2">
                                 <span className="font-medium">{vehicle.customers?.name}</span>

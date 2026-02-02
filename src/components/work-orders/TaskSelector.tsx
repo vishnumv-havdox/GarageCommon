@@ -16,22 +16,27 @@ export interface TaskTemplate {
     id: string;
     name: string;
     service_type_id: string;
+    price: number;
     is_active: boolean;
 }
 
 export interface TaskItem {
     id: string;
     name: string;
+    price: number;
     isPredefined: boolean;
+    appliedRuleName?: string;
 }
+
 
 interface TaskSelectorProps {
     serviceType: string;
     availableTasks: TaskTemplate[];
     tasks: TaskItem[];
+    tasks: TaskItem[];
     onTasksChange: (tasks: TaskItem[]) => void;
-    onCustomTaskAdd?: (name: string) => Promise<TaskTemplate | null>;
-    onTaskUpdate?: (task: TaskTemplate, newName: string) => Promise<void>;
+    onCustomTaskAdd?: (name: string, price: number) => Promise<TaskTemplate | null>;
+    onTaskUpdate?: (task: TaskTemplate, newName: string, newPrice?: number) => Promise<void>;
     onTaskDelete?: (taskId: string) => Promise<void>;
 }
 
@@ -46,11 +51,13 @@ export function TaskSelector({
 }: TaskSelectorProps) {
     const [open, setOpen] = useState(false);
     const [customTaskName, setCustomTaskName] = useState("");
+    const [customTaskPrice, setCustomTaskPrice] = useState("");
     const [isCreating, setIsCreating] = useState(false);
 
     // Edit State
     const [editingTask, setEditingTask] = useState<TaskTemplate | null>(null);
     const [editTaskName, setEditTaskName] = useState("");
+    const [editTaskPrice, setEditTaskPrice] = useState<string>("");
     const [isUpdating, setIsUpdating] = useState(false);
 
     // Delete State
@@ -71,6 +78,7 @@ export function TaskSelector({
         const newTask: TaskItem = {
             id: crypto.randomUUID(),
             name: template.name,
+            price: template.price || 0,
             isPredefined: true
         };
 
@@ -96,6 +104,7 @@ export function TaskSelector({
             const newTask: TaskItem = {
                 id: crypto.randomUUID(),
                 name: trimmed,
+                price: 0, // Custom tasks start with 0
                 isPredefined: false
             };
             onTasksChange([...tasks, newTask]);
@@ -106,15 +115,18 @@ export function TaskSelector({
         // Persist to DB
         setIsCreating(true);
         try {
-            const newTemplate = await onCustomTaskAdd(trimmed);
+            const price = parseFloat(customTaskPrice) || 0;
+            const newTemplate = await onCustomTaskAdd(trimmed, price);
             if (newTemplate) {
                 const newTask: TaskItem = {
                     id: crypto.randomUUID(),
                     name: newTemplate.name,
+                    price: price, // Use the price we just set
                     isPredefined: true // Now it's a template, so it's predefined!
                 };
                 onTasksChange([...tasks, newTask]);
                 setCustomTaskName("");
+                setCustomTaskPrice("");
             }
         } catch (error) {
             console.error("Failed to add custom task:", error);
@@ -131,7 +143,8 @@ export function TaskSelector({
         if (!editingTask || !onTaskUpdate || !editTaskName.trim()) return;
         setIsUpdating(true);
         try {
-            await onTaskUpdate(editingTask, editTaskName.trim());
+            const price = editTaskPrice ? parseFloat(editTaskPrice) : undefined;
+            await onTaskUpdate(editingTask, editTaskName.trim(), price);
             setEditingTask(null);
         } catch (error) {
             console.error("Failed to update task:", error);
@@ -192,7 +205,10 @@ export function TaskSelector({
                                                 onSelect={() => handleAddPredefined(task.id)}
                                                 className="group flex items-center justify-between py-3"
                                             >
-                                                <span>{task.name}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span>{task.name}</span>
+                                                    <Badge variant="secondary" className="text-[10px] bg-blue-50 text-blue-700">₹{task.price || 0}</Badge>
+                                                </div>
                                                 <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                                     {onTaskUpdate && (
                                                         <Button
@@ -203,6 +219,7 @@ export function TaskSelector({
                                                                 e.stopPropagation();
                                                                 setEditingTask(task);
                                                                 setEditTaskName(task.name);
+                                                                setEditTaskPrice(task.price?.toString() || "");
                                                             }}
                                                         >
                                                             <Edit className="h-4 w-4" />
@@ -244,6 +261,15 @@ export function TaskSelector({
                             onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustom())}
                             disabled={isCreating}
                         />
+                        <Input
+                            type="number"
+                            placeholder="Price"
+                            className="w-24"
+                            value={customTaskPrice}
+                            onChange={(e) => setCustomTaskPrice(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustom())}
+                            disabled={isCreating}
+                        />
                         <Button size="icon" variant="ghost" onClick={handleAddCustom} type="button" disabled={isCreating}>
                             {isCreating ? <Plus className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                         </Button>
@@ -266,7 +292,13 @@ export function TaskSelector({
                             <div key={task.id} className="flex items-center justify-between bg-white dark:bg-zinc-900 border px-3 py-2.5 rounded-sm text-sm shadow-sm group">
                                 <div className="flex items-center gap-2">
                                     <span className="font-medium">{task.name}</span>
-                                    {task.isPredefined && <Badge variant="secondary" className="text-[10px] h-4 px-1">Predefined</Badge>}
+                                    <Badge variant="outline" className="text-[10px] h-4 px-1">₹{task.price || 0}</Badge>
+                                    {task.appliedRuleName && (
+                                        <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-amber-50 text-amber-700 hover:bg-amber-100">
+                                            {task.appliedRuleName}
+                                        </Badge>
+                                    )}
+                                    {task.isPredefined && !task.appliedRuleName && <Badge variant="secondary" className="text-[10px] h-4 px-1">Predefined</Badge>}
                                 </div>
                                 <Button
                                     variant="ghost"
@@ -298,6 +330,15 @@ export function TaskSelector({
                                 id="edit-task-name"
                                 value={editTaskName}
                                 onChange={(e) => setEditTaskName(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit-task-price">Price (Update for this Category)</Label>
+                            <Input
+                                id="edit-task-price"
+                                type="number"
+                                value={editTaskPrice}
+                                onChange={(e) => setEditTaskPrice(e.target.value)}
                             />
                         </div>
                     </div>

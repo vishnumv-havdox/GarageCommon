@@ -25,6 +25,7 @@ import AdminAccessControl from "./pages/admin/AccessControl";
 import AdminSettings from "./pages/admin/Settings";
 import AdminAttendance from "./pages/admin/Attendance";
 import AdminSalary from "./pages/admin/SalaryManagement";
+import AdminServices from "./pages/admin/ServicesMaster";
 import InventoryLogin from "./pages/inventory/Login";
 import InventoryRoom from "./pages/inventory/InventoryRoom";
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -55,6 +56,7 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/settings": AdminSettings,
   "/admin/attendance": AdminAttendance,
   "/admin/salary": AdminSalary,
+  "/admin/services": AdminServices,
   "/inventory": AdminInventory,
   "/inventory/login": InventoryLogin,
   "/inventory/room": InventoryRoom,

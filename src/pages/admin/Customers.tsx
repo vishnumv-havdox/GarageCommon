@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { supabaseAdmin } from "@/integrations/supabase/adminClient";
@@ -61,6 +62,21 @@ export default function AdminCustomers() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Handle URL-based edit requests
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && customers.length > 0 && !editingCustomer) {
+      const customerToEdit = customers.find(c => c.id === editId);
+      if (customerToEdit) {
+        setEditingCustomer(customerToEdit);
+        // Optional: clear the param so refreshing doesn't re-open, 
+        // OR keep it if we want persistent link. 
+        // Let's keep it for now as it makes the link shareable.
+      }
+    }
+  }, [customers, searchParams]);
 
   const toggleExpand = (customerId: string) => {
     setExpandedCustomers((prev) => {

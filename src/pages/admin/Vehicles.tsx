@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { NavLink } from "react-router-dom";
+import { NavLink, useSearchParams } from "react-router-dom";
 import { LogOut, Users, Shield, Plus, Search, Truck } from "lucide-react";
 import { VehicleForm } from "@/components/forms/VehicleForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -36,8 +36,7 @@ interface Vehicle {
   created_at: string;
   customer_id: string;
   vehicle_number: string;
-  vehicle_type: string;
-  model: string;
+  model_id: string;
   year?: number;
   status: string;
   customer?: {
@@ -52,6 +51,15 @@ interface Vehicle {
   next_service_date?: string;
   fc_number?: string;
   fc_expiry_date?: string;
+  // Joined names
+  vehicle_models?: {
+    name: string;
+    vehicle_manufacturers: { name: string };
+    vehicle_types: {
+      name: string;
+      vehicle_categories: { name: string };
+    };
+  };
 }
 
 export default function AdminVehicles() {
@@ -65,15 +73,47 @@ export default function AdminVehicles() {
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [viewingVehicle, setViewingVehicle] = useState<Vehicle | null>(null);
   const [deletingVehicle, setDeletingVehicle] = useState<Vehicle | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Handle URL-based edit requests
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && vehicles.length > 0 && !editingVehicle) {
+      const vehicleToEdit = vehicles.find(v => v.id === editId);
+      if (vehicleToEdit) {
+        setEditingVehicle(vehicleToEdit);
+        setShowForm(true);
+      }
+    }
+  }, [vehicles, searchParams]);
 
   useEffect(() => { fetchVehicles(); }, []);
 
   const fetchVehicles = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.from("vehicles").select("*, customer:customers(name)").order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("vehicles")
+        .select(`
+          *,
+          customer:customers(name),
+          vehicle_models (
+            id,
+            name,
+            manufacturer_id,
+            vehicle_manufacturers (id, name),
+            vehicle_type_id,
+            vehicle_types (
+              id,
+              name,
+              category_id,
+              vehicle_categories (id, name)
+            )
+          )
+        `)
+        .order("created_at", { ascending: false });
       if (error) throw error;
-      setVehicles(data || []);
+      setVehicles(data as any[] || []);
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally { setLoading(false); }
@@ -102,13 +142,15 @@ export default function AdminVehicles() {
 
 
   const filteredVehicles = vehicles.filter((v) =>
-    v.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) || v.model?.toLowerCase().includes(searchTerm.toLowerCase())
+    v.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    v.vehicle_models?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    v.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const suggestions = useMemo(() => {
     const sets = [
       new Set(vehicles.map(v => v.vehicle_number)),
-      new Set(vehicles.map(v => v.model)),
+      new Set(vehicles.map(v => v.vehicle_models?.name)),
       new Set(vehicles.map(v => v.customer?.name)),
     ];
     return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
@@ -167,7 +209,10 @@ export default function AdminVehicles() {
                             <h3 className="font-semibold">{vehicle.vehicle_number}</h3>
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">
-                            {vehicle.vehicle_type} • {vehicle.model} {vehicle.year ? `• ${vehicle.year}` : ''}
+                            {vehicle.vehicle_models?.vehicle_types?.name} • {vehicle.vehicle_models?.name} {vehicle.year ? `• ${vehicle.year}` : ''}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {vehicle.vehicle_models?.vehicle_manufacturers?.name} • {vehicle.vehicle_models?.vehicle_types?.vehicle_categories?.name}
                           </p>
                           {vehicle.customer && (
                             <p className="text-sm text-muted-foreground mt-1">
@@ -206,11 +251,19 @@ export default function AdminVehicles() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Type</Label>
-                  <p className="font-medium">{viewingVehicle.vehicle_type}</p>
+                  <p className="font-medium">{viewingVehicle.vehicle_models?.vehicle_types?.name}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Model</Label>
-                  <p className="font-medium">{viewingVehicle.model}</p>
+                  <p className="font-medium">{viewingVehicle.vehicle_models?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Manufacturer</Label>
+                  <p className="font-medium">{viewingVehicle.vehicle_models?.vehicle_manufacturers?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Category</Label>
+                  <p className="font-medium">{viewingVehicle.vehicle_models?.vehicle_types?.vehicle_categories?.name}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Year</Label>

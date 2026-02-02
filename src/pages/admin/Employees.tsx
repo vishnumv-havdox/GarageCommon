@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { supabaseAdmin } from "@/integrations/supabase/adminClient";
@@ -232,327 +233,211 @@ export default function AdminEmployees() {
   const totalPositions = positions.length;
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 min-h-screen bg-card border-r flex flex-col">
-          <div className="p-4 border-b">
-            <NavLink to="/admin" className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Shield className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="font-bold">AMMA AUTO</h1>
-                <p className="text-xs text-muted-foreground">Admin Panel</p>
-              </div>
-            </NavLink>
+    <div className="flex h-screen bg-background overflow-hidden">
+      <AdminSidebar />
+      <main className="flex-1 overflow-y-auto p-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold">Employee Management</h1>
+            <p className="text-muted-foreground">
+              Manage internal staff and their access levels
+            </p>
           </div>
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Employee
+          </Button>
+        </div>
 
-          <nav className="flex-1 p-4 space-y-1">
-            <NavLink
-              to="/admin"
-              end
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`
-              }
-            >
-              <Users className="h-5 w-5" />
-              Dashboard
-            </NavLink>
-            <NavLink
-              to="/admin/employees"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`
-              }
-            >
-              <User className="h-5 w-5" />
-              Employees
-            </NavLink>
-            <NavLink
-              to="/admin/customers"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`
-              }
-            >
-              <Users className="h-5 w-5" />
-              Customers
-            </NavLink>
-            <NavLink
-              to="/admin/vehicles"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`
-              }
-            >
-              <Users className="h-5 w-5" />
-              Vehicles
-            </NavLink>
-            <NavLink
-              to="/admin/work-orders"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`
-              }
-            >
-              <Users className="h-5 w-5" />
-              Work Orders
-            </NavLink>
-            <NavLink
-              to="/admin/inventory"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`
-              }
-            >
-              <Users className="h-5 w-5" />
-              Inventory
-            </NavLink>
-            <NavLink
-              to="/admin/invoices"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`
-              }
-            >
-              <Users className="h-5 w-5" />
-              Invoices
-            </NavLink>
-          </nav>
-
-          <div className="p-4 border-t">
-            <div className="flex items-center gap-3 mb-3">
-              <Badge variant="default">Admin</Badge>
-              <span className="text-sm truncate">{user?.full_name || user?.email}</span>
-            </div>
-            <Button onClick={signOut} variant="outline" className="w-full" size="sm">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 p-8">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold">Employee Management</h1>
-              <p className="text-muted-foreground">
-                Manage internal staff and their access levels
-              </p>
-            </div>
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Employee
-            </Button>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{employees.length}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Active Employees</CardTitle>
-                <User className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{activeEmployees}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Positions</CardTitle>
-                <Briefcase className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalPositions}</div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Employee Form Modal */}
-          {showForm && (
-            <div className="mb-8">
-              <EmployeeForm
-                onSuccess={handleFormSuccess}
-                onCancel={() => {
-                  setShowForm(false);
-                  setEditingEmployee(null);
-                }}
-                editingEmployee={editingEmployee}
-                positions={positions}
-                onPositionAdd={handlePositionAdd}
-              />
-            </div>
-          )}
-
-          {/* Search */}
-          <div className="mb-6">
-            <div className="relative max-w-md">
-              <SearchInput
-                placeholder="Search employees by name, position, email..."
-                value={searchTerm}
-                onChange={setSearchTerm}
-                suggestions={suggestions}
-              />
-            </div>
-          </div>
-
-          {/* Positions Overview */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5" />
-                Available Positions ({positions.length})
-              </CardTitle>
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              {positions.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">
-                  No positions defined. Add an employee to create a position.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {positions.map((pos) => (
-                    <Badge
-                      key={pos.id}
-                      variant="outline"
-                      className="px-3 py-1"
-                    >
-                      {pos.name} - {pos.department}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              <div className="text-2xl font-bold">{employees.length}</div>
             </CardContent>
           </Card>
-
-          {/* Employees List */}
           <Card>
-            <CardHeader>
-              <CardTitle>Employees ({filteredEmployees.length})</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Active Employees</CardTitle>
+              <User className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              {loading ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Loading employees...
-                </div>
-              ) : filteredEmployees.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No employees found
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredEmployees.map((employee) => (
-                    <div key={employee.id} className="border p-4 rounded-lg">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold">{employee.name}</h3>
-                            <Badge
-                              variant={getAccessBadgeVariant(employee.access_level)}
-                            >
-                              {getAccessLabel(employee.access_level)}
-                            </Badge>
-                            {employee.status !== "active" && (
-                              <Badge variant="outline">{employee.status}</Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {employee.email}
-                          </p>
-                          {employee.phone && (
-                            <p className="text-sm text-muted-foreground">
-                              Phone: {employee.phone}
-                            </p>
+              <div className="text-2xl font-bold">{activeEmployees}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Positions</CardTitle>
+              <Briefcase className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalPositions}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Employee Form Modal */}
+        {showForm && (
+          <div className="mb-8">
+            <EmployeeForm
+              onSuccess={handleFormSuccess}
+              onCancel={() => {
+                setShowForm(false);
+                setEditingEmployee(null);
+              }}
+              editingEmployee={editingEmployee}
+              positions={positions}
+              onPositionAdd={handlePositionAdd}
+            />
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="mb-6">
+          <div className="relative max-w-md">
+            <SearchInput
+              placeholder="Search employees by name, position, email..."
+              value={searchTerm}
+              onChange={setSearchTerm}
+              suggestions={suggestions}
+            />
+          </div>
+        </div>
+
+        {/* Positions Overview */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="w-5 h-5" />
+              Available Positions ({positions.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {positions.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">
+                No positions defined. Add an employee to create a position.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {positions.map((pos) => (
+                  <Badge
+                    key={pos.id}
+                    variant="outline"
+                    className="px-3 py-1"
+                  >
+                    {pos.name} - {pos.department}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Employees List */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Employees ({filteredEmployees.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Loading employees...
+              </div>
+            ) : filteredEmployees.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No employees found
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredEmployees.map((employee) => (
+                  <div key={employee.id} className="border p-4 rounded-lg">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold">{employee.name}</h3>
+                          <Badge
+                            variant={getAccessBadgeVariant(employee.access_level)}
+                          >
+                            {getAccessLabel(employee.access_level)}
+                          </Badge>
+                          {employee.status !== "active" && (
+                            <Badge variant="outline">{employee.status}</Badge>
                           )}
-                          <div className="flex gap-4 mt-2">
-                            <span className="text-sm">
-                              <span className="font-medium">Position:</span>{" "}
-                              {employee.position?.name || "Not Assigned"}
-                            </span>
-                            <span className="text-sm">
-                              <span className="font-medium">Department:</span>{" "}
-                              {employee.position?.department || "N/A"}
-                            </span>
-                            {employee.salary && (
-                              <span className="text-sm">
-                                <span className="font-medium">Salary:</span> ₹
-                                {employee.salary.toLocaleString()}
-                              </span>
-                            )}
-                            {employee.joining_date && (
-                              <span className="text-sm">
-                                <span className="font-medium">Joined:</span>{" "}
-                                {new Date(employee.joining_date).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-primary hover:text-primary hover:bg-primary/5"
-                            onClick={() => {
-                              setSelectedEmployeeForTracker(employee);
-                              setIsTrackerOpen(true);
-                            }}
-                          >
-                            <TrendingUp className="h-4 w-4 mr-1" />
-                            Tracker
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(employee)}
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDelete(employee)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
+                        <p className="text-sm text-muted-foreground">
+                          {employee.email}
+                        </p>
+                        {employee.phone && (
+                          <p className="text-sm text-muted-foreground">
+                            Phone: {employee.phone}
+                          </p>
+                        )}
+                        <div className="flex gap-4 mt-2">
+                          <span className="text-sm">
+                            <span className="font-medium">Position:</span>{" "}
+                            {employee.position?.name || "Not Assigned"}
+                          </span>
+                          <span className="text-sm">
+                            <span className="font-medium">Department:</span>{" "}
+                            {employee.position?.department || "N/A"}
+                          </span>
+                          {employee.salary && (
+                            <span className="text-sm">
+                              <span className="font-medium">Salary:</span> ₹
+                              {employee.salary.toLocaleString()}
+                            </span>
+                          )}
+                          {employee.joining_date && (
+                            <span className="text-sm">
+                              <span className="font-medium">Joined:</span>{" "}
+                              {new Date(employee.joining_date).toLocaleDateString()}
+                            </span>
+                          )}
                         </div>
                       </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-primary hover:text-primary hover:bg-primary/5"
+                          onClick={() => {
+                            setSelectedEmployeeForTracker(employee);
+                            setIsTrackerOpen(true);
+                          }}
+                        >
+                          <TrendingUp className="h-4 w-4 mr-1" />
+                          Tracker
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEdit(employee)}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDelete(employee)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </main>
-      </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

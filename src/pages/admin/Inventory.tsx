@@ -264,7 +264,7 @@ export default function AdminInventory() {
 
   const generateQRCodeSheet = async () => {
     const { data: profile } = await supabase.from('company_profiles').select('company_name').limit(1).maybeSingle();
-    const companyTitle = profile?.company_name || "Amma Auto";
+    const companyTitle = profile?.company_name || "Service Center";
 
     const doc = new jsPDF();
     doc.setFontSize(16);

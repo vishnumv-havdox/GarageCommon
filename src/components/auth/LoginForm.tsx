@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,11 +11,29 @@ interface LoginFormProps {
   onSuccess: () => void
 }
 
+interface CompanyProfile {
+  company_name: string;
+  logo_url?: string;
+}
+
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [profile, setProfile] = useState<CompanyProfile | null>(null)
   const { toast } = useToast()
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data } = await supabase
+        .from('company_profiles')
+        .select('company_name, logo_url')
+        .limit(1)
+        .maybeSingle();
+      if (data) setProfile(data);
+    };
+    fetchProfile();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,10 +81,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/20">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-20 h-20 bg-gradient-to-br from-primary to-primary-glow rounded-full flex items-center justify-center">
-            <LogIn className="w-10 h-10 text-white" />
+          <div className="mx-auto w-20 h-20 bg-gradient-to-br from-primary to-primary-glow rounded-full flex items-center justify-center overflow-hidden">
+            {profile?.logo_url ? (
+              <img src={profile.logo_url} alt="Logo" className="w-full h-full object-contain" />
+            ) : (
+              <LogIn className="w-10 h-10 text-white" />
+            )}
           </div>
-          <CardTitle className="text-2xl font-bold">AMMA AUTO GARAGE</CardTitle>
+          <CardTitle className="text-2xl font-bold uppercase">
+            {profile?.company_name || 'AMMA AUTO GARAGE'}
+          </CardTitle>
           <CardDescription>
             Sign in to access the service center management system
           </CardDescription>

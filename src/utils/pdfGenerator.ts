@@ -98,7 +98,7 @@ const generateDocument = async (workOrderId: string, type: 'work_slip' | 'invoic
         if (isQuotation) settings.title = 'QUOTATION / ESTIMATE';
 
         const company = profile || {
-            company_name: 'Amma Auto Service',
+            company_name: 'Service Center',
             address: '',
             phone: ''
         };

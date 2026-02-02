@@ -118,7 +118,7 @@ export default function InventoryLogin() {
                             )}
                         </Button>
                         <div className="pt-4 text-center">
-                            <p className="text-xs text-slate-500 uppercase tracking-widest">{profile?.company_name || 'AMMA AUTO'} Inventory Management</p>
+                            <p className="text-xs text-slate-500 uppercase tracking-widest">{profile?.company_name || 'Service Center'} Inventory Management</p>
                         </div>
                     </form>
                 </CardContent>

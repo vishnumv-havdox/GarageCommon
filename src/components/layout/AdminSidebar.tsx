@@ -99,9 +99,15 @@ export function AdminSidebar() {
       <div className="lg:hidden flex items-center justify-between p-4 border-b bg-card w-full">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/10 rounded-lg">
-            <Shield className="h-5 w-5 text-primary" />
+            {company?.logo_url ? (
+              <img src={company.logo_url} alt="Logo" className="h-5 w-5 object-contain" />
+            ) : (
+              <Shield className="h-5 w-5 text-primary" />
+            )}
           </div>
-          <span className="font-bold">Admin Panel</span>
+          <span className="font-bold truncate max-w-[150px] uppercase text-sm">
+            {company?.company_name || 'Admin Panel'}
+          </span>
         </div>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>

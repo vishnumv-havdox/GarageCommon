@@ -39,6 +39,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { format } from "date-fns";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function SalaryManagementPage() {
     const { toast } = useToast();
@@ -62,6 +72,13 @@ export default function SalaryManagementPage() {
     const [isEditingPayout, setIsEditingPayout] = useState(false);
     const [editPayoutData, setEditPayoutData] = useState<any>(null);
     const [adjustments, setAdjustments] = useState<any[]>([]);
+
+    // Confirmation states
+    const [confirmAction, setConfirmAction] = useState<{
+        type: 'delete_payout' | 'delete_adjustment' | 'mark_paid' | 'generate_payouts' | null;
+        id?: string;
+        data?: any;
+    }>({ type: null });
 
     useEffect(() => {
         fetchData();
@@ -221,8 +238,6 @@ export default function SalaryManagementPage() {
     };
 
     const handleDeletePayout = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this payout record?")) return;
-
         try {
             const { error } = await supabase
                 .from("employee_payouts")
@@ -238,8 +253,6 @@ export default function SalaryManagementPage() {
     };
 
     const handleDeleteAdjustment = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this adjustment?")) return;
-
         try {
             const { error } = await supabase
                 .from("payout_adjustments")
@@ -385,7 +398,7 @@ export default function SalaryManagementPage() {
                                                                         variant="ghost"
                                                                         size="sm"
                                                                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                                        onClick={() => handleDeletePayout(p.id)}
+                                                                        onClick={() => setConfirmAction({ type: 'delete_payout', id: p.id })}
                                                                     >
                                                                         <Trash2 className="h-4 w-4" />
                                                                     </Button>
@@ -447,7 +460,7 @@ export default function SalaryManagementPage() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                                    onClick={() => handleDeleteAdjustment(a.id)}
+                                                                    onClick={() => setConfirmAction({ type: 'delete_adjustment', id: a.id })}
                                                                 >
                                                                     <Trash2 className="h-4 w-4" />
                                                                 </Button>
@@ -586,7 +599,10 @@ export default function SalaryManagementPage() {
                         <p className="text-xs text-muted-foreground">
                             This will automatically calculate base pay, attendance adjustments, overtime, and performance incentives for all active employees for the selected period.
                         </p>
-                        <Button className="w-full" onClick={handlePayoutGeneration} disabled={isGenerating}>
+                        <Button className="w-full" onClick={() => {
+                            setIsPayoutDialogOpen(false);
+                            setConfirmAction({ type: 'generate_payouts' });
+                        }} disabled={isGenerating}>
                             {isGenerating ? "Processing..." : "Generate Draft Payouts"}
                         </Button>
                     </div>
@@ -607,6 +623,7 @@ export default function SalaryManagementPage() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => {
+                                        setSelectedPayout(p);
                                         setIsEditingPayout(true);
                                         setEditPayoutData({ ...selectedPayout });
                                     }}
@@ -752,7 +769,7 @@ export default function SalaryManagementPage() {
                                 {selectedPayout?.status === 'draft' && (
                                     <Button
                                         className="w-full flex-1"
-                                        onClick={() => handleStatusUpdate(selectedPayout.id, 'paid')}
+                                        onClick={() => setConfirmAction({ type: 'mark_paid', id: selectedPayout.id })}
                                         disabled={isUpdatingStatus}
                                     >
                                         <Coins className="mr-2 h-4 w-4" />
@@ -767,6 +784,45 @@ export default function SalaryManagementPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!confirmAction.type} onOpenChange={(open) => !open && setConfirmAction({ type: null })}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            {confirmAction.type === 'delete_payout' && "Delete Payout Record?"}
+                            {confirmAction.type === 'delete_adjustment' && "Delete Adjustment Record?"}
+                            {confirmAction.type === 'mark_paid' && "Mark as Paid?"}
+                            {confirmAction.type === 'generate_payouts' && "Generate Draft Payouts?"}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {confirmAction.type === 'delete_payout' && "This action cannot be undone. This will permanently delete the payout record from the database."}
+                            {confirmAction.type === 'delete_adjustment' && "This action cannot be undone. This will permanently delete this attendance adjustment."}
+                            {confirmAction.type === 'mark_paid' && "Are you sure you want to mark this payout as paid? This will record the payment date as today."}
+                            {confirmAction.type === 'generate_payouts' && `This will generate draft payouts for the period ${payoutPeriod.start} to ${payoutPeriod.end}. Existing drafts for this period will be updated.`}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className={confirmAction.type?.startsWith('delete') ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+                            onClick={() => {
+                                if (confirmAction.type === 'delete_payout' && confirmAction.id) {
+                                    handleDeletePayout(confirmAction.id);
+                                } else if (confirmAction.type === 'delete_adjustment' && confirmAction.id) {
+                                    handleDeleteAdjustment(confirmAction.id);
+                                } else if (confirmAction.type === 'mark_paid' && confirmAction.id) {
+                                    handleStatusUpdate(confirmAction.id, 'paid');
+                                } else if (confirmAction.type === 'generate_payouts') {
+                                    handlePayoutGeneration();
+                                }
+                                setConfirmAction({ type: null });
+                            }}
+                        >
+                            {confirmAction.type?.startsWith('delete') ? "Delete" : "Confirm"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div >
     );
 }

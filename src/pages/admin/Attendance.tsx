@@ -38,6 +38,17 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function AttendancePage() {
     const { toast } = useToast();
@@ -218,7 +229,7 @@ export default function AttendancePage() {
     };
 
     const globalStats = {
-        present: Object.values(attendance).filter(a => a.status === 'present' || a.status === 'overtime').length,
+        present: Object.values(attendance).filter(a => a.status === 'present' || a.status === 'overtime' || a.status === 'paid-holiday').length,
         absent: Object.values(attendance).filter(a => a.status === 'absent').length,
         leave: Object.values(attendance).filter(a => a.status === 'leave').length,
     };
@@ -229,6 +240,8 @@ export default function AttendancePage() {
         halfDay: (d: Date) => employeeAttendance.some(a => isSameDay(new Date(a.date), d) && a.status === 'half-day'),
         leave: (d: Date) => employeeAttendance.some(a => isSameDay(new Date(a.date), d) && a.status === 'leave'),
         overtime: (d: Date) => employeeAttendance.some(a => isSameDay(new Date(a.date), d) && a.status === 'overtime'),
+        holiday: (d: Date) => employeeAttendance.some(a => isSameDay(new Date(a.date), d) && a.status === 'holiday'),
+        paidHoliday: (d: Date) => employeeAttendance.some(a => isSameDay(new Date(a.date), d) && a.status === 'paid-holiday'),
     };
 
     const modifierStyles = {
@@ -237,6 +250,8 @@ export default function AttendancePage() {
         halfDay: { color: 'white', backgroundColor: '#f59e0b' },
         leave: { color: 'white', backgroundColor: '#3b82f6' },
         overtime: { color: 'white', backgroundColor: '#8b5cf6' },
+        holiday: { color: 'white', backgroundColor: '#64748b' }, // Slate for Unpaid
+        paidHoliday: { color: 'white', backgroundColor: '#6366f1' }, // Indigo for Paid
     };
 
     return (
@@ -294,7 +309,7 @@ export default function AttendancePage() {
                                                 newDate.setDate(newDate.getDate() - 1);
                                                 setDate(newDate);
                                             }}><ChevronLeft className="h-4 w-4" /></Button>
-                                            <Badge variant="outline" className="px-3 py-1 font-semibold text-sm bg-background border-none shadow-sm">{format(date, 'MMMM do, yyyy')}</Badge>
+                                            <Badge variant="outline" className="px-3 py-1 font-semibold text-sm bg-background border-none shadow-sm">{format(date, 'EEEE, MMMM do, yyyy')}</Badge>
                                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background" onClick={() => {
                                                 const newDate = new Date(date);
                                                 newDate.setDate(newDate.getDate() + 1);
@@ -303,10 +318,43 @@ export default function AttendancePage() {
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" onClick={handleMarkAllPresent}>Mark All Present</Button>
-                                        <Button onClick={handleSave} disabled={saving} className="shadow-md hover:shadow-lg transition-all">
-                                            {saving ? "Syncing..." : "Publish Roster"}
-                                        </Button>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="outline" size="sm">Mark All Present</Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Mark all as present?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will set the status of all employees who don't have a status yet to "Present" for {format(date, 'MMMM do')}.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={handleMarkAllPresent}>Continue</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button disabled={saving} className="shadow-md hover:shadow-lg transition-all">
+                                                    {saving ? "Syncing..." : "Publish Roster"}
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Publish this attendance roster?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will save the current attendance records to the database and trigger any associated payroll processes.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Review</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={handleSave}>Confirm & Publish</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="p-0">
@@ -348,6 +396,8 @@ export default function AttendancePage() {
                                                                         <SelectItem value="half-day">Half Day</SelectItem>
                                                                         <SelectItem value="leave">On Leave</SelectItem>
                                                                         <SelectItem value="overtime">Overtime</SelectItem>
+                                                                        <SelectItem value="holiday">Company Holiday (Unpaid)</SelectItem>
+                                                                        <SelectItem value="paid-holiday">Company Holiday (Paid)</SelectItem>
                                                                     </SelectContent>
                                                                 </Select>
                                                             </TableCell>
@@ -447,10 +497,12 @@ export default function AttendancePage() {
                                             </div>
                                             {selectedEmployeeId && (
                                                 <div className="flex gap-1 flex-wrap justify-end">
-                                                    {['present', 'absent', 'halfDay', 'leave', 'overtime'].map(m => (
+                                                    {['present', 'absent', 'halfDay', 'leave', 'overtime', 'holiday', 'paidHoliday'].map(m => (
                                                         <div key={m} className="flex items-center gap-1">
-                                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: (modifierStyles as any)[m].backgroundColor }} />
-                                                            <span className="text-[9px] uppercase font-medium text-muted-foreground mr-1">{m}</span>
+                                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: (modifierStyles as any)[m]?.backgroundColor || '#6366f1' }} />
+                                                            <span className="text-[9px] uppercase font-medium text-muted-foreground mr-1">
+                                                                {m === 'holiday' ? 'unpaid holiday' : m === 'paidHoliday' ? 'paid holiday' : m}
+                                                            </span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -465,7 +517,7 @@ export default function AttendancePage() {
                                                 onSelect={(d) => d && setDate(d)}
                                                 modifiers={modifiers}
                                                 modifiersStyles={modifierStyles}
-                                                className="rounded-xl border shadow-sm p-4 w-full max-w-md pointer-events-none"
+                                                className="rounded-xl border shadow-sm p-4 w-full max-w-md"
                                             />
                                         </CardContent>
                                     </Card>
@@ -492,18 +544,20 @@ export default function AttendancePage() {
                                                         ) : (
                                                             employeeAttendance.map((row) => (
                                                                 <TableRow key={row.id} className="text-xs">
-                                                                    <TableCell className="font-bold">{format(new Date(row.date), 'MMM dd')}</TableCell>
+                                                                    <TableCell className="font-bold">{format(new Date(row.date), 'MMM dd, EEE')}</TableCell>
                                                                     <TableCell>
                                                                         <Badge className={`text-[9px] uppercase font-bold border-none ${row.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
                                                                             row.status === 'absent' ? 'bg-rose-100 text-rose-700' :
                                                                                 row.status === 'half-day' ? 'bg-amber-100 text-amber-700' :
                                                                                     row.status === 'leave' ? 'bg-blue-100 text-blue-700' :
-                                                                                        'bg-purple-100 text-purple-700'
+                                                                                        row.status === 'holiday' ? 'bg-slate-100 text-slate-700' :
+                                                                                            row.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700' :
+                                                                                                'bg-purple-100 text-purple-700'
                                                                             }`}>
                                                                             {row.status}
                                                                         </Badge>
                                                                     </TableCell>
-                                                                    <TableCell className="font-medium">{row.status === 'overtime' ? (parseFloat(row.overtime_hours) + 8) : (row.status === 'present' ? 8 : (row.status === 'half-day' ? 4 : 0))}</TableCell>
+                                                                    <TableCell className="font-medium">{row.status === 'overtime' ? (parseFloat(row.overtime_hours) + 8) : (row.status === 'present' || row.status === 'paid-holiday' ? 8 : (row.status === 'half-day' ? 4 : 0))}</TableCell>
                                                                     <TableCell className="text-muted-foreground italic">{row.remarks || '-'}</TableCell>
                                                                 </TableRow>
                                                             ))

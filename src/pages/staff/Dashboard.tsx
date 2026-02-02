@@ -370,14 +370,28 @@ export default function StaffDashboard() {
     }
   }
 
+  const [company, setCompany] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchCompany = async () => {
+      const { data } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
+      if (data) setCompany(data);
+    };
+    fetchCompany();
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <Briefcase className="h-8 w-8 text-primary" />
+            {company?.logo_url ? (
+              <img src={company.logo_url} alt="Logo" className="h-10 w-10 object-contain rounded" />
+            ) : (
+              <Briefcase className="h-8 w-8 text-primary" />
+            )}
             <div>
-              <h1 className="text-2xl font-bold">Staff Portal</h1>
+              <h1 className="text-2xl font-bold uppercase">{company?.company_name || 'Staff Portal'}</h1>
               <p className="text-sm text-muted-foreground">
                 Welcome, {user?.full_name || user?.email || "Staff Member"}
               </p>

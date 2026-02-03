@@ -151,6 +151,9 @@ export default function ServicesMaster() {
     const [newTaskPrice, setNewTaskPrice] = useState<number>(0);
     const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null); // Track which rule is being edited
     const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null); // Track expanded row in table
+    const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+    const [editingTaskName, setEditingTaskName] = useState("");
+
 
     // Pricing Rules State
     const [vehicleCategories, setVehicleCategories] = useState<VehicleCategory[]>([]);
@@ -531,6 +534,22 @@ export default function ServicesMaster() {
         }
     };
 
+    const handleDeleteTask = async (taskId: string) => {
+        try {
+            const { error } = await supabase
+                .from('task_templates')
+                .delete()
+                .eq('id', taskId);
+
+            if (error) throw error;
+
+            toast({ title: "Success", description: "Task deleted successfully" });
+            fetchServices(); // Refresh to update list
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        }
+    };
+
     return (
         <div className="flex min-h-screen bg-background">
             <AdminSidebar />
@@ -702,7 +721,34 @@ export default function ServicesMaster() {
                                                                         const isOverridden = taskPrice !== task.price;
                                                                         return (
                                                                             <div key={task.id} className="flex justify-between items-center bg-background border rounded px-3 py-2 text-sm shadow-sm">
-                                                                                <span className="text-muted-foreground">{task.name}</span>
+                                                                                {editingTaskId === task.id ? (
+                                                                                    <div className="flex items-center gap-1 flex-1 mr-2">
+                                                                                        <Input
+                                                                                            value={editingTaskName}
+                                                                                            onChange={(e) => setEditingTaskName(e.target.value)}
+                                                                                            className="h-7 text-xs"
+                                                                                            autoFocus
+                                                                                        />
+                                                                                        <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600" onClick={() => updateTaskName(task.id, editingTaskName)}>
+                                                                                            <CheckCircle2 className="h-4 w-4" />
+                                                                                        </Button>
+                                                                                        <Button size="icon" variant="ghost" className="h-6 w-6 text-red-600" onClick={() => setEditingTaskId(null)}>
+                                                                                            <XCircle className="h-4 w-4" />
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="flex items-center gap-2 group/task">
+                                                                                        <span className="text-muted-foreground">{task.name}</span>
+                                                                                        <Button
+                                                                                            size="icon"
+                                                                                            variant="ghost"
+                                                                                            className="h-4 w-4 opacity-0 group-hover/task:opacity-100 transition-opacity"
+                                                                                            onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); }}
+                                                                                        >
+                                                                                            <Edit className="h-3 w-3 text-muted-foreground" />
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                )}
                                                                                 <div className="flex items-center gap-2">
                                                                                     {isOverridden && previewCategory !== 'base' && (
                                                                                         <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Rule</span>
@@ -782,52 +828,13 @@ export default function ServicesMaster() {
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <Label className="flex items-center gap-2">
-                                                    Total Cost
-                                                    <Badge variant={previewCategory === 'base' ? "secondary" : "default"} className="text-[10px] font-normal py-0">
-                                                        {previewCategory === 'base' ? 'Sum of Tasks' : 'Effective Cost'}
-                                                    </Badge>
-                                                </Label>
-                                                <Select value={previewCategory} onValueChange={setPreviewCategory}>
-                                                    <SelectTrigger className="h-8 w-[180px] text-xs">
-                                                        <SelectValue placeholder="Preview For..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="base">Generic Base Price</SelectItem>
-                                                        {vehicleCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-2.5 text-muted-foreground">₹</span>
-                                                <Input
-                                                    type="number"
-                                                    value={
-                                                        // Calculate using helper for existing service + raw sum for new tasks
-                                                        (currentService ? calculateEffectivePrice(currentService, previewCategory, pricingRules) : 0) +
-                                                        newTasks.reduce((sum, t) => sum + (t.price || 0), 0)
-                                                    }
-                                                    disabled
-                                                    className={`pl-7 font-bold text-lg ${previewCategory !== 'base' ? 'text-blue-700 bg-blue-50' : 'bg-muted/50'}`}
-                                                />
-                                            </div>
-                                            <p className="text-[10px] text-muted-foreground italic">
-                                                {previewCategory === 'base'
-                                                    ? "Sum of base task prices."
-                                                    : `Includes rules applied for ${vehicleCategories.find(c => c.id === previewCategory)?.name || 'category'}.`}
-                                            </p>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Estimated Duration</Label>
-                                            <Input
-                                                value={formData.estimated_duration}
-                                                onChange={e => setFormData({ ...formData, estimated_duration: e.target.value })}
-                                                placeholder="e.g. 2-3 hours"
-                                            />
-                                        </div>
+                                    <div className="space-y-2">
+                                        <Label>Estimated Duration</Label>
+                                        <Input
+                                            value={formData.estimated_duration}
+                                            onChange={e => setFormData({ ...formData, estimated_duration: e.target.value })}
+                                            placeholder="e.g. 2-3 hours"
+                                        />
                                     </div>
 
                                     <div className="flex items-center gap-6">
@@ -852,9 +859,43 @@ export default function ServicesMaster() {
                                     </div>
 
                                     <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
-                                        <Label className="flex items-center gap-2">
-                                            <ListTodo className="h-4 w-4" /> Predefined Tasks & Pricing
-                                        </Label>
+                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                            <Label className="flex items-center gap-2">
+                                                <ListTodo className="h-4 w-4" /> Predefined Tasks & Pricing
+                                            </Label>
+
+                                            <div className="flex flex-col md:flex-row items-end md:items-center gap-3 bg-background p-2 rounded border">
+                                                {/* Preview Dropdown */}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Preview:</span>
+                                                    <Select value={previewCategory} onValueChange={setPreviewCategory}>
+                                                        <SelectTrigger className="h-7 w-[160px] text-xs">
+                                                            <SelectValue placeholder="Preview For..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="base">⭐ Base Price</SelectItem>
+                                                            {vehicleCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="h-4 w-px bg-border hidden md:block"></div>
+
+                                                {/* Total Price Display */}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-muted-foreground">Total:</span>
+                                                    <span className={`text-sm font-bold ${previewCategory !== 'base' ? 'text-blue-700' : ''}`}>
+                                                        ₹{(
+                                                            (currentService ? calculateEffectivePrice(currentService, previewCategory, pricingRules) : 0) +
+                                                            newTasks.reduce((sum, t) => sum + (t.price || 0), 0)
+                                                        ).toLocaleString()}
+                                                    </span>
+                                                    {previewCategory !== 'base' && (
+                                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-blue-200 text-blue-600 bg-blue-50">Effective</Badge>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div className="flex flex-col gap-2">
                                             <div className="flex gap-2">
                                                 <Input
@@ -900,7 +941,31 @@ export default function ServicesMaster() {
 
                                                         return (
                                                             <div key={task.id} className={`flex items-center justify-between border rounded p-2 text-sm gap-2 ${isPreview ? 'bg-blue-50/50 border-blue-100' : 'bg-card'}`}>
-                                                                <span className="flex-1 truncate">{task.name}</span>
+                                                                {isPreview ? (
+                                                                    <span className="flex-1 truncate">{task.name}</span>
+                                                                ) : (
+                                                                    <div className="flex flex-1 items-center mr-2">
+                                                                        <Input
+                                                                            key={task.name}
+                                                                            className="h-8 text-xs flex-1"
+                                                                            defaultValue={task.name}
+                                                                            onBlur={(e) => {
+                                                                                if (e.target.value !== task.name) {
+                                                                                    updateTaskName(task.id, e.target.value);
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        <Button
+                                                                            size="icon"
+                                                                            variant="ghost"
+                                                                            className="h-8 w-8 text-destructive hover:bg-destructive/10 ml-1"
+                                                                            title="Delete Task"
+                                                                            onClick={() => handleDeleteTask(task.id)}
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
                                                                 <div className="flex items-center gap-2 w-32">
                                                                     <span className={`text-xs ${isPreview ? 'text-blue-600' : 'text-muted-foreground'}`}>₹</span>
                                                                     <Input

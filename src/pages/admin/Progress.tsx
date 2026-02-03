@@ -45,6 +45,7 @@ interface WorkOrderProgress {
   vehicle_number: string | null;
   vehicle_model: string | null;
   customer_name: string | null;
+  customer_company: string | null;
   stages: Array<{
     id: string;
     stage: string;
@@ -80,7 +81,7 @@ export default function AdminProgress() {
         .from("work_orders")
         .select(`
           *,
-          vehicle:vehicles(vehicle_number, model, customers(name)),
+          vehicle:vehicles(vehicle_number, model, customers(name, company_name)),
           stages:work_order_stages(id, stage, status, started_at, completed_at),
           services:work_order_services(
             id, 
@@ -109,6 +110,7 @@ export default function AdminProgress() {
         vehicle_number: wo.vehicle?.vehicle_number,
         vehicle_model: wo.vehicle?.model,
         customer_name: wo.vehicle?.customers?.name,
+        customer_company: wo.vehicle?.customers?.company_name,
         stages: wo.stages || [],
         services: wo.services || []
       }));
@@ -201,6 +203,7 @@ export default function AdminProgress() {
       wo.service_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
       wo.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       wo.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      wo.customer_company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       wo.id.includes(searchTerm);
     const matchesStatus = statusFilter === "all" || wo.status === statusFilter;
     const matchesPriority = priorityFilter === "all" || wo.priority === priorityFilter;
@@ -213,6 +216,7 @@ export default function AdminProgress() {
       new Set(workOrders.map(wo => wo.vehicle_number)),
       new Set(workOrders.map(wo => wo.vehicle_model)),
       new Set(workOrders.map(wo => wo.customer_name)),
+      new Set(workOrders.map(wo => wo.customer_company)),
     ];
     return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
   }, [workOrders]);
@@ -416,6 +420,9 @@ export default function AdminProgress() {
                         </TableCell>
                         <TableCell>
                           <div className="font-medium">{wo.customer_name}</div>
+                          {wo.customer_company && (
+                            <div className="text-xs text-blue-600 font-medium">({wo.customer_company})</div>
+                          )}
                           <div className="text-xs text-muted-foreground flex items-center gap-1">
                             <Truck className="h-3 w-3" /> {wo.vehicle_number} • {wo.vehicle_model}
                           </div>

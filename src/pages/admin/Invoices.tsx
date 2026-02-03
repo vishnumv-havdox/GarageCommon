@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,16 @@ import {
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -733,6 +744,55 @@ export default function AdminInvoices() {
 function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any[], type: 'draft' | 'finalized' | 'all', onRefresh: () => void, onGenerate?: (woId: string) => void }) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
+
+  // Reset selection on data refresh or type change
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [invoices, type]);
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(invoices.map(i => i.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedIds(prev => [...prev, id]);
+    } else {
+      setSelectedIds(prev => prev.filter(pid => pid !== id));
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+
+    const { error } = await supabase.from('invoices').delete().eq('id', deleteTarget.id);
+    if (error) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } else {
+      toast({ title: "Deleted", description: "Invoice deleted successfully." });
+      onRefresh();
+    }
+    setDeleteTarget(null);
+  };
+
+  const confirmBulkDelete = async () => {
+    const { error } = await supabase.from('invoices').delete().in('id', selectedIds);
+    if (error) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } else {
+      toast({ title: "Deleted", description: `${selectedIds.length} invoices deleted.` });
+      onRefresh();
+      setSelectedIds([]);
+    }
+    setShowBulkDelete(false);
+  }
 
   if (invoices.length === 0) {
     return (
@@ -745,114 +805,166 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
   }
 
   return (
-    <div className="border rounded-md">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Bill No.</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>Customer</TableHead>
-            <TableHead>Vehicle</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {invoices.map((inv) => (
-            <TableRow key={inv.id}>
-              <TableCell className="font-medium">
-                {inv.type === 'quotation'
-                  ? (inv.quotation_number ? `QTN-${inv.quotation_number}` : 'Draft QTN')
-                  : (inv.bill_number ? `INV-${inv.bill_number}` : `Draft #${inv.invoice_number}`)
-                }
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline" className={inv.type === 'quotation' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
-                  {inv.type === 'quotation' ? 'Quotation' : 'Invoice'}
-                </Badge>
-              </TableCell>
-              <TableCell>{format(new Date(inv.created_at), "MMM d, yyyy")}</TableCell>
-              <TableCell>
-                <div>{inv.customer?.name}</div>
-                <div className="text-xs text-muted-foreground">{inv.customer?.company_name}</div>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline">{inv.work_order?.vehicle?.vehicle_number}</Badge>
-                <div className="text-xs text-muted-foreground mt-1">{inv.work_order?.vehicle?.model}</div>
-              </TableCell>
-              <TableCell className="font-bold">
-                ₹{inv.total?.toLocaleString()}
-              </TableCell>
-              <TableCell>
-                <Badge
-                  variant={
-                    inv.status === 'Paid' ? 'default' :
-                      inv.status === 'Draft' ? 'secondary' :
-                        inv.status === 'Ready to Bill' ? 'outline' :
-                          'destructive'
-                  }
-                  className={inv.status === 'Ready to Bill' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
-                >
-                  {inv.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  {inv.is_virtual ? (
-                    <>
-                      <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => navigate(`/admin/work-orders/${inv.work_order_id}`)}>
-                        <Eye className="h-3.5 w-3.5" /> View
-                      </Button>
-                      <Button size="sm" className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => onGenerate?.(inv.work_order_id)}>
-                        <Plus className="h-3.5 w-3.5" /> Generate
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      {/* Link to Editor - implementation pending */}
-                      <Button variant="ghost" size="icon" title="Edit/View" onClick={() => {
-                        const cleanPath = `/admin/invoices/${inv.id}`.trim();
-                        console.log("Navigating to:", cleanPath);
-                        navigate(cleanPath);
-                      }}>
-                        <Eye className="h-4 w-4 text-primary" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => generateInvoicePDF(inv.work_order_id)} title="Download PDF">
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => navigate(`/admin/invoices/${inv.id}`)} title="Edit Invoice">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (confirm(`Are you sure you want to DELETE Invoice #${inv.bill_number ?? 'Draft'}?`)) {
-                            const { error } = await supabase.from('invoices').delete().eq('id', inv.id);
-                            if (error) {
-                              toast({ variant: "destructive", title: "Error", description: error.message });
-                            } else {
-                              toast({ title: "Deleted", description: "Invoice deleted successfully." });
-                              onRefresh();
-                            }
-                          }
-                        }}
-                        title="Delete Invoice"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </TableCell>
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm text-muted-foreground">
+          {selectedIds.length > 0 ? `${selectedIds.length} selected` : `Total ${invoices.length} invoices`}
+        </div>
+        {selectedIds.length > 0 && (
+          <Button variant="destructive" size="sm" onClick={() => setShowBulkDelete(true)}>
+            <Trash2 className="h-4 w-4 mr-2" /> Delete Selected ({selectedIds.length})
+          </Button>
+        )}
+      </div>
+
+      <div className="border rounded-md">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={selectedIds.length === invoices.length && invoices.length > 0}
+                  onCheckedChange={handleSelectAll}
+                />
+              </TableHead>
+              <TableHead>Bill No.</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Vehicle</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div >
+          </TableHeader>
+          <TableBody>
+            {invoices.map((inv) => (
+              <TableRow key={inv.id} data-state={selectedIds.includes(inv.id) ? "selected" : ""}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedIds.includes(inv.id)}
+                    onCheckedChange={(checked) => handleSelectOne(inv.id, !!checked)}
+                  />
+                </TableCell>
+                <TableCell className="font-medium">
+                  {inv.type === 'quotation'
+                    ? (inv.quotation_number ? `QTN-${inv.quotation_number}` : 'Draft QTN')
+                    : (inv.bill_number ? `INV-${inv.bill_number}` : `Draft #${inv.invoice_number}`)
+                  }
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={inv.type === 'quotation' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
+                    {inv.type === 'quotation' ? 'Quotation' : 'Invoice'}
+                  </Badge>
+                </TableCell>
+                <TableCell>{format(new Date(inv.created_at), "MMM d, yyyy")}</TableCell>
+                <TableCell>
+                  <div>{inv.customer?.name}</div>
+                  <div className="text-xs text-muted-foreground">{inv.customer?.company_name}</div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{inv.work_order?.vehicle?.vehicle_number}</Badge>
+                  <div className="text-xs text-muted-foreground mt-1">{inv.work_order?.vehicle?.model}</div>
+                </TableCell>
+                <TableCell className="font-bold">
+                  ₹{inv.total?.toLocaleString()}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={
+                      inv.status === 'Paid' ? 'default' :
+                        inv.status === 'Draft' ? 'secondary' :
+                          inv.status === 'Ready to Bill' ? 'outline' :
+                            'destructive'
+                    }
+                    className={inv.status === 'Ready to Bill' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
+                  >
+                    {inv.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    {inv.is_virtual ? (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => navigate(`/admin/work-orders/${inv.work_order_id}`)}>
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </Button>
+                        <Button size="sm" className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => onGenerate?.(inv.work_order_id)}>
+                          <Plus className="h-3.5 w-3.5" /> Generate
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {/* Link to Editor - implementation pending */}
+                        <Button variant="ghost" size="icon" title="Edit/View" onClick={() => {
+                          const cleanPath = `/admin/invoices/${inv.id}`.trim();
+                          console.log("Navigating to:", cleanPath);
+                          navigate(cleanPath);
+                        }}>
+                          <Eye className="h-4 w-4 text-primary" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => generateInvoicePDF(inv.work_order_id)} title="Download PDF">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => navigate(`/admin/invoices/${inv.id}`)} title="Edit Invoice">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(inv);
+                          }}
+                          title="Delete Invoice"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete
+              <b> {deleteTarget?.type === 'quotation' ? 'Quotation' : 'Invoice'} #{deleteTarget?.bill_number || deleteTarget?.invoice_number || 'Draft'}</b>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
+              Delete Record
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={showBulkDelete} onOpenChange={setShowBulkDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.length} Invoices?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the <b>{selectedIds.length} selected invoices</b>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmBulkDelete} className="bg-destructive hover:bg-destructive/90">
+              Delete All Selected
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
+
 }

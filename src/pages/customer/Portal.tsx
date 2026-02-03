@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { createClient } from '@supabase/supabase-js';
@@ -715,6 +715,23 @@ export default function CustomerPortal() {
     }
   };
 
+  // Sort vehicles: Active ones first
+  const sortedVehicles = useMemo(() => {
+    return [...vehicles].sort((a, b) => {
+      const getActiveCount = (vId: string) => {
+        const vehicleWorkOrders = Object.values(workOrdersById).filter(
+          (wo: any) => wo.vehicle_id === vId
+        );
+        return vehicleWorkOrders.filter(
+          (wo: any) => !["delivered", "completed", "cancelled", "approved"].includes(
+            (wo.status || "").toLowerCase()
+          )
+        ).length;
+      };
+      return getActiveCount(b.id) - getActiveCount(a.id);
+    });
+  }, [vehicles, workOrdersById]);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
@@ -1215,168 +1232,169 @@ export default function CustomerPortal() {
                   <p className="text-muted-foreground text-center py-8">No vehicles registered yet</p>
                 ) : (
                   <div className="space-y-4">
-                    {vehicles.map((vehicle) => (
-                      <div key={vehicle.id} className="border p-4 rounded-lg">
-                        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
-                          {/* Vehicle Main Info */}
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Truck className="h-5 w-5 text-primary" />
-                              <h3 className="font-semibold text-lg">{vehicle.vehicle_number}</h3>
+                    {sortedVehicles.map((vehicle) => {
+                      const vehicleWorkOrders = Object.values(workOrdersById).filter(
+                        (wo: any) => wo.vehicle_id === vehicle.id
+                      );
+                      const activeCount = vehicleWorkOrders.filter(
+                        (wo: any) => !["delivered", "completed", "cancelled", "approved"].includes(
+                          (wo.status || "").toLowerCase()
+                        )
+                      ).length;
+                      const completedCount = vehicleWorkOrders.length - activeCount;
+
+                      return (
+                        <div
+                          key={vehicle.id}
+                          className={`border p-4 rounded-lg relative transition-all ${activeCount > 0 ? 'border-primary border-2 bg-primary/5 shadow-md' : 'bg-card'}`}
+                        >
+                          {activeCount > 0 && (
+                            <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[10px] px-3 py-1 rounded-bl-lg font-medium flex items-center gap-1 shadow-sm z-10">
+                              <Wrench className="h-3 w-3 animate-pulse" />
+                              Service In Progress
                             </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {/* Model */}
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="text-muted-foreground">Model:</span>
-                                <span className="font-medium">{vehicle.model || "N/A"}</span>
+                          )}
+                          <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 pt-2">
+                            {/* Vehicle Main Info */}
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Truck className={`h-5 w-5 ${activeCount > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
+                                <h3 className="font-semibold text-lg">{vehicle.vehicle_number}</h3>
                               </div>
 
-                              {/* Vehicle Type */}
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="text-muted-foreground">Type:</span>
-                                <span className="font-medium">{vehicle.vehicle_type || "N/A"}</span>
-                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {/* Model */}
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Model:</span>
+                                  <span className="font-medium">{vehicle.model || "N/A"}</span>
+                                </div>
 
-                              {/* Color */}
-                              {vehicle.color && (
+                                {/* Vehicle Type */}
                                 <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Color:</span>
-                                  <span className="font-medium">{vehicle.color}</span>
+                                  <span className="text-muted-foreground">Type:</span>
+                                  <span className="font-medium">{vehicle.vehicle_type || "N/A"}</span>
                                 </div>
-                              )}
 
-                              {/* Year */}
-                              {vehicle.year && (
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Year:</span>
-                                  <span className="font-medium">{vehicle.year}</span>
-                                </div>
-                              )}
+                                {/* Color */}
+                                {vehicle.color && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Color:</span>
+                                    <span className="font-medium">{vehicle.color}</span>
+                                  </div>
+                                )}
 
-                              {/* Registration Date */}
-                              {vehicle.created_at && (
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Registered:</span>
-                                  <span className="font-medium">
-                                    {new Date(vehicle.created_at).toLocaleDateString("en-IN", {
-                                      day: "2-digit",
-                                      month: "short",
-                                      year: "numeric"
-                                    })}
-                                  </span>
-                                </div>
-                              )}
+                                {/* Year */}
+                                {vehicle.year && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Year:</span>
+                                    <span className="font-medium">{vehicle.year}</span>
+                                  </div>
+                                )}
 
-                              {/* VIN/Chassis Number */}
-                              {vehicle.vin && (
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">VIN:</span>
-                                  <span className="font-medium text-xs font-mono">{vehicle.vin}</span>
-                                </div>
-                              )}
-
-                              {/* Engine Number */}
-                              {vehicle.engine_number && (
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Engine:</span>
-                                  <span className="font-medium text-xs font-mono">{vehicle.engine_number}</span>
-                                </div>
-                              )}
-
-                              {/* Service Tracking - New Section */}
-                              <div className="md:col-span-2 mt-2 pt-2 border-t grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Odometer:</span>
-                                  <span className="font-medium">
-                                    {vehicle.kilometers_driven ? `${vehicle.kilometers_driven.toLocaleString()} km` : "N/A"}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Next Service @:</span>
-                                  <span className="font-medium">
-                                    {vehicle.next_service_km ? `${vehicle.next_service_km.toLocaleString()} km` : "N/A"}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Next Service Date:</span>
-                                  <span className="font-medium">
-                                    {vehicle.next_service_date
-                                      ? new Date(vehicle.next_service_date).toLocaleDateString("en-IN", {
+                                {/* Registration Date */}
+                                {vehicle.created_at && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Registered:</span>
+                                    <span className="font-medium">
+                                      {new Date(vehicle.created_at).toLocaleDateString("en-IN", {
                                         day: "2-digit",
                                         month: "short",
                                         year: "numeric"
-                                      })
-                                      : "N/A"
-                                    }
-                                  </span>
+                                      })}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* VIN/Chassis Number */}
+                                {vehicle.vin && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">VIN:</span>
+                                    <span className="font-medium text-xs font-mono">{vehicle.vin}</span>
+                                  </div>
+                                )}
+
+                                {/* Engine Number */}
+                                {vehicle.engine_number && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Engine:</span>
+                                    <span className="font-medium text-xs font-mono">{vehicle.engine_number}</span>
+                                  </div>
+                                )}
+
+                                {/* Service Tracking - New Section */}
+                                <div className="md:col-span-2 mt-2 pt-2 border-t grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Odometer:</span>
+                                    <span className="font-medium">
+                                      {vehicle.kilometers_driven ? `${vehicle.kilometers_driven.toLocaleString()} km` : "N/A"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Next Service @:</span>
+                                    <span className="font-medium">
+                                      {vehicle.next_service_km ? `${vehicle.next_service_km.toLocaleString()} km` : "N/A"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Next Service Date:</span>
+                                    <span className="font-medium">
+                                      {vehicle.next_service_date
+                                        ? new Date(vehicle.next_service_date).toLocaleDateString("en-IN", {
+                                          day: "2-digit",
+                                          month: "short",
+                                          year: "numeric"
+                                        })
+                                        : "N/A"
+                                      }
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
 
-                          {/* Vehicle Stats */}
-                          <div className="flex flex-col gap-2 min-w-[150px]">
-                            {/* Work Orders Count for this Vehicle */}
-                            {(() => {
-                              const vehicleWorkOrders = Object.values(workOrdersById).filter(
-                                (wo: any) => wo.vehicle_id === vehicle.id
-                              );
-                              const activeCount = vehicleWorkOrders.filter(
-                                (wo: any) => !["delivered", "completed", "cancelled", "approved"].includes(
-                                  (wo.status || "").toLowerCase()
-                                )
-                              ).length;
-                              const completedCount = vehicleWorkOrders.length - activeCount;
+                            {/* Vehicle Stats */}
+                            <div className="flex flex-col gap-2 min-w-[150px]">
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant={
+                                    completedCount > 0 && activeCount === 0 ? "default" :
+                                      activeCount > 0 ? "secondary" : "outline"
+                                  }
+                                  className={activeCount > 0 ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}
+                                >
+                                  {completedCount > 0 && activeCount === 0 ? "Completed" :
+                                    activeCount > 0 ? "In Progress" : "Available"}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                <span className={`font-medium ${activeCount > 0 ? 'text-primary' : 'text-blue-600'}`}>{activeCount}</span> active repairs
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                <span className="font-medium text-green-600">{completedCount}</span> completed
+                              </div>
 
-                              // Get the latest work order status for display
-                              const latestWorkOrder = vehicleWorkOrders[0];
-                              const repairStatus = latestWorkOrder?.status || "No repairs";
-
-                              return (
-                                <>
-                                  <div className="flex items-center gap-2">
-                                    <Badge
-                                      variant={
-                                        completedCount > 0 && activeCount === 0 ? "default" :
-                                          activeCount > 0 ? "secondary" : "outline"
-                                      }
-                                    >
-                                      {completedCount > 0 && activeCount === 0 ? "Completed" :
-                                        activeCount > 0 ? "In Progress" : "Available"}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    <span className="font-medium text-blue-600">{activeCount}</span> active repairs
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    <span className="font-medium text-green-600">{completedCount}</span> completed
-                                  </div>
-
-                                  {/* History Button */}
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                      const vehicleHistory = serviceHistory.filter(h => h.vehicle_id === vehicle.id);
-                                      setViewingVehicleHistory({
-                                        vehicleId: vehicle.id,
-                                        vehicleNumber: vehicle.vehicle_number,
-                                        history: vehicleHistory
-                                      });
-                                    }}
-                                    className="flex items-center gap-2 mt-2"
-                                  >
-                                    <History className="h-4 w-4" />
-                                    History
-                                  </Button>
-                                </>
-                              );
-                            })()}
+                              {/* History Button */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const vehicleHistory = serviceHistory.filter(h => h.vehicle_id === vehicle.id);
+                                  setViewingVehicleHistory({
+                                    vehicleId: vehicle.id,
+                                    vehicleNumber: vehicle.vehicle_number,
+                                    history: vehicleHistory
+                                  });
+                                }}
+                                className="flex items-center gap-2 mt-2"
+                              >
+                                <History className="h-4 w-4" />
+                                History
+                              </Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>

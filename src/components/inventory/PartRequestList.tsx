@@ -51,9 +51,10 @@ interface PartRequest {
 interface PartRequestListProps {
     workOrderId: string;
     isAdmin?: boolean;
+    isReadOnly?: boolean;
 }
 
-export function PartRequestList({ workOrderId, isAdmin }: PartRequestListProps) {
+export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: PartRequestListProps) {
     const { user } = useAuth();
     const { toast } = useToast();
     const [requests, setRequests] = useState<PartRequest[]>([]);
@@ -369,66 +370,68 @@ export function PartRequestList({ workOrderId, isAdmin }: PartRequestListProps) 
                                 {isLinking ? "Linking..." : "Link Admin Account"}
                             </Button>
                         )}
-                        <Dialog open={isRequestDialogOpen} onOpenChange={setIsRequestDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button size="sm" className="bg-primary hover:bg-primary/90">
-                                    <Plus className="h-4 w-4 mr-1" /> Request Part
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Request New Part</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4 py-4">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">Select Part</label>
-                                        <Select onValueChange={setSelectedItemId}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Choose a part..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {inventoryItems.map((item) => (
-                                                    <SelectItem key={item.id} value={item.id}>
-                                                        {item.item_name} ({item.sku}) - {item.available_qty} left
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
+                        {!isReadOnly && (
+                            <Dialog open={isRequestDialogOpen} onOpenChange={setIsRequestDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                        <Plus className="h-4 w-4 mr-1" /> Request Part
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Request New Part</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4 py-4">
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium">Quantity</label>
-                                            <Input
-                                                type="number"
-                                                min="1"
-                                                value={qty}
-                                                onChange={(e) => setQty(parseInt(e.target.value))}
-                                            />
+                                            <label className="text-sm font-medium">Select Part</label>
+                                            <Select onValueChange={setSelectedItemId}>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Choose a part..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {inventoryItems.map((item) => (
+                                                        <SelectItem key={item.id} value={item.id}>
+                                                            {item.item_name} ({item.sku}) - {item.available_qty} left
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                        {isAdmin && (
+
+                                        <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <label className="text-sm font-medium">Requested By</label>
-                                                <Select onValueChange={setSelectedEmployeeId}>
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select employee" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {employees.map((emp) => (
-                                                            <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                <label className="text-sm font-medium">Quantity</label>
+                                                <Input
+                                                    type="number"
+                                                    min="1"
+                                                    value={qty}
+                                                    onChange={(e) => setQty(parseInt(e.target.value))}
+                                                />
                                             </div>
-                                        )}
+                                            {isAdmin && (
+                                                <div className="space-y-2">
+                                                    <label className="text-sm font-medium">Requested By</label>
+                                                    <Select onValueChange={setSelectedEmployeeId}>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select employee" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {employees.map((emp) => (
+                                                                <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setIsRequestDialogOpen(false)}>Cancel</Button>
-                                    <Button onClick={handleCreateRequest}>Submit Request</Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                                    <DialogFooter>
+                                        <Button variant="outline" onClick={() => setIsRequestDialogOpen(false)}>Cancel</Button>
+                                        <Button onClick={handleCreateRequest}>Submit Request</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        )}
                     </div>
                 </div>
             </CardHeader>
@@ -503,7 +506,7 @@ export function PartRequestList({ workOrderId, isAdmin }: PartRequestListProps) 
                                                         </Button>
                                                     </div>
                                                 )}
-                                                {req.status === 'issued' && (
+                                                {req.status === 'issued' && !isReadOnly && (
                                                     <div className="flex items-center gap-2">
                                                         {req.approved_qty > req.issued_qty && (
                                                             <Button

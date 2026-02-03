@@ -22,8 +22,11 @@ export default function InventoryRoom() {
     const [approvedParts, setApprovedParts] = useState<any[]>([]);
     const [isScanning, setIsScanning] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
+    const [scannedSessionItems, setScannedSessionItems] = useState<any[]>([]);
+    const [isProcessingScan, setIsProcessingScan] = useState(false);
 
     const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+    const lastScannedTimeRef = useRef<Record<string, number>>({});
 
     useEffect(() => {
         fetchApprovedWorkOrders();
@@ -88,18 +91,38 @@ export default function InventoryRoom() {
         }
     };
 
+    const onScanFailure = (error: any) => {
+        // Many failures are just "No QR code detected" - we don't need to alert the user for every frame
+        // console.warn(`QR scan error: ${error}`);
+    };
+
     const startScanner = () => {
         setIsScanning(true);
+        // Slightly longer delay to ensure the "reader" div is in the DOM
         setTimeout(() => {
-            const scanner = new Html5QrcodeScanner(
-                "reader",
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-        /* verbose= */ false
-            );
+            try {
+                const scanner = new Html5QrcodeScanner(
+                    "reader",
+                    {
+                        fps: 10,
+                        qrbox: { width: 250, height: 250 },
+                        aspectRatio: 1.0
+                    },
+                    /* verbose= */ false
+                );
 
-            scanner.render(onScanSuccess, onScanFailure);
-            scannerRef.current = scanner;
-        }, 100);
+                scanner.render(onScanSuccess, onScanFailure);
+                scannerRef.current = scanner;
+            } catch (error: any) {
+                console.error("Scanner init failed:", error);
+                toast({
+                    variant: "destructive",
+                    title: "Scanner Error",
+                    description: "Could not start camera. Please check permissions."
+                });
+                setIsScanning(false);
+            }
+        }, 300);
     };
 
     const stopScanner = () => {
@@ -108,40 +131,123 @@ export default function InventoryRoom() {
             scannerRef.current = null;
         }
         setIsScanning(false);
+        setIsProcessingScan(false);
     };
 
-    const onScanSuccess = (decodedText: string) => {
-        // Find the part matching the scanned text (either SKU or actual QR value)
-        const part = approvedParts.find(p =>
-            p.inventory?.sku === decodedText || p.inventory?.qr_code === decodedText
-        );
+    const playBeep = () => {
+        try {
+            const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
 
-        if (part) {
-            stopScanner();
-            handleIssuePart(part);
-        } else {
-            toast({
-                variant: "destructive",
-                title: "Invalid Part",
-                description: "This part is not approved for this Work Order."
-            });
+            oscillator.type = "sine";
+            oscillator.frequency.setValueAtTime(880, context.currentTime); // A5 note
+            gain.gain.setValueAtTime(0.1, context.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.2);
+
+            oscillator.connect(gain);
+            gain.connect(context.destination);
+
+            oscillator.start();
+            oscillator.stop(context.currentTime + 0.2);
+        } catch (e) {
+            console.warn("Audio beep failed", e);
         }
     };
 
-    const onScanFailure = (error: any) => {
-        // Ignore scan failures (usually just "no QR found in frame")
+    const onScanSuccess = async (decodedText: string) => {
+        if (isProcessingScan) return;
+
+        // Cooldown check to prevent rapid duplicate scans of the same code
+        const now = Date.now();
+        const lastTime = lastScannedTimeRef.current[decodedText] || 0;
+        if (now - lastTime < 3000) return; // 3 second cooldown per specific QR
+
+        setIsProcessingScan(true);
+        playBeep();
+
+        try {
+            // 1. Try Unit-Level Scan first
+            const { data: emp } = await supabase.from("employees").select("id").eq("user_id", user?.id).single();
+            if (!emp) throw new Error("Employee record not found");
+
+            const { data: unitResult, error: unitError } = await supabase.rpc("scan_and_issue_unit", {
+                _qr_code: decodedText,
+                _work_order_id: selectedWO.id,
+                _employee_id: emp.id
+            });
+
+            if (unitError) throw unitError;
+            if (!unitResult) throw new Error("No response from server");
+
+            if (unitResult.success) {
+                toast({
+                    title: "Unit Issued ✅",
+                    description: `${unitResult.item_name} confirmed.`
+                });
+
+                // Add to session history
+                setScannedSessionItems(prev => [{
+                    id: Math.random().toString(),
+                    item_name: unitResult.item_name,
+                    sku: decodedText.split('-')[0], // Extract SKU if possible
+                    qr: decodedText,
+                    time: new Date().toLocaleTimeString()
+                }, ...prev]);
+
+                lastScannedTimeRef.current[decodedText] = Date.now();
+                fetchApprovedParts(selectedWO.id);
+                return;
+            }
+
+            // 2. Fallback to Legacy SKU Match
+            if (unitResult.code === 'NOT_FOUND') {
+                const part = approvedParts.find(p =>
+                    p.inventory?.sku === decodedText || p.inventory?.qr_code === decodedText
+                );
+
+                if (part) {
+                    await handleIssuePart(part);
+                    lastScannedTimeRef.current[decodedText] = Date.now();
+
+                    setScannedSessionItems(prev => [{
+                        id: Math.random().toString(),
+                        item_name: part.inventory?.item_name || "Unknown Item",
+                        sku: decodedText,
+                        qr: decodedText,
+                        time: new Date().toLocaleTimeString()
+                    }, ...prev]);
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Invalid Part",
+                        description: "No match for this code."
+                    });
+                }
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "Issue Failed",
+                    description: unitResult.message
+                });
+            }
+
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        } finally {
+            setIsProcessingScan(false);
+        }
     };
 
     const handleIssuePart = async (request: any) => {
-        setLoading(true);
+        // Legacy Issue Flow (SKU Match)
         try {
-            // Find employee record for current user
             const { data: emp } = await supabase.from("employees").select("id").eq("user_id", user?.id).single();
-            if (!emp) throw new Error("Employee record not found for your account");
+            if (!emp) throw new Error("Employee record not found");
 
             const { error } = await supabase.rpc("issue_part_request", {
                 _request_id: request.id,
-                _issued_qty: 1, // Issue one at a time via scan
+                _issued_qty: 1,
                 _employee_id: emp.id
             });
 
@@ -152,7 +258,6 @@ export default function InventoryRoom() {
                 description: `${request.inventory.item_name} has been added to the Work Order.`
             });
 
-            // Refresh parts list
             fetchApprovedParts(selectedWO.id);
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -300,12 +405,20 @@ export default function InventoryRoom() {
                 {isScanning ? (
                     <div className="space-y-4">
                         <div id="reader" className="overflow-hidden rounded-2xl border-2 border-primary bg-black aspect-square"></div>
+
+                        {isProcessingScan && (
+                            <div className="flex items-center justify-center gap-2 text-primary animate-pulse py-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span className="text-sm font-medium">Processing Scan...</span>
+                            </div>
+                        )}
+
                         <Button
                             variant="destructive"
                             className="w-full h-12 rounded-xl text-lg font-bold"
                             onClick={stopScanner}
                         >
-                            Cancel Scan
+                            Stop Scanning
                         </Button>
                     </div>
                 ) : (
@@ -315,15 +428,47 @@ export default function InventoryRoom() {
                         disabled={approvedParts.length === 0}
                     >
                         <ScanLine className="h-8 w-8 animate-pulse" />
-                        Scan QR Code
+                        Start Continuous Scan
                     </Button>
+                )}
+
+                {/* Session History Table */}
+                {scannedSessionItems.length > 0 && (
+                    <Card className="bg-slate-800 border-slate-700 mt-6">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-white text-md flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4 text-green-400" />
+                                    Just Scanned
+                                </span>
+                                <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+                                    {scannedSessionItems.length} Items
+                                </Badge>
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <div className="max-h-[300px] overflow-y-auto divide-y divide-slate-700">
+                                {scannedSessionItems.map((item) => (
+                                    <div key={item.id} className="p-3 flex items-center justify-between animate-in slide-in-from-left duration-300">
+                                        <div>
+                                            <p className="font-medium text-slate-200 text-sm">{item.item_name}</p>
+                                            <p className="text-[10px] text-slate-500 font-mono italic">{item.qr}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] text-slate-500">{item.time}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
                 )}
 
                 {loading && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
                         <div className="bg-slate-800 p-8 rounded-2xl flex flex-col items-center gap-4 border border-slate-700">
                             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                            <p className="font-bold">Processing Part...</p>
+                            <p className="font-bold">Loading Data...</p>
                         </div>
                     </div>
                 )}

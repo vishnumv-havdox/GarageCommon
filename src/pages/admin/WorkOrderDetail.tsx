@@ -379,14 +379,10 @@ export default function WorkOrderDetail() {
 
             if (empError) throw empError;
 
-            const { error: serviceError } = await supabase.from("work_order_services").update({
-                status: "In Progress",
-                started_at: new Date().toISOString()
-            }).eq("id", serviceId);
+            // Service status update should happen when STAFF accepts, not when Admin releases.
+            // Keeping service as is.
 
-            if (serviceError) throw serviceError;
-
-            toast({ title: "Assignment Accepted", description: "Admin has manually accepted this assignment" });
+            toast({ title: "Released to Staff", description: "Assignment is now pending staff acceptance" });
             fetchDetails();
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -743,15 +739,20 @@ export default function WorkOrderDetail() {
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-1">
-                                                            {emp.status !== 'Accepted' && (
+                                                            {emp.status === 'Assigned' && (
                                                                 <Button
                                                                     variant="outline"
                                                                     size="sm"
-                                                                    className="h-7 text-[10px] bg-green-50 text-green-700 border-green-200 hover:bg-green-100 px-2"
+                                                                    className="h-7 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 px-2"
                                                                     onClick={() => handleAcceptForStaff(emp.id, s.id)}
                                                                 >
-                                                                    <Play className="h-3 w-3 mr-1" /> Accept for Staff
+                                                                    <Play className="h-3 w-3 mr-1" /> Release to Staff
                                                                 </Button>
+                                                            )}
+                                                            {emp.status === 'pending_acceptance' && (
+                                                                <Badge variant="outline" className="h-7 text-[9px] bg-orange-50 text-orange-700 border-orange-200">
+                                                                    <Clock className="h-3 w-3 mr-1" /> Waiting for Staff
+                                                                </Badge>
                                                             )}
                                                             <Button
                                                                 variant="ghost"

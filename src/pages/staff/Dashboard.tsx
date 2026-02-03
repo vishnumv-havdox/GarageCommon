@@ -106,10 +106,7 @@ export default function StaffDashboard() {
         service_type: row.service_type || "Service",
         description: row.description || "",
         priority: row.priority || "Medium",
-        status: (row.assignment_status || "").toLowerCase() === "assigned" ? "pending_acceptance" :
-          (row.assignment_status || "").toLowerCase() === "accepted" ? "accepted" :
-            (row.assignment_status || "").toLowerCase() === "pending_approval" ? "pending_approval" :
-              (row.assignment_status || "").toLowerCase(),
+        status: (row.assignment_status || "").toLowerCase(),
         work_order_status: (row.work_order_status || "").toLowerCase(),
         current_stage: row.service_status || row.current_stage,
         // Workflow fields - now returned directly from RPC
@@ -418,10 +415,6 @@ export default function StaffDashboard() {
               </Button>
             )}
             <Badge variant="secondary">Staff</Badge>
-            <Button variant="outline" onClick={() => window.location.href = "/inventory/room"}>
-              <QrCode className="h-4 w-4 mr-2" />
-              Inventory Room
-            </Button>
             <Button
               variant="outline"
               onClick={() => setIsProfileOpen(true)}
@@ -433,6 +426,7 @@ export default function StaffDashboard() {
             <Button onClick={signOut} variant="outline" size="icon" title="Logout">
               <LogOut className="h-4 w-4" />
             </Button>
+
           </div>
         </div>
       </header>
@@ -667,13 +661,26 @@ export default function StaffDashboard() {
                 <div className="space-y-4">
                   {(activeTab === "active" ? activeWorkItems : completedWorkItems).map((work) => {
                     const isCompletedHistory = activeTab === "history"
-                    const canAccept = (work.status || "").toLowerCase() === "pending_acceptance" || (work.status || "").toLowerCase() === "assigned"
-                    const canComplete = (work.status || "").toLowerCase() === "accepted" || (work.status || "").toLowerCase() === "in_progress"
+
+                    // Statuses: 'assigned' (Admin assigned) -> 'pending_acceptance' (Admin released) -> 'accepted' (Staff accepted)
+                    const status = (work.status || "").toLowerCase()
+                    const isAssigned = status === "assigned"
+                    const isReleased = status === "pending_acceptance"
+                    const hasAccepted = status === "accepted" || status === "in_progress"
+
+                    const canComplete = hasAccepted
+
                     const isPendingApproval = work.work_order_status.includes("pending approval") || work.status === "pending_approval"
-                    // Treat approved as finished as well (it's an intermediate step before delivery)
                     const isFinished = ["completed", "delivered", "cancelled", "rejected", "approved"].includes(work.work_order_status?.toLowerCase() || "")
                     const repairsAvailable = work.inspection_status === 'approved'
                     const repairsApproved = work.repair_status === 'approved'
+
+                    // User Rule: Button shows only if Inspection Approved AND Admin has Released it (isReleased)
+                    const canAccept = isReleased && repairsAvailable
+
+                    // Waiting States
+                    const isWaitingForInspection = (isAssigned || isReleased) && !repairsAvailable
+                    const isWaitingForAdminRelease = isAssigned && repairsAvailable
 
                     const currentStageTasks = (work.tasks || []).filter(t =>
                       repairsAvailable ? (t.task_type !== 'inspection') : (t.task_type === 'inspection')
@@ -725,14 +732,24 @@ export default function StaffDashboard() {
                                 {canAccept ? (
                                   <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
                                     <Clock className="h-3 w-3 mr-1" />
-                                    Awaiting Your Acceptance
+                                    Action Required
                                   </Badge>
-                                ) : (
+                                ) : isWaitingForInspection ? (
+                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                    <Eye className="h-3 w-3 mr-1" />
+                                    Inspection Pending
+                                  </Badge>
+                                ) : isWaitingForAdminRelease ? (
+                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                    <Lock className="h-3 w-3 mr-1" />
+                                    Admin Release Pending
+                                  </Badge>
+                                ) : hasAccepted ? (
                                   <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
                                     <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    Accepted & Working
+                                    Work Started
                                   </Badge>
-                                )}
+                                ) : null}
                                 {isFinished && (
                                   <Badge variant="default" className="bg-zinc-800">
                                     {['completed', 'delivered', 'approved'].includes(work.work_order_status?.toLowerCase())
@@ -744,16 +761,41 @@ export default function StaffDashboard() {
                             </div>
                           </div>
 
-                          {/* Assignment Prominence - Show big button if not accepted */}
+                          {/* Waiting State Banner */}
+                          {isWaitingForInspection && (
+                            <div className="p-8 bg-muted/20 border-b flex flex-col items-center justify-center text-center gap-2">
+                              <div className="h-12 w-12 rounded-full bg-yellow-100 flex items-center justify-center mb-2">
+                                <Eye className="h-6 w-6 text-yellow-600" />
+                              </div>
+                              <h3 className="font-semibold text-lg text-muted-foreground">Waiting for Inspection Approval</h3>
+                              <p className="text-sm text-muted-foreground max-w-[300px]">
+                                The work order has been created. The "Accept & Start Work" button will appear here once the Admin approves the inspection.
+                              </p>
+                            </div>
+                          )}
+
+                          {isWaitingForAdminRelease && (
+                            <div className="p-8 bg-muted/20 border-b flex flex-col items-center justify-center text-center gap-2">
+                              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center mb-2">
+                                <Lock className="h-6 w-6 text-blue-600" />
+                              </div>
+                              <h3 className="font-semibold text-lg text-muted-foreground">Waiting for Admin Release</h3>
+                              <p className="text-sm text-muted-foreground max-w-[300px]">
+                                Inspection approved. Waiting for the Admin to release the work to you.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Assignment Prominence - Show big button ONLY if actionable (canAccept) */}
                           {canAccept && (
                             <div className="p-8 bg-orange-50/50 border-b flex flex-col items-center justify-center text-center gap-4">
                               <div className="h-16 w-16 rounded-full bg-orange-100 flex items-center justify-center">
                                 <Clock className="h-8 w-8 text-orange-600 animate-pulse" />
                               </div>
                               <div className="space-y-1">
-                                <h3 className="font-bold text-lg text-orange-900 text-zinc-900">New Assignment Received</h3>
+                                <h3 className="font-bold text-lg text-orange-900 text-zinc-900">Ready for Repair</h3>
                                 <p className="text-sm text-orange-700 max-w-[250px]">
-                                  Please accept this assignment to begin the inspection and repair workflow.
+                                  Inspection approved. Please accept to start repairs.
                                 </p>
                               </div>
                               <Button
@@ -767,8 +809,8 @@ export default function StaffDashboard() {
                             </div>
                           )}
 
-                          {/* Progress Section - Visible when tasks are available or being worked on */}
-                          {(repairsAvailable || work.inspection_status === 'pending') && !canAccept && (
+                          {/* Progress Section - Visible ONLY when Accepted (Work Started) and not finished */}
+                          {(hasAccepted && !isFinished) && (
                             <div className={`p-4 border-b ${repairsAvailable ? 'bg-green-50/50' : 'bg-blue-50/50'}`}>
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
@@ -801,7 +843,7 @@ export default function StaffDashboard() {
 
 
                           {/* Tasks Section - Visible when NOT pending acceptance */}
-                          {!canAccept && !isFinished && work.tasks && work.tasks.length > 0 && (
+                          {hasAccepted && !isFinished && work.tasks && work.tasks.length > 0 && (
                             <div className="p-4 space-y-4">
                               {/* Show all unique tasks (no duplication) */}
                               {(() => {

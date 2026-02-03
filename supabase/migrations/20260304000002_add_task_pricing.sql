@@ -3,7 +3,7 @@
 
 -- 1. Add task_template_id to pricing_rules
 ALTER TABLE public.pricing_rules
-    ADD COLUMN task_template_id UUID REFERENCES public.task_templates(id) ON DELETE CASCADE;
+    ADD COLUMN IF NOT EXISTS task_template_id UUID REFERENCES public.task_templates(id) ON DELETE CASCADE;
 
 -- 2. Add comment/description
 COMMENT ON COLUMN public.pricing_rules.task_template_id IS 'If set, this rule applies specifically to this task template within the service.';

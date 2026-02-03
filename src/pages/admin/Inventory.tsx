@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Search, Package, Download, Edit, Trash2,
   AlertTriangle, Filter, ChevronRight, QrCode, ScanLine, Clock, ArrowLeftRight,
-  ExternalLink
+  ExternalLink, RefreshCw, Eye
 } from "lucide-react";
+
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { InventoryForm } from "@/components/inventory/InventoryForm";
 import { SearchInput } from "@/components/shared/SearchInput";
@@ -23,6 +24,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -40,7 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { jsPDF } from "jspdf";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import QRCode from "qrcode";
 import { renderToString } from "react-dom/server";
 
@@ -105,7 +113,14 @@ export default function AdminInventory() {
   const [history, setHistory] = useState<LifecycleHistoryItem[]>([]);
   const [historySearch, setHistorySearch] = useState("");
   const [pendingReturns, setPendingReturns] = useState<ReturnRequest[]>([]);
-  const [activeTab, setActiveTab] = useState("inventory");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "inventory");
+
+  const [selectedProductForQR, setSelectedProductForQR] = useState<InventoryItem | null>(null);
+  const [productUnits, setProductUnits] = useState<any[]>([]);
+  const [selectedUnitForView, setSelectedUnitForView] = useState<any>(null);
+  const [isUnitViewOpen, setIsUnitViewOpen] = useState(false);
+
 
   const categories = ["All", "Mechanical", "Electrical", "Body", "Consumable", "Accessory", "Others"];
 
@@ -113,7 +128,19 @@ export default function AdminInventory() {
     fetchInventory();
     fetchHistory();
     fetchPendingReturns();
-  }, []);
+
+    // Sync tab state if URL changes
+    const tab = searchParams.get("tab");
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSearchParams({ tab: value });
+  };
+
 
   const fetchHistory = async () => {
     try {
@@ -153,7 +180,8 @@ export default function AdminInventory() {
         .from("inventory")
         .select(`
           *,
-          reservations:part_requests(
+          *,
+          reservations:part_requests!item_id(
             work_order_id,
             approved_qty,
             issued_qty,
@@ -176,27 +204,42 @@ export default function AdminInventory() {
   const handleFormSubmit = async (formData: any) => {
     setLoading(true);
     try {
+      // Sanitize formData to remove relationships and computed fields
+      const { reservations, created_at, id, ...updateData } = formData;
+
       if (editingItem) {
         const { error } = await supabase
           .from("inventory")
           .update({
-            ...formData,
+            ...updateData,
             // If total quantity changed, also update available_qty accordingly
-            available_qty: formData.quantity - (editingItem.reserved_qty || 0)
+            available_qty: updateData.quantity - (editingItem.reserved_qty || 0)
           })
           .eq("id", editingItem.id);
         if (error) throw error;
         toast({ title: "Updated", description: "Product updated successfully" });
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("inventory")
           .insert([{
-            ...formData,
-            available_qty: formData.quantity,
+            ...updateData,
+            available_qty: updateData.quantity,
             reserved_qty: 0
-          }]);
+          }])
+          .select()
+          .single();
         if (error) throw error;
-        toast({ title: "Created", description: "Product added to inventory" });
+
+        // Auto-generate units
+        if (updateData.quantity > 0 && data) {
+          await supabase.rpc("generate_inventory_units", {
+            _inventory_id: data.id,
+            _quantity: updateData.quantity,
+            _sku: data.sku
+          });
+        }
+
+        toast({ title: "Created", description: "Product added to inventory with tracked units." });
       }
       setIsFormOpen(false);
       setEditingItem(null);
@@ -371,6 +414,116 @@ export default function AdminInventory() {
     }
   };
 
+  useEffect(() => {
+    if (selectedProductForQR) {
+      fetchProductUnits(selectedProductForQR.id);
+    }
+  }, [selectedProductForQR]);
+
+  const fetchProductUnits = async (inventoryId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("inventory_units")
+        .select(`
+          *,
+          work_order:work_orders(
+            vehicles(vehicle_number)
+          ),
+          employee:employees(name)
+        `)
+        .eq("inventory_id", inventoryId)
+
+        .order("created_at");
+      if (error) throw error;
+      setProductUnits(data || []);
+      if (data?.length === 0) {
+        toast({ variant: "outline", title: "No Units", description: "No existing units found for this product." });
+      }
+
+    } catch (error: any) {
+      console.error("Error fetching units:", error.message);
+      toast({ variant: "destructive", title: "Fetch Error", description: error.message });
+    }
+  };
+
+  const handleGenerateMissingUnits = async (item: InventoryItem) => {
+    if (!confirm(`This will generate unique QR codes for current stock (${item.quantity}). Proceed?`)) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc("generate_inventory_units", {
+        _inventory_id: item.id,
+        _quantity: item.quantity,
+        _sku: item.sku
+      });
+      if (error) throw error;
+      toast({ title: "Success", description: "Unit QR codes generated." });
+      await fetchProductUnits(item.id);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadSingleQR = (unit: any) => {
+    const canvas = document.getElementById(`qr-single-${unit.id}`) as HTMLCanvasElement;
+    if (!canvas) {
+      toast({ variant: "destructive", title: "Error", description: "QR code not ready for download." });
+      return;
+    }
+    const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+    const downloadLink = document.createElement("a");
+    downloadLink.href = pngUrl;
+    downloadLink.download = `QR-${unit.qr_code}.png`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+  };
+
+  const generateUnitQRPDF = async (item: InventoryItem) => {
+    if (productUnits.length === 0) {
+      toast({ variant: "destructive", title: "Empty", description: "No units found. Generate them first." });
+      return;
+    }
+
+    const doc = new jsPDF();
+    let x = 20;
+    let y = 20;
+    const size = 30;
+    const margin = 10;
+    const itemsPerRow = 4;
+
+    doc.setFontSize(16);
+    doc.text(`QR Units: ${item.item_name}`, 20, 15);
+
+    for (let i = 0; i < productUnits.length; i++) {
+      const unit = productUnits[i];
+      if (i > 0 && i % itemsPerRow === 0) {
+        x = 20;
+        y += size + 20;
+      }
+      if (y > 250) {
+        doc.addPage();
+        y = 30;
+        x = 20;
+      }
+
+      const qrDataUrl = await QRCode.toDataURL(unit.qr_code, { margin: 1, width: 200 });
+      doc.addImage(qrDataUrl, 'PNG', x, y, size, size);
+      doc.setFontSize(8);
+      doc.text(unit.qr_code, x, y + size + 4);
+
+      // Status Badge Style
+      doc.setFontSize(6);
+      doc.setTextColor(unit.status === 'available' ? '#008000' : '#FF0000');
+      doc.text(unit.status.toUpperCase(), x, y + size + 8);
+      doc.setTextColor('#000000'); // Reset
+
+      x += size + margin + 5;
+    }
+    doc.save(`Units_${item.sku}.pdf`);
+  };
+
   const filteredInventory = inventory.filter((item) => {
     const matchesSearch = item.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.sku?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -415,12 +568,19 @@ export default function AdminInventory() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="icon" onClick={() => {
+              fetchInventory();
+              fetchHistory();
+              fetchPendingReturns();
+              toast({ title: "Refreshing", description: "Updating inventory data..." });
+            }} title="Refresh Data">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
             <Button variant="outline" onClick={() => window.location.href = "/inventory/room"}>
+
               <ScanLine className="h-4 w-4 mr-2" /> Open Room Scanner
             </Button>
-            <Button variant="outline" onClick={generateQRCodeSheet}>
-              <Download className="h-4 w-4 mr-2" /> QR Sheet
-            </Button>
+
             <Dialog open={isFormOpen} onOpenChange={(open) => {
               setIsFormOpen(open);
               if (!open) setEditingItem(null);
@@ -449,7 +609,7 @@ export default function AdminInventory() {
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList>
             <TabsTrigger value="inventory" className="flex items-center gap-2">
               <Package className="h-4 w-4" /> Stock Master
@@ -464,6 +624,9 @@ export default function AdminInventory() {
                   {pendingReturns.length}
                 </Badge>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="qr-management" className="flex items-center gap-2">
+              <QrCode className="h-4 w-4" /> QR Management
             </TabsTrigger>
           </TabsList>
 
@@ -857,9 +1020,202 @@ export default function AdminInventory() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="qr-management" className="space-y-6">
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="w-full md:w-1/3">
+                <label className="text-sm font-medium mb-2 block">Select Product to Manage</label>
+                <Select
+                  value={selectedProductForQR?.id || ""}
+                  onValueChange={(val) => {
+                    const product = inventory.find(i => i.id === val);
+                    if (product) {
+                      setSelectedProductForQR(product);
+                      fetchProductUnits(product.id);
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Search and select product..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Show top 50 or filtered list */}
+                    {inventory.slice(0, 100).map(item => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.item_name} ({item.sku})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedProductForQR && (
+                <div className="flex items-end gap-2 pb-1">
+                  <div className="flex flex-col gap-1 mr-4">
+                    <span className="text-xs text-muted-foreground">Total Stock</span>
+                    <span className="font-bold text-lg">{selectedProductForQR.quantity} Units</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleGenerateMissingUnits(selectedProductForQR)}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Generate Missing QRs
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => generateUnitQRPDF(selectedProductForQR)}
+                    disabled={productUnits.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Print All Units
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {selectedProductForQR ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Unit QR Codes: {selectedProductForQR.item_name}</CardTitle>
+                  <CardDescription>
+                    Managing {productUnits.length} unique QR codes for this product.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border overflow-hidden max-h-[600px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>QR Code ID</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Created At</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {productUnits.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                              No unit QRs generated yet. Click "Generate Missing QRs" above.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          productUnits.map((unit) => (
+                            <TableRow key={unit.id}>
+                              <TableCell className="font-mono text-xs">{unit.qr_code}</TableCell>
+                              <TableCell>
+                                <Badge variant={unit.status === 'available' ? 'default' : 'secondary'}>
+                                  {unit.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {new Date(unit.created_at).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setSelectedUnitForView(unit);
+                                    setIsUnitViewOpen(true);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg text-muted-foreground">
+                <QrCode className="h-10 w-10 mb-4 opacity-20" />
+                <p>Select a product above to manage its unit-level QR codes.</p>
+              </div>
+            )}
+          </TabsContent>
         </Tabs>
       </main>
+
+      {/* Single Unit View Dialog */}
+      <Dialog open={isUnitViewOpen} onOpenChange={setIsUnitViewOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Unit Details: {selectedProductForQR?.item_name}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-6 py-4">
+            <div className="bg-white p-4 rounded-xl shadow-inner border">
+              {/* SVG for display (crisp) */}
+              <QRCodeSVG
+                value={selectedUnitForView?.qr_code || ""}
+                size={200}
+                level="H"
+                includeMargin
+              />
+              {/* Hidden Canvas for download */}
+              <div style={{ display: 'none' }}>
+                <QRCodeCanvas
+                  id={`qr-single-${selectedUnitForView?.id}`}
+                  value={selectedUnitForView?.qr_code || ""}
+                  size={512}
+                  level="H"
+                  includeMargin
+                />
+              </div>
+            </div>
+
+            <div className="w-full space-y-4">
+              <div className="flex justify-between items-center border-b pb-2">
+                <span className="text-sm text-muted-foreground">QR Code ID</span>
+                <span className="font-mono text-xs font-bold">{selectedUnitForView?.qr_code}</span>
+              </div>
+              <div className="flex justify-between items-center border-b pb-2">
+                <span className="text-sm text-muted-foreground">Status</span>
+                <Badge variant={selectedUnitForView?.status === 'available' ? 'default' : 'secondary'}>
+                  {selectedUnitForView?.status}
+                </Badge>
+              </div>
+              {selectedUnitForView?.work_order?.vehicles?.vehicle_number && (
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-sm text-muted-foreground">Assigned To (Vehicle)</span>
+                  <span className="font-bold text-primary">{selectedUnitForView.work_order.vehicles.vehicle_number}</span>
+                </div>
+              )}
+
+              {selectedUnitForView?.employee && (
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-sm text-muted-foreground">Issued By</span>
+                  <span className="font-medium">{selectedUnitForView.employee.name}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center border-b pb-2">
+                <span className="text-sm text-muted-foreground">Created On</span>
+                <span className="text-sm italic">
+                  {selectedUnitForView?.created_at && new Date(selectedUnitForView.created_at).toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <Button
+              variant="default"
+              className="w-full"
+              onClick={() => handleDownloadSingleQR(selectedUnitForView)}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download High-Res QR
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
 

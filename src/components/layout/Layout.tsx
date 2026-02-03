@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { 
-  Car, 
-  Users, 
-  Wrench, 
-  FileText, 
-  Package, 
-  BarChart3, 
+import {
+  Car,
+  Users,
+  Wrench,
+  FileText,
+  Package,
+  BarChart3,
   Settings,
   Menu,
   X,
@@ -21,7 +21,7 @@ const navigation = [
   { name: "Employees", href: "/employees", icon: Users },
   { name: "Services", href: "/services", icon: Wrench },
   { name: "Billing", href: "/billing", icon: FileText },
-  { name: "Inventory", href: "/inventory", icon: Package },
+
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
@@ -58,11 +58,10 @@ export default function Layout({ children }: LayoutProps) {
                   <NavLink
                     key={item.name}
                     to={item.href}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                      isActive 
-                        ? "bg-gradient-primary text-primary-foreground shadow-elegant" 
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${isActive
+                        ? "bg-gradient-primary text-primary-foreground shadow-elegant"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
+                      }`}
                   >
                     <Icon className="h-4 w-4" />
                     <span>{item.name}</span>
@@ -95,11 +94,10 @@ export default function Layout({ children }: LayoutProps) {
                   <NavLink
                     key={item.name}
                     to={item.href}
-                    className={`block px-3 py-2 rounded-lg text-base font-medium transition-colors flex items-center space-x-3 ${
-                      isActive 
-                        ? "bg-gradient-primary text-primary-foreground" 
+                    className={`block px-3 py-2 rounded-lg text-base font-medium transition-colors flex items-center space-x-3 ${isActive
+                        ? "bg-gradient-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
+                      }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     <Icon className="h-5 w-5" />

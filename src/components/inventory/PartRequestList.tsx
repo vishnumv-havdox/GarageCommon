@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
     Package, Plus, Search, CheckCircle2, Clock, AlertCircle,
-    Triangle, Trash2, QrCode, ClipboardList, ArrowLeftRight
+    Triangle, Trash2, QrCode, ClipboardList, ArrowLeftRight, ChevronRight
 } from "lucide-react";
 import {
     Dialog,
@@ -34,6 +35,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 
 interface PartRequest {
     id: string;
@@ -42,7 +44,9 @@ interface PartRequest {
     requested_qty: number;
     approved_qty: number;
     issued_qty: number;
+    returned_qty: number;
     status: string;
+
     requested_by: string;
     employee: { name: string } | null;
     created_at: string;
@@ -56,7 +60,9 @@ interface PartRequestListProps {
 
 export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: PartRequestListProps) {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const { toast } = useToast();
+
     const [requests, setRequests] = useState<PartRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
@@ -384,18 +390,18 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                     <div className="space-y-4 py-4">
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium">Select Part</label>
-                                            <Select onValueChange={setSelectedItemId}>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Choose a part..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {inventoryItems.map((item) => (
-                                                        <SelectItem key={item.id} value={item.id}>
-                                                            {item.item_name} ({item.sku}) - {item.available_qty} left
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            <Combobox
+                                                items={inventoryItems.map((item) => ({
+                                                    value: item.id,
+                                                    label: `${item.item_name} (${item.sku}) - ${item.available_qty} left`
+                                                }))}
+                                                value={selectedItemId}
+                                                onSelect={setSelectedItemId}
+                                                placeholder="Search and select a part..."
+                                                searchPlaceholder="Search parts..."
+                                                emptyText="No part found."
+                                                className="w-full"
+                                            />
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4">
@@ -440,10 +446,11 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                     <TableHeader className="bg-muted/20">
                         <TableRow>
                             <TableHead>Part Info</TableHead>
-                            <TableHead>Qty (Req/App/Iss)</TableHead>
+                            <TableHead>Qty (Req/App/Iss/Ret/Used)</TableHead>
                             <TableHead>Requested By</TableHead>
+
                             <TableHead>Status</TableHead>
-                            {isAdmin && <TableHead className="text-right">Action</TableHead>}
+                            {!isReadOnly && <TableHead className="text-right">Action</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -459,21 +466,30 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                         <div className="text-xs text-muted-foreground">{req.inventory?.sku || 'N/A'}</div>
                                     </TableCell>
                                     <TableCell>
-                                        <span className="font-bold">{req.requested_qty}</span>
-                                        <span className="text-muted-foreground mx-1">/</span>
-                                        <span className="text-blue-600 font-medium">{req.approved_qty}</span>
-                                        <span className="text-muted-foreground mx-1">/</span>
-                                        <span className="text-green-600 font-medium">{req.issued_qty}</span>
+                                        <div className="flex items-center gap-1.5 font-medium whitespace-nowrap">
+                                            <span title="Requested" className="w-6 text-center">{req.requested_qty}</span>
+                                            <span className="text-muted-foreground/30">/</span>
+                                            <span title="Approved" className="w-6 text-center text-blue-600">{req.approved_qty}</span>
+                                            <span className="text-muted-foreground/30">/</span>
+                                            <span title="Issued" className="w-6 text-center text-green-600 font-bold">{req.issued_qty}</span>
+                                            <span className="text-muted-foreground/30">/</span>
+                                            <span title="Returned" className="w-6 text-center text-orange-600 font-bold">{req.returned_qty || 0}</span>
+                                            <span className="text-muted-foreground/30">/</span>
+                                            <span title="Final Used" className="w-8 text-center bg-primary/10 rounded px-1 text-primary font-black">
+                                                {req.issued_qty - (req.returned_qty || 0)}
+                                            </span>
+                                        </div>
                                     </TableCell>
+
                                     <TableCell>
                                         <div className="text-sm">{req.employee?.name || 'N/A'}</div>
                                         <div className="text-[10px] text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</div>
                                     </TableCell>
                                     <TableCell>{getStatusBadge(req.status)}</TableCell>
-                                    {isAdmin && (
+                                    {!isReadOnly && (
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-2">
-                                                {req.status === 'pending' && (
+                                                {isAdmin && req.status === 'pending' && (
                                                     <>
                                                         <Button
                                                             size="sm"
@@ -492,7 +508,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                                         </Button>
                                                     </>
                                                 )}
-                                                {req.status === 'approved' && (
+                                                {isAdmin && req.status === 'approved' && (
                                                     <div className="flex items-center gap-2">
                                                         <div className="text-xs italic text-muted-foreground">Awaiting Scan</div>
                                                         <Button
@@ -506,9 +522,9 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                                         </Button>
                                                     </div>
                                                 )}
-                                                {req.status === 'issued' && !isReadOnly && (
+                                                {req.status === 'issued' && (
                                                     <div className="flex items-center gap-2">
-                                                        {req.approved_qty > req.issued_qty && (
+                                                        {isAdmin && req.approved_qty > req.issued_qty && (
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
@@ -523,14 +539,14 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
-                                                                className="flex items-center gap-1"
+                                                                className="flex items-center gap-1 border-primary/20 hover:bg-primary/5 text-primary"
                                                                 onClick={() => {
                                                                     setSelectedReqForReturn(req);
                                                                     setReturnQty(req.issued_qty);
                                                                     setIsReturnDialogOpen(true);
                                                                 }}
                                                             >
-                                                                <ArrowLeftRight className="h-3 w-3" /> Return
+                                                                <ArrowLeftRight className="h-3 w-3" /> Request Return
                                                             </Button>
                                                         )}
                                                     </div>
@@ -609,10 +625,23 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                 {/* Return Requests History Section */}
                 {returns.length > 0 && (
                     <div className="border-t bg-muted/10">
-                        <div className="px-4 py-2 bg-muted/20 border-b flex items-center gap-2">
-                            <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Return History</span>
+                        <div className="px-4 py-2 bg-muted/20 border-b flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Return History</span>
+                            </div>
+                            {isAdmin && (
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="h-auto p-0 text-xs font-semibold text-primary hover:no-underline"
+                                    onClick={() => navigate("/admin/inventory?tab=returns")}
+                                >
+                                    Manage All Returns <ChevronRight className="h-3 w-3 ml-1" />
+                                </Button>
+                            )}
                         </div>
+
                         <Table>
                             <TableBody>
                                 {returns.map((ret) => (

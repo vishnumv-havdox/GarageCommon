@@ -283,7 +283,7 @@ export const navConfig: NavItem[] = [
   { label: "Performance", path: "/admin/analytics", icon: BarChart3, roles: ["admin"] },
   { label: "Progress", path: "/admin/progress", icon: Activity, roles: ["admin", "manager", "staff"] },
   { label: "Inventory", path: "/admin/inventory", icon: Package, roles: ["admin"] },
-  { label: "Inventory Room", path: "/inventory/room", icon: QrCode, roles: ["admin", "manager", "staff"] },
+  { label: "Inventory Room", path: "/inventory/room", icon: QrCode, roles: ["admin", "manager"] },
   { label: "Invoices", path: "/admin/invoices", icon: Receipt, roles: ["admin", "manager", "staff"] },
   { label: "Financials", path: "/admin/invoice-analytics", icon: BarChart3, roles: ["admin", "manager"] },
   { label: "360° Analytics", path: "/admin/analytics-dashboard", icon: PieChart, roles: ["admin", "manager"] },

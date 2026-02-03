@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import {
     Form,
     FormControl,
@@ -65,16 +66,42 @@ export function InventoryForm({ initialData, onSubmit, onCancel, onPrintLabels, 
         }
     }, [initialData, form]);
 
-    const generateSKU = () => {
-        const prefix = form.getValues("category").substring(0, 3).toUpperCase();
-        const random = Math.floor(1000 + Math.random() * 9000);
-        const sku = `${prefix}-${random}`;
-        form.setValue("sku", sku);
+    const generateSKU = async () => {
+        const category = form.getValues("category") || "Mechanical";
+        const prefix = category.substring(0, 3).toUpperCase();
+
+        let isUnique = false;
+        let finalSku = "";
+
+        while (!isUnique) {
+            // Format: CAT-XXXXX (5 random alphanumeric)
+            const random = Math.random().toString(36).substring(2, 7).toUpperCase();
+            finalSku = `${prefix}-${random}`;
+
+            // Uniqueness check against DB
+            const { data } = await supabase
+                .from("inventory")
+                .select("sku")
+                .eq("sku", finalSku)
+                .maybeSingle();
+
+            if (!data) isUnique = true;
+        }
+
+        form.setValue("sku", finalSku);
         if (!form.getValues("qr_code")) {
-            setQrValue(sku);
-            form.setValue("qr_code", sku);
+            setQrValue(finalSku);
+            form.setValue("qr_code", finalSku);
         }
     };
+
+    // Auto-generate SKU for new products on mount or category change
+    useEffect(() => {
+        if (!initialData && !form.getValues("sku")) {
+            generateSKU();
+        }
+    }, [initialData, form.watch("category")]);
+
 
     const watchSku = form.watch("sku");
     useEffect(() => {
@@ -142,18 +169,26 @@ export function InventoryForm({ initialData, onSubmit, onCancel, onPrintLabels, 
                             name="sku"
                             render={({ field }) => (
                                 <FormItem className="flex-1">
-                                    <FormLabel>SKU / Product Code</FormLabel>
+                                    <FormLabel>Product Code (Auto-generated)</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="e.g. MEC-1234" {...field} />
+                                        <Input
+                                            placeholder="Generating..."
+                                            {...field}
+                                            disabled
+                                            className="bg-muted font-mono"
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
-                        <Button type="button" variant="outline" size="icon" onClick={generateSKU}>
-                            <RefreshCw className="h-4 w-4" />
-                        </Button>
+                        {!initialData && (
+                            <Button type="button" variant="outline" size="icon" onClick={generateSKU} title="Regenerate Code">
+                                <RefreshCw className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
+
 
                     <FormField
                         control={form.control}
@@ -279,6 +314,9 @@ export function InventoryForm({ initialData, onSubmit, onCancel, onPrintLabels, 
                         <FormLabel className="flex items-center gap-2">
                             <QrCode className="h-4 w-4" /> QR Code Preview
                         </FormLabel>
+                        <p className="text-[10px] text-muted-foreground mb-2">
+                            This is the Master QR (SKU). Unique unit-level QRs will be generated automatically for all {form.watch("quantity") || 0} items upon saving.
+                        </p>
                         <div className="flex items-center justify-center bg-white p-2 border rounded self-center">
                             {qrValue ? (
                                 <div className="space-y-2 flex flex-col items-center">

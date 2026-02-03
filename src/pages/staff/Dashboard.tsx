@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/integrations/supabase/client"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +30,78 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 
+// Delivery Status Types and Utilities
+type DeliveryStatus = 'overdue' | 'urgent' | 'soon' | 'normal' | 'none';
+
+interface DeliveryInfo {
+  status: DeliveryStatus;
+  timeRemaining: number;
+  formatted: string;
+  color: string;
+}
+
+const getDeliveryStatus = (deliveryDate: string | null, currentTime: number): DeliveryInfo => {
+  if (!deliveryDate) {
+    return {
+      status: 'none',
+      timeRemaining: 0,
+      formatted: 'No delivery date',
+      color: 'text-muted-foreground'
+    };
+  }
+
+  const deliveryTime = new Date(deliveryDate).getTime();
+  const timeRemaining = deliveryTime - currentTime;
+  const hoursRemaining = timeRemaining / (1000 * 60 * 60);
+
+  if (timeRemaining < 0) {
+    return {
+      status: 'overdue',
+      timeRemaining,
+      formatted: formatCountdown(Math.abs(timeRemaining), true),
+      color: 'text-red-600'
+    };
+  } else if (hoursRemaining < 6) {
+    return {
+      status: 'urgent',
+      timeRemaining,
+      formatted: formatCountdown(timeRemaining, false),
+      color: 'text-red-600'
+    };
+  } else if (hoursRemaining < 24) {
+    return {
+      status: 'soon',
+      timeRemaining,
+      formatted: formatCountdown(timeRemaining, false),
+      color: 'text-orange-600'
+    };
+  } else {
+    return {
+      status: 'normal',
+      timeRemaining,
+      formatted: formatCountdown(timeRemaining, false),
+      color: 'text-green-600'
+    };
+  }
+};
+
+const formatCountdown = (ms: number, isOverdue: boolean): string => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / (24 * 60 * 60));
+  const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60));
+  const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+
+  const prefix = isOverdue ? 'Overdue by ' : '';
+
+  if (days > 0) {
+    return `${prefix}${days}d ${hours}h`;
+  } else if (hours > 0) {
+    return `${prefix}${hours}h ${minutes}m`;
+  } else {
+    return `${prefix}${minutes}m`;
+  }
+};
+
 interface RepairTask {
   id: string
   task_name: string
@@ -47,6 +120,7 @@ interface VehicleWork {
   vehicle_number: string
   vehicle_model: string
   customer_name: string
+  company_name: string | null
   service_type: string
   description: string
   priority: string
@@ -62,6 +136,9 @@ interface VehicleWork {
   assigned_at: string | null
   accepted_at: string | null
   created_at: string | null
+  estimated_delivery_date: string | null
+  queue_position: number
+  progress: number
 }
 
 export default function StaffDashboard() {
@@ -72,9 +149,19 @@ export default function StaffDashboard() {
   const [activeTab, setActiveTab] = useState("active")
   const [notificationCount, setNotificationCount] = useState(0)
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({})
+  const [currentTime, setCurrentTime] = useState(Date.now())
 
   const [employeeProfile, setEmployeeProfile] = useState<any>(null)
   const [isProfileOpen, setIsProfileOpen] = useState(false) // Profile Modal State
+
+  // Update current time every minute for live countdown
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
 
   const fetchWorkItems = useCallback(async () => {
@@ -96,34 +183,44 @@ export default function StaffDashboard() {
       }
 
       // Transform to vehicle-based work items
-      const workItemsData: VehicleWork[] = (workData || []).map((row: any) => ({
-        id: row.assignment_id,
-        service_id: row.service_id,
-        work_order_id: row.work_order_id || "",
-        vehicle_number: row.vehicle_number || "Unknown",
-        vehicle_model: row.vehicle_model || "",
-        customer_name: row.customer_name || "Unknown",
-        service_type: row.service_type || "Service",
-        description: row.description || "",
-        priority: row.priority || "Medium",
-        status: (row.assignment_status || "").toLowerCase(),
-        work_order_status: (row.work_order_status || "").toLowerCase(),
-        current_stage: row.service_status || row.current_stage,
-        // Workflow fields - now returned directly from RPC
-        inspection_status: (row.inspection_status as 'pending' | 'completed' | 'approved') || 'pending',
-        repair_status: (row.repair_status as 'pending' | 'in_progress' | 'completed' | 'approved') || 'pending',
-        review_status: (row.review_status as 'pending' | 'approved') || 'pending',
-        customer_visible: row.customer_visible || false,
-        tasks: row.tasks || [],
-        estimated_cost: row.estimated_cost || null,
-        assigned_at: row.assigned_at,
-        accepted_at: row.accepted_at,
-        created_at: row.created_at
-      }))
+      const workItemsData: VehicleWork[] = (workData || []).map((row: any) => {
+        const tasks = row.tasks || [];
+        const completedTasks = tasks.filter((t: any) => t.is_completed).length;
+        const progress = tasks.length > 0 ? Math.round((completedTasks * 100) / tasks.length) : 0;
 
-      // Sort by priority
-      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 }
+        return {
+          id: row.assignment_id,
+          service_id: row.service_id,
+          work_order_id: row.work_order_id || "",
+          vehicle_number: row.vehicle_number || "Unknown",
+          vehicle_model: row.vehicle_model || "",
+          customer_name: row.customer_name || "Unknown",
+          company_name: row.company_name || null,
+          service_type: row.service_type || "Service",
+          description: row.description || "",
+          priority: row.priority || "Medium",
+          status: (row.assignment_status || "").toLowerCase(),
+          work_order_status: (row.work_order_status || "").toLowerCase(),
+          current_stage: row.service_status || row.current_stage,
+          inspection_status: (row.inspection_status as 'pending' | 'completed' | 'approved') || 'pending',
+          repair_status: (row.repair_status as 'pending' | 'in_progress' | 'completed' | 'approved') || 'pending',
+          review_status: (row.review_status as 'pending' | 'approved') || 'pending',
+          customer_visible: row.customer_visible || false,
+          tasks: row.tasks || [],
+          estimated_cost: row.estimated_cost || null,
+          assigned_at: row.assigned_at,
+          accepted_at: row.accepted_at,
+          created_at: row.created_at,
+          estimated_delivery_date: row.estimated_delivery_date || null,
+          queue_position: row.queue_position || 0,
+          progress: progress
+        }
+      })
+
+      // Sort by queue_position primarily
       workItemsData.sort((a, b) => {
+        if (a.queue_position !== b.queue_position) return a.queue_position - b.queue_position;
+        const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 }
         const aPriority = priorityOrder[a.priority?.toLowerCase() as keyof typeof priorityOrder] || 3
         const bPriority = priorityOrder[b.priority?.toLowerCase() as keyof typeof priorityOrder] || 3
         if (aPriority !== bPriority) return aPriority - bPriority
@@ -182,9 +279,24 @@ export default function StaffDashboard() {
     return acc;
   }, {} as Record<string, VehicleWork & { service_types: Set<string> }>);
 
-  const activeWorkItems = Object.values(workItemsByOrderId).filter(w =>
-    !completedStates.includes(w.work_order_status?.toLowerCase() || "")
-  )
+  const activeWorkItems = Object.values(workItemsByOrderId)
+    .filter(w => !completedStates.includes(w.work_order_status?.toLowerCase() || ""))
+    .sort((a, b) => {
+      // 1. Sort by Queue Position (Primary)
+      const posA = a.queue_position && a.queue_position > 0 ? a.queue_position : 999999;
+      const posB = b.queue_position && b.queue_position > 0 ? b.queue_position : 999999;
+      if (posA !== posB) return posA - posB;
+
+      // 2. Sort by Priority (Secondary)
+      const pOrder: Record<string, number> = { 'urgent': 1, 'high': 2, 'medium': 3, 'low': 4 };
+      const pA = pOrder[a.priority?.toLowerCase()] || 5;
+      const pB = pOrder[b.priority?.toLowerCase()] || 5;
+      if (pA !== pB) return pA - pB;
+
+      // 3. Created At (Tertiary - Most recent first)
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+
   const completedWorkItems = Object.values(workItemsByOrderId).filter(w =>
     completedStates.includes(w.work_order_status?.toLowerCase() || "")
   )
@@ -659,7 +771,7 @@ export default function StaffDashboard() {
                 </Card>
               ) : (
                 <div className="space-y-4">
-                  {(activeTab === "active" ? activeWorkItems : completedWorkItems).map((work) => {
+                  {(activeTab === "active" ? activeWorkItems : completedWorkItems).map((work, index) => {
                     const isCompletedHistory = activeTab === "history"
 
                     // Statuses: 'assigned' (Admin assigned) -> 'pending_acceptance' (Admin released) -> 'accepted' (Staff accepted)
@@ -689,8 +801,14 @@ export default function StaffDashboard() {
                     const allRepairsCompleted = repairsAvailable && progress.completed === progress.total && progress.total > 0 && !isFinished
 
                     return (
-                      <Card key={work.id} className={`overflow-hidden ${work.priority === "urgent" ? "border-l-4 border-l-destructive" : ""
-                        }`}>
+                      <Card key={work.id} className={cn(
+                        "overflow-hidden transition-all",
+                        work.priority === 'urgent' && "border-l-4 border-l-red-600 bg-red-50/20",
+                        work.priority === 'high' && "border-l-4 border-l-orange-500 bg-orange-50/10",
+                        work.priority === 'medium' && "border-l-4 border-l-blue-500",
+                        work.priority === 'low' && "border-l-4 border-l-green-500",
+                        !work.priority && "border-l-4 border-l-gray-200"
+                      )}>
                         <CardContent className="p-0">
                           {/* Header */}
                           <div className="p-4 border-b bg-muted/30">
@@ -699,15 +817,23 @@ export default function StaffDashboard() {
                                 <div className="flex items-center gap-2 mb-1">
                                   <Wrench className="h-5 w-5 text-primary" />
                                   <h3 className="font-semibold text-lg">{work.vehicle_number}</h3>
+                                  {activeTab === "active" && (
+                                    <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                                      Pos: {index + 1}
+                                    </Badge>
+                                  )}
                                   <Badge variant="outline">{work.vehicle_model}</Badge>
                                   {work.priority === "urgent" && (
                                     <Badge variant="destructive">Urgent</Badge>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                                   <span className="flex items-center gap-1">
                                     <User className="h-3 w-3" />
                                     {work.customer_name}
+                                    {work.company_name && (
+                                      <span className="text-xs text-muted-foreground/70 ml-1">({work.company_name})</span>
+                                    )}
                                   </span>
                                   {/* Show all service types for consolidated work orders */}
                                   {(work as any).service_types && (work as any).service_types.size > 1 ? (
@@ -725,6 +851,24 @@ export default function StaffDashboard() {
                                       {work.service_type}
                                     </span>
                                   )}
+                                  {work.estimated_delivery_date && (() => {
+                                    const deliveryInfo = getDeliveryStatus(work.estimated_delivery_date, currentTime);
+                                    return (
+                                      <span className={`flex items-center gap-1 font-semibold ${deliveryInfo.color}`}>
+                                        <Clock className="h-3 w-3" />
+                                        {deliveryInfo.formatted}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+
+                                {/* Overall Progress */}
+                                <div className="mt-3 max-w-xs">
+                                  <div className="flex justify-between items-center text-[10px] font-bold text-muted-foreground uppercase mb-1">
+                                    <span>Overall Completion</span>
+                                    <span>{work.progress}%</span>
+                                  </div>
+                                  <Progress value={work.progress} className="h-1.5" />
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">

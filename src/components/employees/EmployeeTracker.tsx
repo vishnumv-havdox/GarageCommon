@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
     History,
     Package,
@@ -23,7 +24,8 @@ import {
     ArrowLeftRight,
     Search,
     Filter,
-    ExternalLink
+    ExternalLink,
+    ListOrdered
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -51,6 +53,34 @@ import {
     ResponsiveContainer
 } from "recharts";
 
+// Delivery countdown utilities
+const getDeliveryStatus = (deliveryDate: string | null, currentTime: number) => {
+    if (!deliveryDate) return { formatted: 'No date', color: 'text-muted-foreground' };
+    const deliveryTime = new Date(deliveryDate).getTime();
+    const timeRemaining = deliveryTime - currentTime;
+    const hoursRemaining = timeRemaining / (1000 * 60 * 60);
+
+    const formatCountdown = (ms: number, isOverdue: boolean) => {
+        const totalSeconds = Math.floor(Math.abs(ms) / 1000);
+        const days = Math.floor(totalSeconds / (24 * 60 * 60));
+        const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60));
+        const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+        const prefix = isOverdue ? 'Overdue by ' : '';
+        if (days > 0) return `${prefix}${days}d ${hours}h`;
+        if (hours > 0) return `${prefix}${hours}h ${minutes}m`;
+        return `${prefix}${minutes}m`;
+    };
+
+    if (timeRemaining < 0) {
+        return { formatted: formatCountdown(timeRemaining, true), color: 'text-red-600' };
+    } else if (hoursRemaining < 6) {
+        return { formatted: formatCountdown(timeRemaining, false), color: 'text-red-600' };
+    } else if (hoursRemaining < 24) {
+        return { formatted: formatCountdown(timeRemaining, false), color: 'text-orange-600' };
+    }
+    return { formatted: formatCountdown(timeRemaining, false), color: 'text-green-600' };
+};
+
 interface EmployeeTrackerProps {
     employee: any;
     open: boolean;
@@ -63,9 +93,17 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
     const [history, setHistory] = useState<any[]>([]);
     const [inventory, setInventory] = useState<any[]>([]);
     const [attendance, setAttendance] = useState<any[]>([]);
+    const [activeWorkload, setActiveWorkload] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [currentTime, setCurrentTime] = useState(Date.now());
     const navigate = useNavigate();
+
+    // Update current time every minute for live countdown
+    useEffect(() => {
+        const interval = setInterval(() => setCurrentTime(Date.now()), 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         if (open && employee?.id) {
@@ -123,10 +161,53 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                 .limit(30);
             setAttendance(attData || []);
 
+            // 5. Fetch active workload
+            const { data: wlData } = await supabase.rpc('get_employee_active_workload', {
+                p_employee_id: employee.id
+            });
+
+            // Enrich workload with delivery date and company name
+            const enrichedWorkload = await Promise.all((wlData || []).map(async (wl: any) => {
+                const { data: woData } = await supabase
+                    .from('work_orders')
+                    .select(`
+                        estimated_delivery_date,
+                        vehicles!inner(
+                            customers(
+                                company_name
+                            )
+                        )
+                    `)
+                    .eq('id', wl.work_order_id)
+                    .single();
+
+                return {
+                    ...wl,
+                    estimated_delivery_date: woData?.estimated_delivery_date,
+                    company_name: woData?.vehicles?.customers?.company_name
+                };
+            }));
+
+            setActiveWorkload(enrichedWorkload || []);
+
         } catch (error) {
             console.error("Error fetching employee tracker data:", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleUpdatePosition = async (assignmentId: string, newPosition: number) => {
+        try {
+            const { error } = await supabase
+                .from('work_order_service_employees')
+                .update({ queue_position: newPosition })
+                .eq('id', assignmentId);
+
+            if (error) throw error;
+            fetchEmployeeData();
+        } catch (error: any) {
+            console.error("Error updating position:", error);
         }
     };
 
@@ -198,6 +279,7 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                         <Tabs defaultValue="activity" className="w-full">
                             <TabsList className="grid w-full grid-cols-3">
                                 <TabsTrigger value="activity">Performance & Attendance</TabsTrigger>
+                                <TabsTrigger value="queue">Active Work Queue</TabsTrigger>
                                 <TabsTrigger value="inventory">Inventory Tracker</TabsTrigger>
                                 <TabsTrigger value="history">Work History</TabsTrigger>
                             </TabsList>
@@ -243,6 +325,99 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                                         </CardContent>
                                     </Card>
                                 </div>
+                            </TabsContent>
+
+                            <TabsContent value="queue" className="pt-4 space-y-4">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                            <ListOrdered className="h-4 w-4" /> Priority Work Queue
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-4">
+                                            {activeWorkload.length === 0 ? (
+                                                <div className="text-center py-10 text-muted-foreground border border-dashed rounded-lg">
+                                                    No active assignments in the queue.
+                                                </div>
+                                            ) : (
+                                                activeWorkload.map((wl, idx) => {
+                                                    const deliveryInfo = getDeliveryStatus(wl.estimated_delivery_date, currentTime);
+                                                    return (
+                                                        <div key={wl.assignment_id} className="flex flex-col gap-3 p-4 rounded-lg border bg-card hover:bg-muted/10 transition-colors">
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="space-y-1 flex-1">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <span className="font-bold text-sm">{wl.vehicle_number}</span>
+                                                                        <Badge variant="outline" className="text-[10px] uppercase">Pos: {wl.queue_position}</Badge>
+                                                                        <Badge className="text-[10px] bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-50">{wl.status}</Badge>
+                                                                    </div>
+                                                                    <p className="text-xs font-semibold text-primary">{wl.service_type}</p>
+                                                                    <p className="text-[10px] text-muted-foreground">
+                                                                        {wl.customer_name}
+                                                                        {wl.company_name && (
+                                                                            <span className="ml-1">({wl.company_name})</span>
+                                                                        )}
+                                                                    </p>
+                                                                    {wl.estimated_delivery_date && (
+                                                                        <div className={`flex items-center gap-1 text-xs font-semibold ${deliveryInfo.color}`}>
+                                                                            <Clock className="h-3 w-3" />
+                                                                            <span>Delivery: {deliveryInfo.formatted}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center border rounded-md overflow-hidden">
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 rounded-none border-r"
+                                                                            onClick={() => handleUpdatePosition(wl.assignment_id, Math.max(0, wl.queue_position - 1))}
+                                                                        >
+                                                                            <TrendingUp className="h-3 w-3 rotate-180" />
+                                                                        </Button>
+                                                                        <Input
+                                                                            type="number"
+                                                                            className="h-7 w-10 border-0 rounded-none text-center text-xs p-0 focus-visible:ring-0"
+                                                                            value={wl.queue_position}
+                                                                            onChange={(e) => handleUpdatePosition(wl.assignment_id, parseInt(e.target.value) || 0)}
+                                                                        />
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 rounded-none border-l"
+                                                                            onClick={() => handleUpdatePosition(wl.assignment_id, wl.queue_position + 1)}
+                                                                        >
+                                                                            <TrendingUp className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-8 w-8"
+                                                                        onClick={() => {
+                                                                            onOpenChange(false);
+                                                                            navigate(`/admin/work-orders/${wl.work_order_id}`);
+                                                                        }}
+                                                                    >
+                                                                        <ExternalLink className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-1.5">
+                                                                <div className="flex justify-between text-[10px] text-muted-foreground uppercase font-bold">
+                                                                    <span>Progress</span>
+                                                                    <span>{wl.progress_percentage}% ({wl.completed_tasks}/{wl.total_tasks} Tasks)</span>
+                                                                </div>
+                                                                <Progress value={wl.progress_percentage} className="h-1.5" />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
                             </TabsContent>
 
                             <TabsContent value="inventory" className="pt-4">
@@ -338,7 +513,7 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                                                             <div className="flex items-center gap-2">
                                                                 <span className="font-bold text-sm">{h.work_order?.vehicle?.vehicle_number}</span>
                                                                 <Badge variant="secondary" className={`text-[10px] h-4 ${h.work_order?.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-600' :
-                                                                        h.work_order?.status === 'In Progress' ? 'bg-blue-500/10 text-blue-600' : ''
+                                                                    h.work_order?.status === 'In Progress' ? 'bg-blue-500/10 text-blue-600' : ''
                                                                     }`}>{h.work_order?.status}</Badge>
                                                             </div>
                                                             <p className="text-[10px] font-medium text-primary uppercase">{h.work_order?.vehicle?.customer?.company_name || "Direct Customer"}</p>

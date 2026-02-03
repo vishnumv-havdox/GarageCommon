@@ -13,16 +13,20 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
     ArrowLeft, Wrench, Users, ClipboardList, IndianRupee,
     CheckCircle2, XCircle, Clock, Trash2, Shield, User,
     Truck, AlertTriangle, RefreshCw, ChevronRight, Plus, X, Edit, Play,
-    Bell, ShieldCheck, FileText, Calendar as CalendarIcon
+    Bell, ShieldCheck, FileText, Calendar as CalendarIcon,
+    ListOrdered, Search, TrendingUp, Info
 } from "lucide-react";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
 import { PartRequestList } from "@/components/inventory/PartRequestList";
+import { Progress } from "@/components/ui/progress";
+import { EmployeeTracker } from "@/components/employees/EmployeeTracker";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -141,6 +145,29 @@ export default function WorkOrderDetail() {
     const [processingApproval, setProcessingApproval] = useState(false);
     const [noteType, setNoteType] = useState<"internal" | "customer" | "reach_out">("internal");
 
+    // Extension: Assignment stats and workload
+    const [assignmentPosition, setAssignmentPosition] = useState("0");
+    const [employeeWorkload, setEmployeeWorkload] = useState<any[]>([]);
+    const [employeeAttendance, setEmployeeAttendance] = useState<any>(null);
+    const [loadingEmployeeData, setLoadingEmployeeData] = useState(false);
+    const [empSearchTerm, setEmpSearchTerm] = useState("");
+
+    // Extension: Employee Tracker Integration
+    const [trackerOpen, setTrackerOpen] = useState(false);
+    const [selectedTrackerEmployee, setSelectedTrackerEmployee] = useState<any>(null);
+
+    const handleOpenTracker = (emp: any) => {
+        // Handle both formats of employee data
+        const formattedEmp = emp.employee ? {
+            ...emp.employee,
+            name: emp.employee.name,
+            id: emp.employee_id || emp.employee.id
+        } : emp;
+
+        setSelectedTrackerEmployee(formattedEmp);
+        setTrackerOpen(true);
+    };
+
     const fetchDetails = useCallback(async () => {
         if (!id) return;
         setLoading(true);
@@ -220,7 +247,7 @@ export default function WorkOrderDetail() {
                         id: t.id,
                         task_name: t.task_name,
                         price: t.price || 0,
-                        completed: t.completed,
+                        completed: t.is_completed || t.completed,
                         is_predefined: t.is_predefined,
                         completed_at: t.completed_at,
                         task_type: t.task_type
@@ -257,6 +284,45 @@ export default function WorkOrderDetail() {
     useEffect(() => {
         fetchDetails();
     }, [fetchDetails]);
+
+    useEffect(() => {
+        if (selectedEmployeeId && employeeDialogOpen) {
+            fetchEmployeeAssignmentInfo();
+        }
+    }, [selectedEmployeeId, employeeDialogOpen]);
+
+    const fetchEmployeeAssignmentInfo = async () => {
+        setLoadingEmployeeData(true);
+        try {
+            // 1. Fetch workload
+            const { data: workload, error: wlError } = await supabase.rpc('get_employee_active_workload', {
+                p_employee_id: selectedEmployeeId
+            });
+            if (wlError) throw wlError;
+            setEmployeeWorkload(workload || []);
+
+            // 2. Fetch attendance for today
+            const today = format(new Date(), 'yyyy-MM-dd');
+            const { data: attendance, error: attError } = await supabase
+                .from('attendance')
+                .select('*')
+                .eq('employee_id', selectedEmployeeId)
+                .eq('date', today)
+                .maybeSingle();
+
+            if (attError) throw attError;
+            setEmployeeAttendance(attendance);
+
+            // 3. Set default position (max + 1)
+            const maxPos = workload?.reduce((max: number, item: any) => Math.max(max, (item.queue_position || 0)), 0) || 0;
+            setAssignmentPosition((maxPos + 1).toString());
+
+        } catch (error: any) {
+            console.error("Error fetching employee info:", error);
+        } finally {
+            setLoadingEmployeeData(false);
+        }
+    };
 
     // Handle Accept Order
     const handleAcceptOrder = async () => {
@@ -338,6 +404,7 @@ export default function WorkOrderDetail() {
                     service_id: selectedServiceId,
                     employee_id: selectedEmployeeId,
                     status: "Assigned",
+                    queue_position: parseInt(assignmentPosition) || 0,
                     assigned_at: new Date().toISOString()
                 });
 
@@ -788,7 +855,7 @@ export default function WorkOrderDetail() {
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-lg font-bold flex items-center justify-end">
-                                                    <IndianRupee className="h-4 w-4" /> {service.estimated_cost}
+                                                    <IndianRupee className="h-4 w-4" /> {service.tasks?.filter(t => t.completed).reduce((sum, task) => sum + (task.price || 0), 0) || 0}
                                                 </p>
                                             </div>
                                         </div>
@@ -858,11 +925,14 @@ export default function WorkOrderDetail() {
                                                             <div key={emp.id} className="flex items-center justify-between p-2 rounded bg-blue-50/50 border border-blue-100 text-sm">
                                                                 <div className="flex items-center gap-2">
                                                                     <User className="h-4 w-4 text-blue-400" />
-                                                                    <div>
-                                                                        <span className="font-medium">{emp.employee?.name}</span>
-                                                                        {emp.employee?.position?.department && (
-                                                                            <span className="text-xs text-muted-foreground ml-1">
-                                                                                ({emp.employee.position.department})
+                                                                    <div
+                                                                        className="cursor-pointer hover:underline flex flex-col"
+                                                                        onClick={() => handleOpenTracker(emp)}
+                                                                    >
+                                                                        <span className="font-medium text-blue-700">{emp.employee?.name}</span>
+                                                                        {emp.employee?.position?.name && (
+                                                                            <span className="text-[10px] text-muted-foreground">
+                                                                                {emp.employee.position.name}
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -946,7 +1016,9 @@ export default function WorkOrderDetail() {
                                 <div className="flex items-center justify-between text-sm">
                                     <span className="text-muted-foreground">Est. Total</span>
                                     <span className="font-bold flex items-center">
-                                        <IndianRupee className="h-3 w-3" /> {workOrder.estimated_cost || 0}
+                                        <IndianRupee className="h-3 w-3" /> {details.reduce((total, service) =>
+                                            total + (service.tasks?.filter(t => t.completed).reduce((sum, task) => sum + (task.price || 0), 0) || 0), 0
+                                        )}
                                     </span>
                                 </div>
                                 <Separator />
@@ -1429,26 +1501,145 @@ export default function WorkOrderDetail() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Employee</label>
-                            <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select employee" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {employees.map((emp) => (
-                                        <SelectItem key={emp.id} value={emp.id}>
-                                            {emp.name} ({emp.position?.department || 'No Department'})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                        <div className="space-y-4">
+                            <label className="text-sm font-medium">Select Employee</label>
+
+                            {/* Employee Search */}
+                            <div className="relative group">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                <Input
+                                    placeholder="Search by name or department..."
+                                    value={empSearchTerm}
+                                    onChange={(e) => setEmpSearchTerm(e.target.value)}
+                                    className="pl-10"
+                                />
+                            </div>
+
+                            {/* Employee Card List */}
+                            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                {employees
+                                    .filter(emp =>
+                                        emp.name.toLowerCase().includes(empSearchTerm.toLowerCase()) ||
+                                        emp.position?.department?.toLowerCase().includes(empSearchTerm.toLowerCase())
+                                    )
+                                    .map((emp) => {
+                                        const isSelected = selectedEmployeeId === emp.id;
+                                        return (
+                                            <div
+                                                key={emp.id}
+                                                onClick={() => setSelectedEmployeeId(emp.id)}
+                                                className={cn(
+                                                    "flex flex-col p-3 rounded-lg border transition-all cursor-pointer gap-1",
+                                                    isSelected
+                                                        ? "bg-primary/10 border-primary ring-1 ring-primary shadow-sm"
+                                                        : "bg-card hover:bg-muted border-border"
+                                                )}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn(
+                                                            "h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold",
+                                                            isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                                        )}>
+                                                            {emp.name.charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-semibold">{emp.name}</p>
+                                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                                                                {emp.position?.name} • {emp.position?.department || 'General'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {isSelected && (
+                                                            <div className="flex items-center gap-1.5 mr-2 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase">Next Pos:</span>
+                                                                <Input
+                                                                    type="number"
+                                                                    value={assignmentPosition}
+                                                                    onChange={(e) => setAssignmentPosition(e.target.value)}
+                                                                    className="w-12 h-7 text-xs text-center font-black border-primary/30 p-0 bg-background"
+                                                                    min="1"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        {isSelected && (
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center text-primary-foreground scale-110 animate-in zoom-in duration-200">
+                                                                    <CheckCircle2 className="h-3 w-3" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Inline Assessment Stats */}
+                                                {isSelected && (
+                                                    <div className="mt-2 pt-2 border-t border-primary/20 space-y-2 animate-in fade-in slide-in-from-top-1 duration-300" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase">Status:</span>
+                                                                {loadingEmployeeData ? (
+                                                                    <div className="h-4 w-12 bg-muted animate-pulse rounded" />
+                                                                ) : (
+                                                                    <Badge className={cn(
+                                                                        "h-4 text-[9px] font-bold uppercase py-0",
+                                                                        employeeAttendance?.status === 'present' ? "bg-green-500" : "bg-red-500"
+                                                                    )}>
+                                                                        {employeeAttendance?.status || 'Not Marked'}
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-5 text-[8px] text-blue-600 hover:text-blue-700 p-0"
+                                                                onClick={() => handleOpenTracker(emp)}
+                                                            >
+                                                                Full Stats
+                                                            </Button>
+                                                        </div>
+
+                                                        <div className="bg-muted/30 rounded-md p-2 border border-border/50">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase">Active Workload ({employeeWorkload.length})</span>
+                                                            </div>
+                                                            <div className="space-y-1 max-h-[100px] overflow-y-auto pr-1">
+                                                                {loadingEmployeeData ? (
+                                                                    <div className="space-y-1">
+                                                                        <div className="h-3 bg-muted animate-pulse rounded w-full" />
+                                                                        <div className="h-3 bg-muted animate-pulse rounded w-2/3" />
+                                                                    </div>
+                                                                ) : employeeWorkload.length === 0 ? (
+                                                                    <p className="text-[9px] text-muted-foreground italic py-1">Available for immediate work.</p>
+                                                                ) : (
+                                                                    employeeWorkload.map((wl: any, idx: number) => (
+                                                                        <div key={idx} className="flex justify-between text-[9px] font-semibold opacity-80">
+                                                                            <span>{wl.vehicle_number} - {wl.service_type}</span>
+                                                                            <span className="text-primary">{wl.progress_percentage}%</span>
+                                                                        </div>
+                                                                    ))
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                }
+                            </div>
                         </div>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setEmployeeDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleAddEmployee} disabled={!selectedServiceId || !selectedEmployeeId}>
-                            Assign Employee
+                    <DialogFooter className="bg-muted px-6 py-4 border-t">
+                        <Button variant="ghost" onClick={() => setEmployeeDialogOpen(false)} className="text-xs">Cancel</Button>
+                        <Button
+                            onClick={handleAddEmployee}
+                            disabled={!selectedServiceId || !selectedEmployeeId || loadingEmployeeData}
+                            className="bg-primary hover:bg-primary/90 text-white shadow-md font-bold text-xs px-6"
+                        >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Confirm Assignment
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1515,7 +1706,17 @@ export default function WorkOrderDetail() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+            {/* Employee Tracker Side Modal */}
+            {
+                selectedTrackerEmployee && (
+                    <EmployeeTracker
+                        employee={selectedTrackerEmployee}
+                        open={trackerOpen}
+                        onOpenChange={setTrackerOpen}
+                    />
+                )
+            }
+        </div >
     );
 }
 

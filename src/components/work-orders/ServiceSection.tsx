@@ -21,7 +21,7 @@ export interface ServiceSectionData {
     serviceType: string;
     serviceTypeId?: string;
     tasks: TaskItem[];
-    selectedEmployeeIds: string[];
+    selectedEmployees: { id: string; queue_position: number }[];
     notes: string;
     cost: number;
     serviceSpecificFields?: Record<string, any>;
@@ -78,8 +78,12 @@ export function ServiceSection({
     useEffect(() => {
         if (totalTasksCost > 0 && data.cost !== totalTasksCost) {
             handleFieldChange("cost", totalTasksCost);
+        } else if (data.tasks.length === 0 && (data.cost === data.basePrice || data.cost === data.calculatedPrice)) {
+            // Auto-reset to 0 if no tasks are added and cost matches base/calculated defaults
+            // This prevents "Base Price" from being applied automatically if user wants empty state
+            handleFieldChange("cost", 0);
         }
-    }, [totalTasksCost, data.cost]);
+    }, [totalTasksCost, data.cost, data.tasks.length, data.basePrice, data.calculatedPrice]);
 
     return (
         <Card className="border-l-4 border-l-primary shadow-sm hover:shadow-md transition-shadow">
@@ -148,7 +152,7 @@ export function ServiceSection({
                                 <p className="text-[10px] text-blue-600 font-medium px-1 italic">
                                     Locked to sum of tasks: ₹{totalTasksCost}
                                 </p>
-                            ) : data.calculatedPrice ? (
+                            ) : (data.calculatedPrice && data.tasks.length > 0) ? (
                                 <div className="space-y-1 px-1">
                                     <p className="text-[10px] text-gray-500 italic">
                                         Calculated: ₹{data.calculatedPrice} (Base: ₹{data.basePrice})
@@ -189,8 +193,8 @@ export function ServiceSection({
                         <SectionStaffPanel
                             serviceType={serviceType}
                             availableEmployees={availableEmployees}
-                            selectedEmployeeIds={data.selectedEmployeeIds}
-                            onSelectionChange={(ids) => handleFieldChange("selectedEmployeeIds", ids)}
+                            selectedEmployees={data.selectedEmployees}
+                            onSelectionChange={(employees) => handleFieldChange("selectedEmployees", employees)}
                         />
                     </div>
                 </div>

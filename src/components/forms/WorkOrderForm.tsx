@@ -448,7 +448,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           serviceType: type,
           serviceTypeId: serviceMaster.id, // Ensure ID is stored
           tasks: initialTasks,
-          selectedEmployeeIds: [],
+          selectedEmployees: [],
           notes: "",
           cost: priceResult.calculatedPrice,
           calculatedPrice: priceResult.calculatedPrice,
@@ -1183,21 +1183,22 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         await supabase.from('work_order_tasks').insert(tasksPayload)
 
         // Create employee assignments
-        if (sectionData.selectedEmployeeIds.length > 0) {
+        if (sectionData.selectedEmployees.length > 0) {
           // Use RPC functions to bypass RLS for assignments
-          for (const empId of sectionData.selectedEmployeeIds) {
+          for (const empEntry of sectionData.selectedEmployees) {
             // Insert into work_order_service_employees via RPC (bypasses RLS)
             await supabase.rpc('insert_work_order_service_employee', {
               p_service_id: serviceRecord.id,
-              p_employee_id: empId,
-              p_status: 'Assigned'
+              p_employee_id: empEntry.id,
+              p_status: 'Assigned',
+              p_queue_position: empEntry.queue_position || 0
             })
 
             // Also link to main work_order_assignments for backward compatibility with staff portal
             // Use RPC function to bypass RLS
             await supabase.rpc('insert_work_order_assignment', {
               p_work_order_id: workOrder.id,
-              p_employee_id: empId,
+              p_employee_id: empEntry.id,
               p_notes: `Assigned to ${type}`
             })
           }

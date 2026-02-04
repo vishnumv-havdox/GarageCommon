@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
@@ -173,6 +174,135 @@ export default function WorkOrderDetail() {
     const [rejectionReason, setRejectionReason] = useState("");
     const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
     const [reopenReason, setReopenReason] = useState("");
+
+    // Add Task State
+    const [addingTaskToServiceId, setAddingTaskToServiceId] = useState<string | null>(null);
+    const [newTaskName, setNewTaskName] = useState("");
+    const [newTaskPrice, setNewTaskPrice] = useState("");
+    const [isAddingTask, setIsAddingTask] = useState(false);
+    const [predefinedTasks, setPredefinedTasks] = useState<any[]>([]);
+
+    useEffect(() => {
+        const fetchPredefinedTasks = async () => {
+            if (!addingTaskToServiceId) {
+                setPredefinedTasks([]);
+                return;
+            }
+
+            // Find service type id
+            const service = details.find(s => s.id === addingTaskToServiceId);
+            if (!service) return;
+
+            // Resolve Service Type ID
+            let typeId = null;
+            // @ts-ignore
+            if (service.service_type_id?.id) {
+                // @ts-ignore
+                typeId = service.service_type_id.id;
+            } else {
+                const { data: stData } = await supabase
+                    .from('service_types')
+                    .select('id')
+                    .eq('name', service.service_type)
+                    .single();
+                typeId = stData?.id;
+            }
+
+            if (!typeId) return;
+
+            // 1. Fetch Task Templates
+            const { data: tasksData } = await supabase
+                .from('task_templates')
+                .select('*')
+                .eq('service_type_id', typeId);
+
+            if (!tasksData) return;
+
+            // 2. Resolve Vehicle IDs for Pricing
+            let vehicleTypeId = null;
+            let vehicleCategoryId = null;
+
+            // Try to resolve from loaded data if possible, or fetch
+            // @ts-ignore
+            const modelId = workOrder?.vehicle?.model_id;
+
+            if (modelId) {
+                const { data: vModelData } = await supabase
+                    .from('vehicle_models')
+                    .select(`
+                        vehicle_type_id,
+                        vehicle_types (
+                            id,
+                            category_id
+                        )
+                    `)
+                    .eq('id', modelId)
+                    .single();
+
+                if (vModelData) {
+                    vehicleTypeId = vModelData.vehicle_type_id;
+                    // @ts-ignore
+                    vehicleCategoryId = vModelData.vehicle_types?.category_id;
+                }
+            }
+
+            // 3. Apply Pricing Rules
+            let tasksWithPricing = tasksData.map(t => ({ ...t, effective_price: t.price }));
+
+            if (vehicleCategoryId || vehicleTypeId) {
+                const taskIds = tasksData.map(t => t.id);
+
+                let query = supabase
+                    .from('pricing_rules')
+                    .select('*')
+                    .in('task_template_id', taskIds);
+
+                // Build OR query for applicability: (category match OR type match)
+                // Note: deeply filtering ORs in Supabase JS can be tricky with .or(), doing client side filter might be safer for small datasets, 
+                // but let's try direct query if simpler. 
+                // Creating a simplified fetch:
+                const { data: rulesData } = await query;
+
+                if (rulesData && rulesData.length > 0) {
+                    tasksWithPricing = tasksData.map(t => {
+                        // Find most specific rule: Type > Category
+                        const typeRule = rulesData.find(r => r.task_template_id === t.id && r.vehicle_type_id === vehicleTypeId);
+                        const catRule = rulesData.find(r => r.task_template_id === t.id && r.vehicle_category_id === vehicleCategoryId);
+
+                        const rule = typeRule || catRule;
+
+                        if (rule) {
+                            let finalPrice = t.price;
+                            if (rule.modifier_type === 'fixed' || rule.modifier_type === 'override') {
+                                finalPrice = rule.modifier_value;
+                            } else if (rule.modifier_type === 'percentage') {
+                                finalPrice = t.price * (1 + (rule.modifier_value / 100));
+                            }
+                            return {
+                                ...t,
+                                effective_price: finalPrice,
+                                rule_applied: true
+                            };
+                        }
+                        return { ...t, effective_price: t.price, rule_applied: false };
+                    });
+                }
+            }
+
+            setPredefinedTasks(tasksWithPricing);
+        };
+
+        fetchPredefinedTasks();
+    }, [addingTaskToServiceId, details, workOrder]);
+
+    const handlePredefinedTaskSelect = (taskId: string) => {
+        const task = predefinedTasks.find(t => t.id === taskId);
+        if (task) {
+            setNewTaskName(task.name);
+            setNewTaskPrice(task.effective_price?.toString() || "0"); // Use effective price
+        }
+    };
+
     const [showConfigForm, setShowConfigForm] = useState(false);
     const [showAddServiceForm, setShowAddServiceForm] = useState(false);
     const [bulkApproving, setBulkApproving] = useState(false);
@@ -205,7 +335,16 @@ export default function WorkOrderDetail() {
                 .from("work_orders")
                 .select(`
           *, 
-          vehicle:vehicles(vehicle_number, model, customer_id, customers(id, name, phone, email, address))
+          *, 
+          *, 
+          vehicle:vehicles(
+            vehicle_number, 
+            model, 
+            vehicle_type, 
+            customer_id, 
+            model_id,
+            customers(id, name, phone, email, address)
+          )
         `)
                 .eq("id", id)
                 .single();
@@ -663,6 +802,33 @@ export default function WorkOrderDetail() {
         }
     };
 
+    // Handle Add New Task
+    const handleAddTask = async () => {
+        if (!addingTaskToServiceId || !newTaskName.trim()) return;
+        setIsAddingTask(true);
+        try {
+            const price = parseFloat(newTaskPrice) || 0;
+            const { error } = await supabase.from("work_order_tasks").insert({
+                work_order_service_id: addingTaskToServiceId,
+                task_name: newTaskName,
+                price: price,
+                status: 'pending'
+            });
+
+            if (error) throw error;
+
+            toast({ title: "Task Added", description: "New task added successfully" });
+            setAddingTaskToServiceId(null);
+            setNewTaskName("");
+            setNewTaskPrice("");
+            fetchDetails();
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        } finally {
+            setIsAddingTask(false);
+        }
+    };
+
     // Handle Delete Work Order
     const handleDelete = async () => {
         if (!id) return;
@@ -1066,7 +1232,7 @@ export default function WorkOrderDetail() {
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-lg font-bold flex items-center justify-end">
-                                                    <IndianRupee className="h-4 w-4" /> {service.tasks?.filter(t => t.completed).reduce((sum, task) => sum + (task.price || 0), 0) || 0}
+                                                    <IndianRupee className="h-4 w-4" /> {(service.tasks || []).reduce((sum, task) => sum + (task.price || 0), 0) || 0}
                                                 </p>
                                             </div>
                                         </div>
@@ -1080,9 +1246,19 @@ export default function WorkOrderDetail() {
                                                         <CheckCircle2 className="h-4 w-4 text-green-600" />
                                                         Component Tasks
                                                     </h4>
-                                                    <Badge variant="outline">
-                                                        {(service.tasks || []).filter(t => t.completed).length}/{(service.tasks || []).length}
-                                                    </Badge>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-6 text-[10px] px-2"
+                                                            onClick={() => setAddingTaskToServiceId(service.id)}
+                                                        >
+                                                            <Plus className="h-3 w-3 mr-1" /> Add
+                                                        </Button>
+                                                        <Badge variant="outline">
+                                                            {(service.tasks || []).filter(t => t.completed).length}/{(service.tasks || []).length}
+                                                        </Badge>
+                                                    </div>
                                                 </div>
                                                 <div className="space-y-2">
                                                     {(service.tasks || []).map((task) => (
@@ -1239,7 +1415,7 @@ export default function WorkOrderDetail() {
                                     <span className="text-muted-foreground">Est. Total</span>
                                     <span className="font-bold flex items-center">
                                         <IndianRupee className="h-3 w-3" /> {details.reduce((total, service) =>
-                                            total + (service.tasks?.filter(t => t.completed).reduce((sum, task) => sum + (task.price || 0), 0) || 0), 0
+                                            total + (service.tasks?.reduce((sum, task) => sum + (task.price || 0), 0) || 0), 0
                                         )}
                                     </span>
                                 </div>
@@ -2136,7 +2312,50 @@ export default function WorkOrderDetail() {
                     />
                 )
             }
+            {/* Add Task Dialog */}
+            <Dialog open={!!addingTaskToServiceId} onOpenChange={(open) => !open && setAddingTaskToServiceId(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add New Task</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        {predefinedTasks.length > 0 && (
+                            <div className="grid gap-2">
+                                <Label>Select Predefined Task</Label>
+                                <Select onValueChange={handlePredefinedTaskSelect}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a task..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {predefinedTasks.map(task => (
+                                            <SelectItem key={task.id} value={task.id}>
+                                                {task.name} - ₹{task.effective_price} {task.rule_applied ? '(Category Price)' : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        <div className="grid gap-2">
+                            <Label htmlFor="new-task-price">Price</Label>
+                            <Input
+                                id="new-task-price"
+                                type="number"
+                                value={newTaskPrice}
+                                onChange={(e) => setNewTaskPrice(e.target.value)}
+                                placeholder="0.00"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddingTaskToServiceId(null)}>Cancel</Button>
+                        <Button onClick={handleAddTask} disabled={!newTaskName.trim() || isAddingTask}>
+                            {isAddingTask && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            Add Task
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div >
     );
 }
-

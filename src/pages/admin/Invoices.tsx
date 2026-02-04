@@ -123,7 +123,7 @@ export default function AdminInvoices() {
           .select(`
                       *,
                       customer:customers(name, company_name, phone),
-                      work_order:work_orders(id, vehicle:vehicles(vehicle_number, model))
+                      work_order:work_orders(id, is_reopened, vehicle:vehicles(vehicle_number, model))
                   `)
           .order('created_at', { ascending: false });
 
@@ -851,6 +851,9 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                     ? (inv.quotation_number ? `QTN-${inv.quotation_number}` : 'Draft QTN')
                     : (inv.bill_number ? `INV-${inv.bill_number}` : `Draft #${inv.invoice_number}`)
                   }
+                  {inv.work_order?.is_reopened && (
+                    <Badge variant="outline" className="ml-2 border-orange-500 text-orange-600 bg-orange-50 text-[10px] h-4 py-0">Reopened</Badge>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={inv.type === 'quotation' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>

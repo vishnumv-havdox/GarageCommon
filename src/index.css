@@ -150,3 +150,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes blink-blue {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: hsl(var(--primary) / 0.1); }
+}
+
+.animate-blink-blue {
+  animation: blink-blue 2s ease-in-out infinite;
+}

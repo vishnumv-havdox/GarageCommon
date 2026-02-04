@@ -20,8 +20,9 @@ interface Employee {
 export interface ServiceSectionData {
     serviceType: string;
     serviceTypeId?: string;
+    dbId?: string;
     tasks: TaskItem[];
-    selectedEmployees: { id: string; queue_position: number }[];
+    selectedEmployees: { id: string; queue_position: number; status?: string }[];
     notes: string;
     cost: number;
     serviceSpecificFields?: Record<string, any>;
@@ -53,6 +54,7 @@ interface ServiceSectionProps {
     onCustomTaskAdd?: (name: string, price: number) => Promise<TaskTemplate | null>;
     onTaskUpdate?: (task: TaskTemplate, newName: string, newPrice?: number) => Promise<void>;
     onTaskDelete?: (taskId: string) => Promise<void>;
+    workOrderId?: string;
 }
 
 export function ServiceSection({
@@ -65,7 +67,8 @@ export function ServiceSection({
     onRemove,
     onCustomTaskAdd,
     onTaskUpdate,
-    onTaskDelete
+    onTaskDelete,
+    workOrderId
 }: ServiceSectionProps) {
 
     const totalTasksCost = data.tasks.reduce((sum, task) => sum + (task.price || 0), 0);
@@ -195,6 +198,7 @@ export function ServiceSection({
                             availableEmployees={availableEmployees}
                             selectedEmployees={data.selectedEmployees}
                             onSelectionChange={(employees) => handleFieldChange("selectedEmployees", employees)}
+                            workOrderId={workOrderId}
                         />
                     </div>
                 </div>

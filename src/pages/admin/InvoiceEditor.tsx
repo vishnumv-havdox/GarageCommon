@@ -35,7 +35,8 @@ import {
     Download,
     Eye,
     Lock,
-    RefreshCw
+    RefreshCw,
+    Info
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -407,7 +408,17 @@ export default function InvoiceEditor() {
                                         {invoice.status}
                                     </Badge>
                                     {isQuotation && <Badge variant="outline" className="ml-2 border-orange-500 text-orange-600">Estimate</Badge>}
+                                    {invoice.work_order?.is_reopened && (
+                                        <Badge variant="outline" className="ml-2 border-orange-500 text-orange-600 bg-orange-50 animate-pulse">
+                                            <RefreshCw className="h-3 w-3 mr-1" /> Reopened
+                                        </Badge>
+                                    )}
                                 </h1>
+                                {invoice.work_order?.is_reopened && invoice.work_order?.reopen_reason && (
+                                    <div className="mt-1 flex items-center gap-2 text-orange-600 text-[10px] font-medium uppercase tracking-wider">
+                                        <Info className="h-3 w-3" /> Reason: {invoice.work_order.reopen_reason}
+                                    </div>
+                                )}
                                 <p className="text-muted-foreground">
                                     {invoice.customer?.name} • {invoice.work_order?.vehicle?.vehicle_number}
                                 </p>

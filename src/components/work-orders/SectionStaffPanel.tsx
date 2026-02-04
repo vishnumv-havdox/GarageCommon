@@ -54,13 +54,15 @@ interface SectionStaffPanelProps {
     availableEmployees: Employee[];
     selectedEmployees: { id: string; queue_position: number }[];
     onSelectionChange: (employees: { id: string; queue_position: number }[]) => void;
+    workOrderId?: string;
 }
 
 export function SectionStaffPanel({
     serviceType,
     availableEmployees,
     selectedEmployees,
-    onSelectionChange
+    onSelectionChange,
+    workOrderId
 }: SectionStaffPanelProps) {
     const [searchTerm, setSearchTerm] = useState("");
     const [loadingEmployeeData, setLoadingEmployeeData] = useState(false);
@@ -136,6 +138,35 @@ export function SectionStaffPanel({
         }
     }, []);
 
+    // Helper to group workload by work_order_id
+    const getGroupedWorkload = (workload: any[]) => {
+        const groups: Record<string, any> = {};
+        workload.forEach(item => {
+            const id = String(item.work_order_id);
+            if (!groups[id]) {
+                groups[id] = {
+                    ...item,
+                    services: [item.service_type],
+                    total_progress: Number(item.progress_percentage) || 0,
+                    service_count: 1
+                };
+            } else {
+                groups[id].services.push(item.service_type);
+                groups[id].total_progress += (Number(item.progress_percentage) || 0);
+                groups[id].service_count += 1;
+            }
+        });
+
+        return Object.values(groups).map(g => ({
+            ...g,
+            // Calculate average progress across all services
+            progress_percentage: Math.round(g.total_progress / g.service_count)
+        })).sort((a, b) => {
+            // Sort by queue position (using the position of the first assignment)
+            return (a.queue_position || 999) - (b.queue_position || 999);
+        });
+    };
+
     // Fetch workload/attendance for first selected employee or when selection changes
     useEffect(() => {
         const firstSelected = selectedEmployees[0];
@@ -160,7 +191,21 @@ export function SectionStaffPanel({
             const res = await fetchEmployeeAssessment(id);
             setEmployeeWorkload(res.workload);
             setEmployeeAttendance(res.attendance);
-            const defaultPosition = res.workload.length + 1;
+
+            // Calculate default position
+            // If employee is already working on THIS work order, reuse that queue position
+            // Otherwise, put it at the end of their queue (count of unique work orders + 1)
+            let defaultPosition;
+            const existingAssignment = workOrderId
+                ? res.workload.find((w: any) => w.work_order_id === workOrderId)
+                : null;
+
+            if (existingAssignment) {
+                defaultPosition = existingAssignment.queue_position;
+            } else {
+                defaultPosition = new Set(res.workload.map((w: any) => w.work_order_id)).size + 1;
+            }
+
             onSelectionChange([...selectedEmployees, { id, queue_position: defaultPosition }]);
         }
     };
@@ -272,7 +317,11 @@ export function SectionStaffPanel({
                                             <div className="bg-background/50 p-1.5 rounded border border-primary/10">
                                                 <p className="text-[8px] font-bold text-muted-foreground uppercase">Active Jobs</p>
                                                 <p className="text-xs font-black text-blue-600">
-                                                    {lastCheckedId === emp.id ? employeeWorkload.length : '...'}
+                                                    <p className="text-xs font-black text-blue-600">
+                                                        {lastCheckedId === emp.id
+                                                            ? getGroupedWorkload(employeeWorkload).length
+                                                            : '...'}
+                                                    </p>
                                                 </p>
                                             </div>
                                             <div className="bg-background/50 p-1.5 rounded border border-primary/10">
@@ -294,7 +343,7 @@ export function SectionStaffPanel({
                                         {lastCheckedId === emp.id && (
                                             <div className="space-y-1">
                                                 <div className="flex items-center justify-between px-1">
-                                                    <p className="text-[8px] font-bold text-muted-foreground uppercase">Current Tasks ({employeeWorkload.length})</p>
+                                                    <p className="text-[8px] font-bold text-muted-foreground uppercase">Current Tasks ({getGroupedWorkload(employeeWorkload).length})</p>
                                                     <Button
                                                         type="button"
                                                         variant="ghost"
@@ -310,14 +359,30 @@ export function SectionStaffPanel({
                                                 </div>
                                                 {employeeWorkload.length > 0 && (
                                                     <div className="space-y-1">
-                                                        {employeeWorkload.slice(0, 2).map((wl, idx) => (
-                                                            <div key={idx} className="flex justify-between items-center bg-muted/30 p-1 rounded text-[9px]">
-                                                                <span className="truncate max-w-[120px] font-medium opacity-70">{wl.vehicle_number}</span>
-                                                                <span className="text-primary font-bold">{wl.progress_percentage}%</span>
+                                                        {getGroupedWorkload(employeeWorkload).slice(0, 2).map((wl, idx) => (
+                                                            <div key={idx} className="flex flex-col bg-muted/30 p-1 rounded text-[9px] gap-0.5">
+                                                                <div className="flex justify-between items-center w-full">
+                                                                    <span className="truncate max-w-[120px] font-medium opacity-80">{wl.vehicle_number}</span>
+                                                                    <span className="text-primary font-bold">{wl.progress_percentage}%</span>
+                                                                </div>
+                                                                {wl.company_name && (
+                                                                    <span className="truncate max-w-[140px] text-[8px] text-muted-foreground/70 scale-95 origin-left">
+                                                                        {wl.company_name}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         ))}
-                                                        {employeeWorkload.length > 2 && (
-                                                            <p className="text-[8px] text-center text-muted-foreground">+{employeeWorkload.length - 2} more</p>
+                                                        {getGroupedWorkload(employeeWorkload).length > 2 && (
+                                                            <button
+                                                                type="button"
+                                                                className="text-[8px] text-center text-blue-600 hover:text-blue-700 font-medium hover:underline w-full py-0.5"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleShowWorkloadDetails(emp);
+                                                                }}
+                                                            >
+                                                                +{getGroupedWorkload(employeeWorkload).length - 2} more
+                                                            </button>
                                                         )}
                                                     </div>
                                                 )}
@@ -360,7 +425,7 @@ export function SectionStaffPanel({
                             </div>
                             <div className="text-right">
                                 <p className="text-xs text-muted-foreground">Active Jobs</p>
-                                <p className="text-2xl font-bold text-primary">{employeeWorkload.length}</p>
+                                <p className="text-2xl font-bold text-primary">{getGroupedWorkload(employeeWorkload).length}</p>
                             </div>
                         </div>
 
@@ -388,7 +453,7 @@ export function SectionStaffPanel({
                                     <p className="text-xs">This employee is available for assignment</p>
                                 </div>
                             ) : (
-                                employeeWorkload.map((wl, idx) => {
+                                getGroupedWorkload(employeeWorkload).map((wl, idx) => {
                                     const deliveryInfo = getDeliveryStatus(wl.estimated_delivery_date, currentTime);
                                     return (
                                         <div key={idx} className="border rounded-lg p-3 space-y-2 hover:bg-muted/30 transition-colors">
@@ -396,16 +461,28 @@ export function SectionStaffPanel({
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <Badge variant="outline" className="text-xs">Position #{idx + 1}</Badge>
-                                                        <h5 className="font-semibold">{wl.vehicle_number}</h5>
+                                                        <h5 className="font-semibold text-base">{wl.vehicle_number}</h5>
                                                     </div>
-                                                    <p className="text-xs text-muted-foreground">{wl.service_type}</p>
+
+                                                    {/* Services List */}
+                                                    <div className="flex flex-wrap gap-1 mb-1">
+                                                        {wl.services.map((svc: string, i: number) => (
+                                                            <Badge key={i} variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal bg-primary/10 text-primary border-primary/20">
+                                                                {svc}
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+
                                                     {wl.company_name && (
-                                                        <p className="text-xs text-muted-foreground">Company: {wl.company_name}</p>
+                                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                            <span className="font-semibold text-[10px] uppercase tracking-wider opacity-70">Company:</span>
+                                                            {wl.company_name}
+                                                        </p>
                                                     )}
                                                 </div>
                                                 <div className="text-right">
                                                     <div className="text-lg font-bold text-primary">{wl.progress_percentage}%</div>
-                                                    <p className="text-[10px] text-muted-foreground">Complete</p>
+                                                    <p className="text-[10px] text-muted-foreground">Avg. Complete</p>
                                                 </div>
                                             </div>
 

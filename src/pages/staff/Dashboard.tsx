@@ -18,7 +18,7 @@ import {
   LogOut, CheckCircle2, Clock, AlertTriangle,
   Briefcase, User, RefreshCw, Eye, EyeOff,
   Wrench, Shield, Lock, LockOpen, Activity, QrCode,
-  Package, ChevronRight
+  Package, ChevronRight, XCircle
 } from "lucide-react"
 import { format } from "date-fns"
 import { PartRequestList } from "@/components/inventory/PartRequestList"
@@ -110,6 +110,8 @@ interface RepairTask {
   price?: number
   is_completed: boolean
   completed_at: string | null
+  is_rejected?: boolean;
+  rejection_reason?: string;
 }
 
 // Types for vehicle-based work display
@@ -139,6 +141,8 @@ interface VehicleWork {
   estimated_delivery_date: string | null
   queue_position: number
   progress: number
+  is_reopened?: boolean;
+  reopen_reason?: string;
 }
 
 export default function StaffDashboard() {
@@ -274,6 +278,16 @@ export default function StaffDashboard() {
       // Add service_type to combined set
       if (item.service_type) {
         acc[key].service_types.add(item.service_type);
+      }
+      // FIXED: Merge tasks from all services
+      if (item.tasks && item.tasks.length > 0) {
+        acc[key].tasks = [...(acc[key].tasks || []), ...item.tasks];
+        // Recalculate progress with merged tasks
+        const allTasks = acc[key].tasks;
+        const completedTasks = allTasks.filter((t: any) => t.is_completed).length;
+        acc[key].completed_tasks = completedTasks;
+        acc[key].total_tasks = allTasks.length;
+        acc[key].progress = allTasks.length > 0 ? Math.round((completedTasks * 100) / allTasks.length) : 0;
       }
     }
     return acc;
@@ -817,6 +831,9 @@ export default function StaffDashboard() {
                                 <div className="flex items-center gap-2 mb-1">
                                   <Wrench className="h-5 w-5 text-primary" />
                                   <h3 className="font-semibold text-lg">{work.vehicle_number}</h3>
+                                  {work.company_name && (
+                                    <span className="text-sm text-muted-foreground">({work.company_name})</span>
+                                  )}
                                   {activeTab === "active" && (
                                     <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
                                       Pos: {index + 1}
@@ -850,6 +867,11 @@ export default function StaffDashboard() {
                                       <Briefcase className="h-3 w-3" />
                                       {work.service_type}
                                     </span>
+                                  )}
+                                  {work.is_reopened && (
+                                    <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse text-[10px] h-4 py-0">
+                                      <RefreshCw className="h-2 w-2 mr-1" /> Reopened
+                                    </Badge>
                                   )}
                                   {work.estimated_delivery_date && (() => {
                                     const deliveryInfo = getDeliveryStatus(work.estimated_delivery_date, currentTime);
@@ -1022,48 +1044,51 @@ export default function StaffDashboard() {
                                           {currentTasks.map((task: RepairTask, index: number) => (
                                             <div
                                               key={task.id}
-                                              className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${task.is_completed
-                                                ? "bg-green-50 border-green-200"
-                                                : "bg-muted/30 border-transparent hover:bg-muted/50"
-                                                }`}
+                                              className={`flex flex-col p-2 rounded-lg border transition-all ${task.is_completed ? "bg-green-50 border-green-200" : "bg-muted/30 border-transparent hover:bg-muted/50"}`}
                                             >
-                                              <Checkbox
-                                                id={`task-${task.id}`}
-                                                checked={task.is_completed}
-                                                onCheckedChange={(checked) => {
-                                                  handleToggleTask(task.id, work.work_order_id, checked === true);
-                                                }}
-                                                disabled={isPendingApproval || repairsApproved || isFinished}
-                                                className="h-5 w-5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                                              />
-                                              <div className="flex-1 flex items-center gap-2">
-                                                <label
-                                                  htmlFor={`task-${task.id}`}
-                                                  className={`text-sm cursor-pointer ${task.is_completed ? "line-through text-muted-foreground" : ""
-                                                    }`}
-                                                >
-                                                  {index + 1}. {task.task_name}
-                                                </label>
-                                                {task.price !== undefined && task.price > 0 && (
-                                                  <Badge variant="outline" className="text-[10px] h-4 px-1 bg-blue-50/50 text-blue-700 border-blue-100">
-                                                    ₹{task.price}
-                                                  </Badge>
-                                                )}
-                                                <div className="flex items-center gap-2 mt-1">
+                                              <div className="flex items-center gap-3">
+                                                <Checkbox
+                                                  id={`task-${task.id}`}
+                                                  checked={task.is_completed}
+                                                  onCheckedChange={(checked) => handleToggleTask(task.id, work.work_order_id, checked === true)}
+                                                  disabled={isPendingApproval || repairsApproved || isFinished}
+                                                  className="h-5 w-5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                                />
+                                                <div className="flex-1 flex items-center gap-2 flex-wrap">
+                                                  <label
+                                                    htmlFor={`task-${task.id}`}
+                                                    className={`text-sm cursor-pointer ${task.is_completed ? "line-through text-muted-foreground" : ""}`}
+                                                  >
+                                                    {index + 1}. {task.task_name}
+                                                  </label>
+                                                  {task.price !== undefined && task.price > 0 && (
+                                                    <Badge variant="outline" className="text-[10px] h-4 px-1 bg-blue-50/50 text-blue-700 border-blue-100">
+                                                      ₹{task.price}
+                                                    </Badge>
+                                                  )}
                                                   <Badge variant="outline" className="text-[10px] uppercase">
                                                     {task.task_type}
                                                   </Badge>
+                                                  {task.completed_at && (
+                                                    <span className="text-[10px] text-green-600 font-medium">
+                                                      ✓ {format(new Date(task.completed_at), "MMM d, HH:mm")}
+                                                    </span>
+                                                  )}
                                                 </div>
                                               </div>
-                                              {task.completed_at && (
-                                                <span className="text-xs text-green-600">
-                                                  ✓ {format(new Date(task.completed_at), "MMM d, HH:mm")}
-                                                </span>
+
+                                              {task.is_rejected && (
+                                                <div className="mt-2 ml-8 flex items-start gap-1.5 p-1.5 bg-red-50 border border-red-100 rounded text-[10px] text-red-700">
+                                                  <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                                  <div className="flex-1">
+                                                    <span className="font-bold uppercase tracking-wider">Rejected:</span> {task.rejection_reason}
+                                                  </div>
+                                                </div>
                                               )}
                                             </div>
                                           ))}
                                         </div>
-                                      </div>
+                                      </div >
                                     )}
 
                                     {/* Notification if all current stage tasks are done */}
@@ -1165,7 +1190,7 @@ export default function StaffDashboard() {
                           </div>
                         </CardContent>
                       </Card>
-                    )
+                    );
                   })}
                 </div>
               )}
@@ -1174,6 +1199,6 @@ export default function StaffDashboard() {
         </div>
       </main>
     </div>
-  )
+  );
 }
 

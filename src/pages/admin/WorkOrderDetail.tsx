@@ -21,7 +21,7 @@ import {
     CheckCircle2, XCircle, Clock, Trash2, Shield, User,
     Truck, AlertTriangle, RefreshCw, ChevronRight, Plus, X, Edit, Play,
     Bell, ShieldCheck, FileText, Calendar as CalendarIcon,
-    ListOrdered, Search, TrendingUp, Info
+    ListOrdered, Search, TrendingUp, Info, Loader2, RotateCcw
 } from "lucide-react";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
 import { PartRequestList } from "@/components/inventory/PartRequestList";
@@ -46,6 +46,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
 
 interface ServiceDetail {
     id: string;
@@ -68,6 +69,17 @@ interface ServiceDetail {
         assigned_at?: string | null;
         accepted_at?: string | null;
         employee: { id: string; name: string; position?: { department?: string } } | null;
+    }[];
+    tasks: {
+        id: string;
+        task_name: string;
+        price: number;
+        completed: boolean;
+        is_predefined: boolean;
+        completed_at?: string | null;
+        task_type?: string;
+        is_rejected?: boolean;
+        rejection_reason?: string;
     }[];
 }
 
@@ -107,7 +119,13 @@ interface WorkOrder {
         assigned_employee_id: string | null;
         completed: boolean;
         completed_at: string | null;
+        is_rejected?: boolean;
+        rejection_reason?: string;
     }>;
+    is_reopened?: boolean;
+    reopen_reason?: string;
+    reopened_at?: string;
+    reopened_by?: string;
 }
 
 interface Employee {
@@ -148,6 +166,16 @@ export default function WorkOrderDetail() {
     // Extension: Assignment stats and workload
     const [assignmentPosition, setAssignmentPosition] = useState("0");
     const [employeeWorkload, setEmployeeWorkload] = useState<any[]>([]);
+
+    // Rejection & Reopen states
+    const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
+    const [selectedTasksForRejection, setSelectedTasksForRejection] = useState<string[]>([]);
+    const [rejectionReason, setRejectionReason] = useState("");
+    const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+    const [reopenReason, setReopenReason] = useState("");
+    const [showConfigForm, setShowConfigForm] = useState(false);
+    const [showAddServiceForm, setShowAddServiceForm] = useState(false);
+    const [bulkApproving, setBulkApproving] = useState(false);
     const [employeeAttendance, setEmployeeAttendance] = useState<any>(null);
     const [loadingEmployeeData, setLoadingEmployeeData] = useState(false);
     const [empSearchTerm, setEmpSearchTerm] = useState("");
@@ -339,10 +367,8 @@ export default function WorkOrderDetail() {
             });
 
             toast({
-                title: approvalAction === "approve" ? "Work Approved" : "Changes Requested",
-                description: approvalAction === "approve"
-                    ? "The work has been approved and is now visible to the customer."
-                    : "The staff has been notified of the required changes."
+                title: "Work Approved",
+                description: "The work has been approved and is now visible to the customer."
             });
 
             setApprovalDialogOpen(false);
@@ -352,6 +378,94 @@ export default function WorkOrderDetail() {
             toast({ variant: "destructive", title: "Error", description: error.message });
         } finally {
             setProcessingApproval(false);
+        }
+    };
+
+    const handleRejectTasks = async () => {
+        if (!id) return;
+        if (selectedTasksForRejection.length === 0) {
+            toast({ variant: "destructive", title: "Error", description: "Please select at least one task to reject." });
+            return;
+        }
+        if (!rejectionReason) {
+            toast({ variant: "destructive", title: "Error", description: "Please provide a reason for rejection." });
+            return;
+        }
+
+        setProcessingApproval(true);
+        try {
+            const { error } = await supabase.rpc('reject_work_tasks', {
+                p_work_order_id: id,
+                p_task_ids: selectedTasksForRejection,
+                p_reason: rejectionReason,
+                p_approver_id: user?.id
+            });
+
+            if (error) throw error;
+
+            toast({
+                title: "Work Rejected",
+                description: "The selected tasks have been rejected and staff has been notified."
+            });
+
+            setRejectionDialogOpen(false);
+            setSelectedTasksForRejection([]);
+            setRejectionReason("");
+            fetchDetails();
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        } finally {
+            setProcessingApproval(false);
+        }
+    };
+
+    // Handle Reopen Work Order
+    const handleReopenWorkOrder = () => {
+        if (!reopenReason) {
+            toast({
+                title: "Reason Required",
+                description: "Please provide a reason for reopening.",
+                variant: "destructive"
+            });
+            return;
+        }
+        setReopenDialogOpen(false);
+        setShowConfigForm(true);
+    };
+
+    // Handle Bulk Approve All Pending Assignments
+    const handleBulkApprove = async () => {
+        if (!id) return;
+
+        setBulkApproving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("User not authenticated");
+
+            const { data, error } = await supabase.rpc('approve_all_pending_assignments', {
+                p_work_order_id: id,
+                p_approver_id: user.id
+            });
+
+            if (error) throw error;
+
+            const approvedCount = data?.[0]?.approved_count || 0;
+
+            toast({
+                title: "Bulk Approval Successful",
+                description: `${approvedCount} staff assignment${approvedCount !== 1 ? 's' : ''} approved and released to staff.`,
+            });
+
+            fetchDetails();
+        } catch (error: any) {
+            console.error("Bulk approval error:", error);
+            toast({
+                title: "Approval Failed",
+                description: error.message || "Failed to approve assignments.",
+                variant: "destructive"
+            });
+        } finally {
+            setBulkApproving(false);
         }
     };
 
@@ -415,6 +529,32 @@ export default function WorkOrderDetail() {
             fetchDetails();
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
+        }
+    };
+
+    // Handle Revert Assignment (Reset to Assigned)
+    const handleRevertAssignment = async (empId: string, serviceId: string) => {
+        try {
+            const { error: updateError } = await supabase
+                .from('work_order_service_employees')
+                .update({ status: 'Assigned', accepted_at: null })
+                .eq('service_id', serviceId)
+                .eq('employee_id', empId);
+
+            if (updateError) throw updateError;
+
+            toast({
+                title: "Assignment Reverted",
+                description: "Employee assignment status has been reset to 'Assigned'.",
+            });
+            fetchDetails();
+        } catch (error: any) {
+            console.error("Error reverting assignment:", error);
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to revert assignment: " + error.message
+            });
         }
     };
 
@@ -491,6 +631,32 @@ export default function WorkOrderDetail() {
                 }, { onConflict: 'work_order_id,stage' });
 
             toast({ title: "Work Delivered", description: "Work order marked as Completed" });
+            fetchDetails();
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        }
+    };
+
+    // Handle Delete Service
+    const handleDeleteService = async (serviceId: string) => {
+        if (!confirm("Are you sure you want to delete this service? This will remove all associated tasks and assignments.")) return;
+        try {
+            const { error } = await supabase.from("work_order_services").delete().eq("id", serviceId);
+            if (error) throw error;
+            toast({ title: "Service Deleted", description: "Service removed successfully" });
+            fetchDetails();
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        }
+    };
+
+    // Handle Delete Task
+    const handleDeleteTask = async (taskId: string) => {
+        if (!confirm("Are you sure you want to delete this task?")) return;
+        try {
+            const { error } = await supabase.from("work_order_tasks").delete().eq("id", taskId);
+            if (error) throw error;
+            toast({ title: "Task Deleted", description: "Task removed successfully" });
             fetchDetails();
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -618,7 +784,17 @@ export default function WorkOrderDetail() {
                             <h1 className="text-xl font-bold flex items-center gap-2">
                                 Work Order #{workOrder.id.slice(0, 8)}
                                 {getStatusBadge(workOrder.status)}
+                                {workOrder.is_reopened && (
+                                    <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse">
+                                        <RefreshCw className="h-3 w-3 mr-1" /> Reopened
+                                    </Badge>
+                                )}
                             </h1>
+                            {workOrder.is_reopened && workOrder.reopen_reason && (
+                                <div className="mt-1 flex items-center gap-2 text-orange-600 text-[10px] font-medium uppercase tracking-wider">
+                                    <Info className="h-3 w-3" /> Reason: {workOrder.reopen_reason}
+                                </div>
+                            )}
                             <p className="text-sm text-muted-foreground">
                                 {workOrder.vehicle?.vehicle_number} • {workOrder.vehicle?.model}
                             </p>
@@ -748,9 +924,32 @@ export default function WorkOrderDetail() {
                                         <Users className="h-5 w-5 text-blue-600" />
                                         <CardTitle className="text-base font-semibold">Staff Assignment Requests</CardTitle>
                                     </div>
-                                    <Badge variant="outline" className="text-[10px] font-mono bg-white">
-                                        {details.reduce((acc, s) => acc + (s.employees?.length || 0), 0)} TOTAL
-                                    </Badge>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-[10px] font-mono bg-white">
+                                            {details.reduce((acc, s) => acc + (s.employees?.length || 0), 0)} TOTAL
+                                        </Badge>
+                                        {details.some(s => s.employees?.some(e => e.status === 'Assigned')) && (
+                                            <Button
+                                                size="sm"
+                                                variant="default"
+                                                className="h-7 text-[10px] bg-indigo-600 hover:bg-indigo-700 px-3"
+                                                onClick={handleBulkApprove}
+                                                disabled={bulkApproving}
+                                            >
+                                                {bulkApproving ? (
+                                                    <>
+                                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                        Approving...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                        Approve All Pending
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
+                                    </div>
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     <div className="grid grid-cols-1 md:grid-cols-2 max-h-[300px] overflow-y-auto">
@@ -799,6 +998,17 @@ export default function WorkOrderDetail() {
                                                                     <Clock className="h-3 w-3 mr-1" /> Waiting for Staff
                                                                 </Badge>
                                                             )}
+                                                            {(emp.status === 'Accepted' || emp.status === 'In Progress') && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                                                    title="Revert to Assigned"
+                                                                    onClick={() => handleRevertAssignment(emp.id, s.id)}
+                                                                >
+                                                                    <RotateCcw className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
@@ -823,12 +1033,35 @@ export default function WorkOrderDetail() {
                         </div>
 
                         <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-semibold">Service Details</h3>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-xs bg-primary/5 border-primary/20 hover:bg-primary/10"
+                                    onClick={() => setShowAddServiceForm(true)}
+                                >
+                                    <Plus className="h-3.5 w-3.5 mr-1" />
+                                    Add Service
+                                </Button>
+                            </div>
                             {details.map((service) => (
                                 <Card key={service.id} className="overflow-hidden border-l-4 border-l-primary">
                                     <CardHeader className="bg-muted/20 pb-4">
                                         <div className="flex justify-between items-center">
                                             <div>
-                                                <CardTitle>{service.service_type}</CardTitle>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    {service.service_type}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => handleDeleteService(service.id)}
+                                                        title="Delete Service"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </CardTitle>
                                                 <CardDescription>Section Status: {service.status}</CardDescription>
                                             </div>
                                             <div className="text-right">
@@ -848,13 +1081,13 @@ export default function WorkOrderDetail() {
                                                         Component Tasks
                                                     </h4>
                                                     <Badge variant="outline">
-                                                        {service.tasks.filter(t => t.completed).length}/{service.tasks.length}
+                                                        {(service.tasks || []).filter(t => t.completed).length}/{(service.tasks || []).length}
                                                     </Badge>
                                                 </div>
                                                 <div className="space-y-2">
-                                                    {service.tasks.map((task) => (
-                                                        <div key={task.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 transition-colors border text-sm">
-                                                            <div className="flex items-center gap-2">
+                                                    {(service.tasks || []).map((task) => (
+                                                        <div key={task.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 transition-colors border text-sm group">
+                                                            <div className="flex items-center gap-2 flex-1">
                                                                 <Checkbox
                                                                     id={`service-task-${task.id}`}
                                                                     checked={task.completed}
@@ -868,11 +1101,22 @@ export default function WorkOrderDetail() {
                                                                 </label>
                                                                 <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1 rounded">₹{task.price || 0}</span>
                                                             </div>
-                                                            {task.completed ? (
-                                                                <Badge variant="default" className="bg-green-600 text-[10px] h-5">Done</Badge>
-                                                            ) : (
-                                                                <Badge variant="outline" className="text-[10px] h-5">Pending</Badge>
-                                                            )}
+                                                            <div className="flex items-center gap-2">
+                                                                {task.completed ? (
+                                                                    <Badge variant="default" className="bg-green-600 text-[10px] h-5">Done</Badge>
+                                                                ) : (
+                                                                    <Badge variant="outline" className="text-[10px] h-5">Pending</Badge>
+                                                                )}
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    onClick={() => handleDeleteTask(task.id)}
+                                                                    title="Delete Task"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -1093,7 +1337,10 @@ export default function WorkOrderDetail() {
 
                                 {/* Stage 2: Repair Approval */}
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                                    <div className={cn(
+                                        "flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors",
+                                        workOrder.status === 'Pending Approval' && "animate-blink-blue border-primary/20"
+                                    )}>
                                         <div className="flex items-center gap-3">
                                             <Checkbox
                                                 id="repair-approval"
@@ -1149,6 +1396,30 @@ export default function WorkOrderDetail() {
                                     {workOrder.repair_status !== 'completed' && workOrder.repair_status !== 'approved' && (
                                         <Button className="w-full justify-start bg-orange-600 hover:bg-orange-700" onClick={handleForceComplete}>
                                             <AlertTriangle className="h-4 w-4 mr-2" /> Force Complete Repair
+                                        </Button>
+                                    )}
+
+                                    {workOrder.status === 'Pending Approval' && (
+                                        <Button
+                                            variant="destructive"
+                                            className="w-full"
+                                            onClick={() => {
+                                                const allTaskIds = details.flatMap(s => s.tasks.map(t => t.id));
+                                                setSelectedTasksForRejection(allTaskIds);
+                                                setRejectionDialogOpen(true);
+                                            }}
+                                        >
+                                            <XCircle className="h-4 w-4 mr-2" /> Reject for Corrections
+                                        </Button>
+                                    )}
+
+                                    {(workOrder.status === 'Approved' || workOrder.status === 'Completed') && (
+                                        <Button
+                                            variant="outline"
+                                            className="w-full border-orange-500 text-orange-600 hover:bg-orange-50"
+                                            onClick={() => setReopenDialogOpen(true)}
+                                        >
+                                            <RefreshCw className="h-4 w-4 mr-2" /> Reopen Work Order
                                         </Button>
                                     )}
                                 </div>
@@ -1684,6 +1955,177 @@ export default function WorkOrderDetail() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            {/* Selective Rejection Dialog */}
+            <Dialog open={rejectionDialogOpen} onOpenChange={setRejectionDialogOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Reject Work / Request Changes</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-6 py-4">
+                        <div className="space-y-4">
+                            <h4 className="text-sm font-semibold flex items-center justify-between">
+                                Select Tasks to Reject
+                                <Button
+                                    variant="link"
+                                    className="h-auto p-0 text-xs"
+                                    onClick={() => {
+                                        const allTaskIds = details.flatMap(s => s.tasks.map(t => t.id));
+                                        setSelectedTasksForRejection(
+                                            selectedTasksForRejection.length === allTaskIds.length ? [] : allTaskIds
+                                        );
+                                    }}
+                                >
+                                    {selectedTasksForRejection.length === details.flatMap(s => s.tasks.map(t => t.id)).length ? "Deselect All" : "Select All"}
+                                </Button>
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                {details.map(service => (
+                                    <div key={service.id} className="space-y-2">
+                                        <p className="text-[10px] font-bold uppercase text-muted-foreground bg-muted/50 p-1 rounded">{service.service_type}</p>
+                                        <div className="grid grid-cols-1 gap-1">
+                                            {service.tasks.map(task => (
+                                                <div key={task.id} className="flex items-center space-x-2 p-1 hover:bg-muted/30 rounded">
+                                                    <Checkbox
+                                                        id={`reject-${task.id}`}
+                                                        checked={selectedTasksForRejection.includes(task.id)}
+                                                        onCheckedChange={(checked) => {
+                                                            if (checked) {
+                                                                setSelectedTasksForRejection([...selectedTasksForRejection, task.id]);
+                                                            } else {
+                                                                setSelectedTasksForRejection(selectedTasksForRejection.filter(id => id !== task.id));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <label htmlFor={`reject-${task.id}`} className="text-xs cursor-pointer flex-1">{task.task_name}</label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-primary/80 flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4" />
+                                Rejection Reason / Instructions for Staff
+                            </label>
+                            <Textarea
+                                placeholder="Explain why these tasks are being rejected and what needs to be fixed..."
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                                rows={4}
+                                className="resize-none"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="border-t pt-4">
+                        <Button variant="ghost" onClick={() => setRejectionDialogOpen(false)}>Cancel</Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleRejectTasks}
+                            disabled={processingApproval || selectedTasksForRejection.length === 0 || !rejectionReason}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {processingApproval ? (
+                                <>
+                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                    Processing Rejection...
+                                </>
+                            ) : "Confirm & Send to Staff"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Reopen Work Order Dialog */}
+            {/* Enhanced Reopen Configuration Form */}
+            <Dialog open={showConfigForm} onOpenChange={setShowConfigForm}>
+                <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-0">
+                    <DialogHeader className="px-6 pt-6 pb-0">
+                        <DialogTitle className="sr-only">Configure Work Order</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-6 pt-0">
+                        <WorkOrderForm
+                            initialWorkOrderId={id}
+                            isReopening={true}
+                            reopenReason={reopenReason}
+                            onSuccess={() => {
+                                setShowConfigForm(false);
+                                setReopenReason("");
+                                fetchDetails();
+                            }}
+                            onCancel={() => setShowConfigForm(false)}
+                        />
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add Service Dialog */}
+            <Dialog open={showAddServiceForm} onOpenChange={setShowAddServiceForm}>
+                <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-0">
+                    <DialogHeader className="px-6 pt-6 pb-0">
+                        <DialogTitle className="sr-only">Add Service</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-6 pt-0">
+                        <WorkOrderForm
+                            initialWorkOrderId={id}
+                            isReopening={false}
+                            onSuccess={() => {
+                                setShowAddServiceForm(false);
+                                fetchDetails();
+                            }}
+                            onCancel={() => setShowAddServiceForm(false)}
+                        />
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <RefreshCw className="h-5 w-5 text-orange-500" />
+                            Reopen Work Order
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg flex items-start gap-3">
+                            <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5 shrink-0" />
+                            <div className="text-xs text-orange-700 space-y-1">
+                                <p className="font-bold">Action Confirmation Required:</p>
+                                <p>Reopening will set the status back to <span className="font-bold">In Progress</span> and allow modifications to services and tasks. Personnel assigned to these tasks will see them back in their active queue.</p>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold">Reason for Reopening</label>
+                            <Textarea
+                                placeholder="Briefly explain why this work order is being reopened (e.g., Customer requested extra work, Mistake in billing, etc.)"
+                                value={reopenReason}
+                                onChange={(e) => setReopenReason(e.target.value)}
+                                rows={4}
+                                className="resize-none"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="bg-muted/50 p-4 -mx-6 -mb-6 border-t mt-4">
+                        <Button variant="ghost" onClick={() => setReopenDialogOpen(false)}>Wait, Cancel</Button>
+                        <Button
+                            className="bg-orange-600 hover:bg-orange-700 text-white shadow-lg"
+                            onClick={handleReopenWorkOrder}
+                            disabled={processingApproval || !reopenReason}
+                        >
+                            {processingApproval ? (
+                                <>
+                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                    Reopening Order...
+                                </>
+                            ) : "Confirm & Reopen Work Order"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Employee Tracker Side Modal */}
             {
                 selectedTrackerEmployee && (

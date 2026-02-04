@@ -89,20 +89,49 @@ export const calculateServicePrice = async (
                 .single();
 
             if (vehicle?.vehicle_models) {
-                const model = vehicle.vehicle_models as any;
-                vehicleTypeId = model.vehicle_type_id;
-                vehicleCategoryId = model.vehicle_types?.category_id;
+                const rawModel = vehicle.vehicle_models;
+                const model = Array.isArray(rawModel) ? rawModel[0] : rawModel;
+                vehicleTypeId = model?.vehicle_type_id;
+
+                const rawType = model?.vehicle_types;
+                const vType = Array.isArray(rawType) ? rawType[0] : rawType;
+                vehicleCategoryId = vType?.category_id;
             }
         }
 
         // 3. Fetch Applicable Pricing Rules
-        const { data: rules, error: rError } = await supabase
+        // Build the query dynamically to handle NULL values properly
+        let rulesQuery = supabase
             .from('pricing_rules')
             .select('*')
             .eq('service_type_id', serviceId)
-            .eq('is_active', true)
-            .or(`customer_id.eq.${customerId || 'null'},vehicle_type_id.eq.${vehicleTypeId || 'null'},vehicle_category_id.eq.${vehicleCategoryId || 'null'}`)
-            .order('priority', { ascending: false });
+            .eq('is_active', true);
+
+        // Build OR conditions for customer, vehicle type, and category
+        const orConditions: string[] = [];
+
+        if (customerId) {
+            orConditions.push(`customer_id.eq.${customerId}`);
+        } else {
+            orConditions.push(`customer_id.is.null`);
+        }
+
+        if (vehicleTypeId) {
+            orConditions.push(`vehicle_type_id.eq.${vehicleTypeId}`);
+        } else {
+            orConditions.push(`vehicle_type_id.is.null`);
+        }
+
+        if (vehicleCategoryId) {
+            orConditions.push(`vehicle_category_id.eq.${vehicleCategoryId}`);
+        } else {
+            orConditions.push(`vehicle_category_id.is.null`);
+        }
+
+        rulesQuery = rulesQuery.or(orConditions.join(','));
+        rulesQuery = rulesQuery.order('priority', { ascending: false });
+
+        const { data: rules, error: rError } = await rulesQuery;
 
         if (rError) throw rError;
 
@@ -232,10 +261,14 @@ export const checkServiceApplicability = async (
 
         if (!vehicle?.vehicle_models) return true; // Default to visible if vehicle not resolved
 
-        const model = vehicle.vehicle_models as any;
-        const vTypeId = model.vehicle_type_id;
-        const vCatId = model.vehicle_types?.category_id;
-        const vMfrId = model.manufacturer_id;
+        const rawModel = vehicle.vehicle_models;
+        const model = Array.isArray(rawModel) ? rawModel[0] : rawModel;
+        const vTypeId = model?.vehicle_type_id;
+
+        const rawType = model?.vehicle_types;
+        const vType = Array.isArray(rawType) ? rawType[0] : rawType;
+        const vCatId = vType?.category_id;
+        const vMfrId = model?.manufacturer_id;
 
         // Fetch applicability mappings for this service
         const { data: mappings } = await supabase

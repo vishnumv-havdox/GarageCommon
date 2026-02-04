@@ -303,10 +303,10 @@ export function TaskSelector({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors"
                                     onClick={() => handleRemove(task.id)}
                                 >
-                                    <X className="h-4 w-4 text-destructive" />
+                                    <Trash2 className="h-4 w-4" />
                                 </Button>
                             </div>
                         ))}

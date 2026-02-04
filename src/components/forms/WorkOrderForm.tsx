@@ -79,9 +79,18 @@ interface VehicleModel {
 interface WorkOrderFormProps {
   onSuccess: () => void
   onCancel: () => void
+  initialWorkOrderId?: string
+  isReopening?: boolean
+  reopenReason?: string
 }
 
-export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
+export function WorkOrderForm({
+  onSuccess,
+  onCancel,
+  initialWorkOrderId,
+  isReopening = false,
+  reopenReason = ""
+}: WorkOrderFormProps) {
   const { toast } = useToast()
 
   // Basic data
@@ -96,8 +105,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     category?: string;
     base_price?: number;
     required_fields?: string[];
+    is_fc_exclusive?: boolean; // Added for FC Work flow
   }
   const [dbServiceTypes, setDbServiceTypes] = useState<DBServiceType[]>([])
+  const [isFCWork, setIsFCWork] = useState(false) // Toggle state for FC Work
   const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([])
 
   interface PricingRule {
@@ -111,6 +122,8 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([])
 
   const [newServiceName, setNewServiceName] = useState("")
+  const [newServiceCategory, setNewServiceCategory] = useState("Mechanical")
+  const [serviceCategories, setServiceCategories] = useState<{ id: string, name: string }[]>([])
   const [newServiceTasks, setNewServiceTasks] = useState<string[]>([])
   const [newTaskInput, setNewTaskInput] = useState("")
   const [isAddingService, setIsAddingService] = useState(false)
@@ -130,6 +143,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const [loadingVehicles, setLoadingVehicles] = useState(true)
   const [loadingEmployees, setLoadingEmployees] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingExisting, setIsLoadingExisting] = useState(false)
 
   // Search states
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false)
@@ -143,6 +157,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const [priority, setPriority] = useState("Medium")
 
   const [generalDescription, setGeneralDescription] = useState("")
+  const [internalReopenReason, setInternalReopenReason] = useState(reopenReason)
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState<Date | undefined>(undefined)
   const [estimatedDeliveryTime, setEstimatedDeliveryTime] = useState("18:00")
 
@@ -222,10 +237,21 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   const selectedVehicle = useMemo(() => vehicles.find(v => v.id === vehicleId), [vehicles, vehicleId]);
 
   const displayedServices = useMemo(() => {
-    return dbServiceTypes.filter(service => {
-      if (!selectedVehicle) return true; // Show all if no vehicle selected
+    const filtered = dbServiceTypes.filter(service => {
+      // 1. FC Filter (Global Priority)
+      if (isFCWork) {
+        // In FC Mode: Show ALL services (FC + Normal)
+        // No filtering needed here, logic falls through to standard applicability
+      } else {
+        // In Standard Mode: Show ONLY non-FC services
+        // (treat undefined/null as false for backward compatibility)
+        if (service.is_fc_exclusive === true) return false;
+      }
 
-      // Filter strict applicability
+      // 2. Initial State: If no vehicle selected, show all (that passed FC filter)
+      if (!selectedVehicle) return true;
+
+      // 3. Strict Applicability Rules
       const serviceRules = applicabilityRules.filter(r => r.service_type_id === service.id);
       if (serviceRules.length === 0) return true; // Universal (No rules defined)
 
@@ -240,7 +266,17 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
 
       return matches;
     });
-  }, [dbServiceTypes, applicabilityRules, selectedVehicle]);
+
+    // Sort FC exclusive services to the top if in FC mode
+    if (isFCWork) {
+      return [...filtered].sort((a, b) => {
+        if (a.is_fc_exclusive === b.is_fc_exclusive) return 0;
+        return a.is_fc_exclusive ? -1 : 1;
+      });
+    }
+
+    return filtered;
+  }, [dbServiceTypes, applicabilityRules, selectedVehicle, isFCWork]);
 
   // Computed Task Templates (Context-Aware Pricing)
   const computedTaskTemplates = useMemo(() => {
@@ -260,10 +296,16 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         r.is_active
       );
 
-      // Apply override
-      if (rule && rule.modifier_type === 'override') {
-        // console.log(`Applying rule for ${task.name}: ${rule.modifier_value}`); // Verbose
-        return { ...task, price: rule.modifier_value };
+      if (rule) {
+        let price = Number(task.price) || 0;
+        if (rule.modifier_type === 'fixed') {
+          price += Number(rule.modifier_value);
+        } else if (rule.modifier_type === 'percentage') {
+          price += (price * (Number(rule.modifier_value) / 100));
+        } else if (rule.modifier_type === 'override') {
+          price = Number(rule.modifier_value);
+        }
+        return { ...task, price };
       }
       return task;
     });
@@ -303,7 +345,8 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         typesRes,
         modelsRes,
         rulesRes,
-        pricingRulesRes
+        pricingRulesRes,
+        serviceCategoriesRes
       ] = await Promise.all([
         supabase.from('customers').select('id, name, company_name').order('name'),
         supabase.from('vehicles').select(`
@@ -336,11 +379,13 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         supabase.from('vehicle_types').select('*').order('name'),
         supabase.from('vehicle_models').select('*').order('name'),
         supabase.from('service_vehicle_applicability').select('*'),
-        supabase.from('pricing_rules').select('*').eq('is_active', true)
+        supabase.from('pricing_rules').select('*').eq('is_active', true),
+        supabase.from('service_categories').select('*').order('name')
       ])
 
       if (rulesRes.data) setApplicabilityRules(rulesRes.data);
       if (pricingRulesRes.data) setPricingRules(pricingRulesRes.data);
+      if (serviceCategoriesRes?.data) setServiceCategories(serviceCategoriesRes.data);
 
       if (mfrsRes.data) setManufacturers(mfrsRes.data)
       if (catsRes.data) setCategories(catsRes.data)
@@ -351,21 +396,25 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       if (customersRes.data) setCustomers(customersRes.data)
       if (vehiclesRes.data) {
         const formatted = vehiclesRes.data.map((v: any) => {
-          const m = v.vehicle_models;
+          const rawModel = v.vehicle_models;
+          const m = Array.isArray(rawModel) ? rawModel[0] : rawModel;
+          const rawType = m?.vehicle_types;
+          const t = Array.isArray(rawType) ? rawType[0] : rawType;
+
           return {
             id: v.id,
             vehicle_number: v.vehicle_number,
             model: m?.name || "Unknown",
             model_id: v.model_id,
-            vehicle_type_id: m?.vehicle_type_id || m?.vehicle_types?.id,
-            vehicle_category_id: m?.vehicle_types?.category_id || m?.vehicle_types?.vehicle_categories?.id,
+            vehicle_type_id: m?.vehicle_type_id || t?.id,
+            vehicle_category_id: t?.category_id || t?.vehicle_categories?.id,
             manufacturer_id: m?.manufacturer_id || m?.vehicle_manufacturers?.id,
             customer_id: v.customer_id,
             customer_name: v.customers?.name || "Unknown",
             kilometers_driven: v.kilometers_driven,
             next_service_km: v.next_service_km,
-            vehicle_type_name: m?.vehicle_types?.name,
-            vehicle_category_name: m?.vehicle_types?.vehicle_categories?.name,
+            vehicle_type_name: t?.name,
+            vehicle_category_name: t?.vehicle_categories?.name,
             manufacturer_name: m?.vehicle_manufacturers?.name
           }
         })
@@ -391,7 +440,9 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       }
 
       // Set service types from DB
+      // Set service types from DB
       if (serviceTypesRes?.data) {
+        console.log("DEBUG SERVICE TYPES:", serviceTypesRes.data);
         setDbServiceTypes(serviceTypesRes.data)
       }
 
@@ -438,6 +489,178 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       // The filtered list is calculated below in the render or via a memo
     }
   }
+  // Effect to resync prices when vehicle/customer changes
+  useEffect(() => {
+    if (Object.keys(serviceSections).length === 0 || (!vehicleId && !customerId)) return;
+
+    const resyncPrices = async () => {
+      const newSections = { ...serviceSections };
+      let globalChanges = false;
+
+      for (const serviceType of Object.keys(newSections)) {
+        const section = newSections[serviceType];
+        if (!section.serviceTypeId) continue;
+
+        let sectionChanged = false;
+        // Re-run pricing engine for this service in the new context
+        const priceResult = await calculateServicePrice(section.serviceTypeId, vehicleId, customerId);
+
+        // Update task prices if they are predefined
+        const updatedTasks = section.tasks.map(task => {
+          if (task.isPredefined) {
+            const ruleForTask = priceResult.taskBreakdown?.find(tb => tb.name === task.name);
+            // If the price or the applied rule has changed, update it
+            if (ruleForTask && (ruleForTask.calculatedPrice !== task.price || ruleForTask.appliedRule !== task.appliedRuleName)) {
+              sectionChanged = true;
+              return {
+                ...task,
+                price: ruleForTask.calculatedPrice,
+                appliedRuleName: ruleForTask.appliedRule
+              };
+            }
+          }
+          return task;
+        });
+
+        // Check if any metadata changed
+        if (
+          priceResult.calculatedPrice !== section.calculatedPrice ||
+          JSON.stringify(priceResult.appliedRules) !== JSON.stringify(section.appliedRules)
+        ) {
+          sectionChanged = true;
+        }
+
+        if (sectionChanged) {
+          globalChanges = true;
+          newSections[serviceType] = {
+            ...section,
+            tasks: updatedTasks,
+            // If total tasks cost > 0, the sum will be recalculated by ServiceSection anyway,
+            // but we update it here for immediate snapshot consistency.
+            cost: updatedTasks.length > 0 ? updatedTasks.reduce((sum, t) => sum + (t.price || 0), 0) : priceResult.calculatedPrice || 0,
+            calculatedPrice: priceResult.calculatedPrice,
+            basePrice: priceResult.basePrice,
+            appliedRules: priceResult.appliedRules,
+            taskBreakdown: priceResult.taskBreakdown
+          };
+        }
+      }
+
+      if (globalChanges) {
+        setServiceSections(newSections);
+      }
+    };
+
+    resyncPrices();
+  }, [vehicleId, customerId, isLoadingExisting]);
+
+  const loadExistingWorkOrder = useCallback(async (id: string) => {
+    setIsLoadingExisting(true);
+    try {
+      // 1. Fetch Work Order Header
+      const { data: wo, error: woError } = await supabase
+        .from('work_orders')
+        .select(`
+          *,
+          vehicles (
+            *,
+            customers (*)
+          )
+        `)
+        .eq('id', id)
+        .single();
+
+      if (woError) throw woError;
+
+      // Update basic fields
+      setCustomerId(wo.vehicles.customer_id);
+      setVehicleId(wo.vehicle_id);
+      setPriority(wo.priority);
+      setGeneralDescription(wo.description);
+
+      if (wo.estimated_delivery_date) {
+        const date = new Date(wo.estimated_delivery_date);
+        setEstimatedDeliveryDate(date);
+        setEstimatedDeliveryTime(format(date, "HH:mm"));
+      }
+
+      setLifecycleData({
+        odometer_reading: wo.odometer_reading || 0,
+        next_service_due_km: wo.next_service_due_km || 0,
+        is_fc_renewal: wo.is_fc_renewal || false
+      });
+
+      // 2. Fetch Services and joined data
+      const { data: services, error: sError } = await supabase
+        .from('work_order_services')
+        .select(`
+          *,
+          work_order_tasks (*),
+          work_order_service_employees (*)
+        `)
+        .eq('work_order_id', id);
+
+      if (sError) throw sError;
+
+      const loadedSelectedServices: string[] = [];
+      const loadedServiceSections: Record<string, ServiceSectionData> = {};
+
+      for (const s of (services || [])) {
+        loadedSelectedServices.push(s.service_type);
+
+        const tasks: TaskItem[] = (s.work_order_tasks || []).map((t: any) => ({
+          id: t.id,
+          name: t.task_name,
+          price: t.price,
+          completed: t.completed,
+          isPredefined: t.is_predefined
+        }));
+
+        const assignments = (s.work_order_service_employees || []).map((a: any) => ({
+          id: a.employee_id,
+          queue_position: a.queue_position || 1,
+          status: a.status // Capture existing status
+        }));
+
+        loadedServiceSections[s.service_type] = {
+          serviceType: s.service_type,
+          serviceTypeId: s.service_type_id,
+          dbId: s.id,
+          tasks,
+          selectedEmployees: assignments,
+          notes: "", // Notes are in a separate table, but we'll stick to this for now or skip
+          cost: s.estimated_cost || 0,
+          calculatedPrice: s.calculated_price,
+          basePrice: s.base_price_snapshot
+        };
+      }
+
+      setSelectedServices(loadedSelectedServices);
+      setServiceSections(loadedServiceSections);
+
+      toast({
+        title: "Work Order Loaded",
+        description: `Successfully loaded details for ${wo.vehicles.vehicle_number}`,
+      });
+
+    } catch (error: any) {
+      console.error("Error loading work order:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load work order data: " + error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingExisting(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (initialWorkOrderId) {
+      loadExistingWorkOrder(initialWorkOrderId);
+    }
+  }, [initialWorkOrderId, loadExistingWorkOrder]);
+
 
 
 
@@ -512,7 +735,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     try {
       const { data, error } = await supabase
         .from('service_types')
-        .insert({ name: newServiceName.trim() })
+        .insert({
+          name: newServiceName.trim(),
+          category: newServiceCategory
+        })
         .select()
         .single();
 
@@ -1178,97 +1404,155 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
 
     setIsLoading(true)
     try {
-      // 1. Create Main Work Order
       const mainServiceType = selectedServices.length === 1 ? selectedServices[0] : "Multi-Service";
 
-      const { data: workOrder, error } = await supabase
-        .from('work_orders')
-        .insert([{
-          vehicle_id: vehicleId,
-          service_type: mainServiceType,
-          description: generalDescription || "No description provided",
-          priority: priority,
-          estimated_cost: totalEstimatedCost,
-          status: 'In Progress',
-          current_stage: 'Inspection', // Initial stage
-          started_at: new Date().toISOString(),
-          notes: JSON.stringify({
-            service_types: selectedServices,
-            total_sections: selectedServices.length
-          }),
-          // Lifecycle Fields
-          odometer_reading: lifecycleData.odometer_reading || null,
-          next_service_due_km: lifecycleData.next_service_due_km || null,
-          is_fc_renewal: lifecycleData.is_fc_renewal,
-          estimated_delivery_date: deliveryDateTime.toISOString()
-        }])
-        .select()
-        .single()
+      const orderPayload: any = {
+        vehicle_id: vehicleId,
+        service_type: mainServiceType,
+        description: generalDescription || "No description provided",
+        priority: priority,
+        estimated_cost: totalEstimatedCost,
+        status: 'In Progress',
+        notes: JSON.stringify({
+          service_types: selectedServices,
+          total_sections: selectedServices.length,
+          reopened_at: isReopening ? new Date().toISOString() : undefined,
+          original_reopen_reason: isReopening ? internalReopenReason : undefined
+        }),
+        odometer_reading: lifecycleData.odometer_reading || null,
+        next_service_due_km: lifecycleData.next_service_due_km || null,
+        is_fc_renewal: lifecycleData.is_fc_renewal,
+        estimated_delivery_date: deliveryDateTime.toISOString()
+      };
 
-      if (error) throw error
-      if (!workOrder) throw new Error("Failed to create work order")
+      if (isReopening) {
+        orderPayload.is_reopened = true;
+        orderPayload.reopen_reason = internalReopenReason;
+        orderPayload.rejection_reason = null;
+        orderPayload.review_status = 'pending';
+        orderPayload.quality_check_status = 'pending';
+        orderPayload.repair_status = 'in_progress';
+      }
 
-      // 2. Create Service Sections and related data
+      let workOrderId = initialWorkOrderId;
+
+      if (initialWorkOrderId) {
+        // UPDATE
+        const { error: updateError } = await supabase
+          .from('work_orders')
+          .update(orderPayload)
+          .eq('id', initialWorkOrderId);
+
+        if (updateError) throw updateError;
+      } else {
+        // CREATE
+        const { data: workOrder, error } = await supabase
+          .from('work_orders')
+          .insert([{
+            ...orderPayload,
+            current_stage: 'Inspection',
+            started_at: new Date().toISOString(),
+          }])
+          .select()
+          .single()
+
+        if (error) throw error
+        if (!workOrder) throw new Error("Failed to create work order")
+        workOrderId = workOrder.id;
+      }
+
+      // 2. Sync Service Sections
+      // Fetch existing services to know what to keep/update/delete
+      const { data: existingServices } = await supabase
+        .from('work_order_services')
+        .select('id, service_type')
+        .eq('work_order_id', workOrderId);
+
+      const existingServiceMap = new Map((existingServices || []).map(s => [s.service_type, s.id]));
+
+      // Delete services no longer selected
+      const servicesToDelete = (existingServices || [])
+        .filter(s => !selectedServices.includes(s.service_type))
+        .map(s => s.id);
+
+      if (servicesToDelete.length > 0) {
+        // Cascade should handle tasks/assignments, but we'll be safe
+        await supabase.from('work_order_services').delete().in('id', servicesToDelete);
+      }
+
       for (const type of selectedServices) {
         const sectionData = serviceSections[type];
         if (!sectionData) continue;
 
-        // Create work_order_services entry
-        const { data: serviceRecord, error: serviceError } = await supabase
-          .from('work_order_services')
-          .insert({
-            work_order_id: workOrder.id,
-            service_type: type,
-            estimated_cost: sectionData.cost,
-            calculated_price: sectionData.calculatedPrice,
-            base_price_snapshot: sectionData.basePrice,
-            billing_price: sectionData.cost, // Initially, billing price is the same as cost/estimated_cost
-            status: 'In Progress'
-          })
-          .select()
-          .single()
+        let serviceId = existingServiceMap.get(type);
+        const servicePayload = {
+          work_order_id: workOrderId,
+          service_type: type,
+          estimated_cost: sectionData.cost,
+          calculated_price: sectionData.calculatedPrice,
+          base_price_snapshot: sectionData.basePrice,
+          billing_price: sectionData.cost,
+          status: 'In Progress'
+        };
 
-        if (serviceError) throw serviceError
-        if (!serviceRecord) continue;
+        if (serviceId) {
+          await supabase.from('work_order_services').update(servicePayload).eq('id', serviceId);
+        } else {
+          const { data: serviceRecord, error: serviceError } = await supabase
+            .from('work_order_services')
+            .insert(servicePayload)
+            .select()
+            .single();
 
-        // Create tasks
+          if (serviceError) throw serviceError;
+          serviceId = serviceRecord.id;
+        }
+
+        // 3. Sync Tasks - Delete and Re-insert for simplicity and to handle reordering/new tasks
+        await supabase.from('work_order_tasks').delete().eq('service_id', serviceId);
+
         const tasksPayload = sectionData.tasks.map(task => ({
-          work_order_id: workOrder.id,
-          service_id: serviceRecord.id,
+          work_order_id: workOrderId,
+          service_id: serviceId,
           task_name: task.name,
           task_type: 'repair',
           is_predefined: task.isPredefined,
           price: task.price || 0,
-          completed: false
-        }))
-        await supabase.from('work_order_tasks').insert(tasksPayload)
+          completed: task.completed ?? false,
+          is_rejected: false // Reset rejection on sync/reopen
+        }));
 
-        // Create employee assignments
+        if (tasksPayload.length > 0) {
+          await supabase.from('work_order_tasks').insert(tasksPayload);
+        }
+
+        // 4. Sync Employee Assignments
+        // We'll use the direct delete since it was proven to work in WorkOrderDetail
+        await supabase.from('work_order_service_employees').delete().eq('service_id', serviceId);
+
         if (sectionData.selectedEmployees.length > 0) {
-          // Use RPC functions to bypass RLS for assignments
           for (const empEntry of sectionData.selectedEmployees) {
-            // Insert into work_order_service_employees via RPC (bypasses RLS)
+            // Insert into work_order_service_employees via RPC
             await supabase.rpc('insert_work_order_service_employee', {
-              p_service_id: serviceRecord.id,
+              p_service_id: serviceId,
               p_employee_id: empEntry.id,
-              p_status: 'Assigned',
-              p_queue_position: empEntry.queue_position || 0
+              p_status: empEntry.status || 'Assigned', // Preserve existing status or default to Assigned
+              p_queue_position: empEntry.queue_position || 1
             })
 
-            // Also link to main work_order_assignments for backward compatibility with staff portal
-            // Use RPC function to bypass RLS
+            // Link to main assignments (Staff Portal)
             await supabase.rpc('insert_work_order_assignment', {
-              p_work_order_id: workOrder.id,
+              p_work_order_id: workOrderId,
               p_employee_id: empEntry.id,
               p_notes: `Assigned to ${type}`
             })
           }
         }
 
-        // Create notes
+        // Create notes if new
         if (sectionData.notes) {
           await supabase.from('work_order_service_notes').insert({
-            service_id: serviceRecord.id,
+            service_id: serviceId,
             note_content: sectionData.notes,
             note_type: 'General',
             is_internal: true
@@ -1276,12 +1560,11 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         }
       }
 
-      // Update vehicle status and lifecycle data
+      // Update vehicle status
       await supabase
         .from('vehicles')
         .update({
           status: 'In Progress',
-          // Update master data with latest values from this work order intake
           kilometers_driven: lifecycleData.odometer_reading || undefined,
           next_service_km: lifecycleData.next_service_due_km || undefined
         })
@@ -1289,11 +1572,13 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
 
       toast({
         title: "Success",
-        description: `Work order created with ${selectedServices.length} service sections.`,
+        description: initialWorkOrderId
+          ? `Work order ${isReopening ? 'reopened' : 'updated'} successfully.`
+          : `Work order created successfully.`,
       })
       onSuccess()
     } catch (error: any) {
-      console.error('Error creating work order:', error)
+      console.error('Error submitting work order:', error)
       toast({
         title: "Error",
         description: error.message,
@@ -1321,14 +1606,27 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Wrench className="w-5 h-5" />
-            Create Work Order
+            {isReopening ? <Activity className="w-5 h-5 text-orange-500" /> : <Wrench className="w-5 h-5" />}
+            {initialWorkOrderId ? (isReopening ? "Reopen & Configure Work Order" : "Edit Work Order Configuration") : "Create Work Order"}
           </CardTitle>
           <CardDescription>
-            Configure multiple services, tasks, and staff assignments for this vehicle.
+            {isReopening
+              ? `Reopening work order for ${selectedVehicle?.vehicle_number || 'this vehicle'}. Please review and update services.`
+              : "Configure multiple services, tasks, and staff assignments for this vehicle."}
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {isReopening && (
+            <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg mb-6 flex items-start gap-4">
+              <div className="p-2 bg-orange-100 rounded-full">
+                <Activity className="h-5 w-5 text-orange-600" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-bold text-orange-800">Reopen Reason</h4>
+                <p className="text-sm text-orange-700 italic">"{internalReopenReason}"</p>
+              </div>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-8">
 
             {/* 1. Vehicle & Customer Details */}
@@ -1344,6 +1642,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                       size="sm"
                       className="h-8 px-2 text-muted-foreground hover:text-foreground ml-auto"
                       onClick={() => setShowAddCustomerDialog(true)}
+                      disabled={!!initialWorkOrderId}
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       Add Customer
@@ -1351,9 +1650,9 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                   </div>
                   <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between" disabled={loadingCustomers}>
+                      <Button variant="outline" className="w-full justify-between" disabled={loadingCustomers || !!initialWorkOrderId}>
                         {customerId
-                          ? getCustomerDisplayName(customers.find(c => c.id === customerId)!)
+                          ? getCustomerDisplayName(customers.find(c => c.id === customerId) || { id: customerId, name: "Loading..." } as any)
                           : "Select customer..."}
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
@@ -1396,6 +1695,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                       variant="ghost"
                       size="sm"
                       className="h-8 px-2 text-muted-foreground hover:text-foreground ml-auto"
+                      disabled={!!initialWorkOrderId}
                       onClick={() => {
                         if (!customerId) {
                           toast({
@@ -1414,7 +1714,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                   </div>
                   <Popover open={vehicleSearchOpen} onOpenChange={setVehicleSearchOpen}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between" disabled={!customerId || loadingVehicles}>
+                      <Button variant="outline" className="w-full justify-between" disabled={!customerId || loadingVehicles || !!initialWorkOrderId}>
                         {vehicleId
                           ? `${filteredVehicles.find(v => v.id === vehicleId)?.vehicle_number} - ${filteredVehicles.find(v => v.id === vehicleId)?.model}`
                           : "Select vehicle..."}
@@ -1610,6 +1910,31 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                       </div>
 
                       <div className="grid gap-2">
+                        <div className="flex items-center justify-between">
+                          <Label>Category</Label>
+                          <Button
+                            variant="ghost" size="sm" type="button" className="h-6 w-6 p-0"
+                            onClick={() => { setMasterType('Category'); setShowAddMasterDialog(true); }}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <Select
+                          value={newServiceCategory}
+                          onValueChange={setNewServiceCategory}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select Category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {serviceCategories.map(c => (
+                              <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-2">
                         <Label>Default Tasks</Label>
                         <div className="flex gap-2">
                           <Input
@@ -1715,8 +2040,35 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-
               </div>
+
+              {/* Service Selection Header & FC Toggle */}
+              <div className="flex items-center justify-between mt-6 mb-4">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <Wrench className="h-4 w-4" />
+                  Service Details
+                </h3>
+
+                {/* FC Work Toggle - Prominent placement */}
+                <div className="flex items-center space-x-2 bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-200">
+                  <Checkbox
+                    id="fc_mode"
+                    checked={isFCWork}
+                    onCheckedChange={(checked) => {
+                      setIsFCWork(checked as boolean);
+                      setLifecycleData(prev => ({ ...prev, is_fc_renewal: checked as boolean }));
+                    }}
+                    className="data-[state=checked]:bg-yellow-600 data-[state=checked]:border-yellow-600"
+                  />
+                  <label
+                    htmlFor="fc_mode"
+                    className="text-sm font-bold leading-none cursor-pointer text-yellow-900"
+                  >
+                    FC Work Order?
+                  </label>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {displayedServices
                   .map((type) => (
@@ -1799,6 +2151,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                         onCustomTaskAdd={serviceId ? (name, price) => handleCustomTaskAdd(serviceId, name, price) : undefined}
                         onTaskUpdate={handleUpdateTaskTemplate}
                         onTaskDelete={handleDeleteTaskTemplate}
+                        workOrderId={initialWorkOrderId}
                       />
                     )
                   })}  </div>
@@ -1835,24 +2188,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 border p-3 rounded-md bg-muted/20">
-                <Checkbox
-                  id="fc_renewal"
-                  checked={lifecycleData.is_fc_renewal}
-                  onCheckedChange={(checked) => setLifecycleData(prev => ({ ...prev, is_fc_renewal: checked as boolean }))}
-                />
-                <div className="grid gap-1.5 leading-none">
-                  <label
-                    htmlFor="fc_renewal"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    Includes FC Renewal?
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    Check if this work order involves Fitness Certificate renewal tasks.
-                  </p>
-                </div>
-              </div>
+
             </div>
 
             {/* Actions */}
@@ -1860,14 +2196,14 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
               <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading} className="w-full sm:w-auto">
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading || selectedServices.length === 0} size="lg" className="w-full sm:w-auto">
+              <Button type="submit" disabled={isLoading || (selectedServices.length === 0 && !isReopening)} size="lg" className="w-full sm:w-auto">
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Work Order...
+                    {initialWorkOrderId ? (isReopening ? "Reopening..." : "Saving Changes...") : "Creating Work Order..."}
                   </>
                 ) : (
-                  <>Create Work Order (₹{totalEstimatedCost})</>
+                  <>{initialWorkOrderId ? (isReopening ? "Confirm & Reopen Work Order" : "Save Changes") : "Create Work Order"} (₹{totalEstimatedCost.toLocaleString()})</>
                 )}
               </Button>
             </div>
@@ -2098,7 +2434,12 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                 setIsAddingMaster(true);
                 let newId = "";
                 if (masterType === 'Manufacturer') newId = await handleCreateManufacturerData(masterName.trim()) || "";
-                if (masterType === 'Category') newId = await handleCreateCategoryData(masterName.trim()) || "";
+                if (masterType === 'Category') {
+                  newId = await handleCreateCategoryData(masterName.trim()) || "";
+                  // Also refresh Service categories if it was a service category
+                  const { data: scav } = await supabase.from('service_categories').select('*').order('name');
+                  if (scav) setServiceCategories(scav);
+                }
                 if (masterType === 'Type') newId = await handleCreateTypeData(masterName.trim(), newVehicleData.category_id || newCustomerVehicleData.category_id) || "";
                 if (masterType === 'Model') newId = await handleCreateModelData(masterName.trim(), newVehicleData.manufacturer_id || newCustomerVehicleData.manufacturer_id, newVehicleData.vehicle_type_id || newCustomerVehicleData.vehicle_type_id) || "";
 

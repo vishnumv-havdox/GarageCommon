@@ -87,6 +87,13 @@ interface PricingRule {
     is_active: boolean;
 }
 
+
+interface ServiceCategory {
+    id: string;
+    name: string;
+    description?: string;
+}
+
 interface VehicleCategory {
     id: string;
     name: string;
@@ -114,6 +121,7 @@ interface ServiceType {
     updated_at: string;
     task_templates?: TaskTemplate[];
     pricing_rules?: PricingRule[];
+    is_fc_exclusive?: boolean;
 }
 
 // Helper for highlighting text
@@ -138,7 +146,9 @@ export default function ServicesMaster() {
     const [services, setServices] = useState<ServiceType[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [categoryFilter, setCategoryFilter] = useState<string>("all");
+    const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
     const [statusFilter, setStatusFilter] = useState<string>("all");
+    const [fcFilter, setFcFilter] = useState<"all" | "normal" | "fc">("all");
     const [previewCategory, setPreviewCategory] = useState<string>("base"); // Price Simulator Context
 
     // Dialog states
@@ -182,10 +192,17 @@ export default function ServicesMaster() {
         modifier_value: 0,
         name: '',
         vehicle_category_id: '',
-        task_template_id: '' // New state init
+        task_template_id: ''
     });
 
-    const categories = ["Mechanical", "Bodywork", "Electrical", "General", "Inspection", "Custom"];
+    // Quick Add Master Data State
+    const [isAddMasterOpen, setIsAddMasterOpen] = useState(false);
+    const [masterType, setMasterType] = useState<'ServiceCategory' | 'VehicleCategory'>('ServiceCategory');
+    const [newMasterName, setNewMasterName] = useState("");
+
+    const categories = serviceCategories.map(c => c.name);
+
+
 
     const fetchServices = async () => {
         setLoading(true);
@@ -220,11 +237,38 @@ export default function ServicesMaster() {
     useEffect(() => {
         fetchServices();
         fetchCategories();
+        fetchServiceCategories();
     }, []);
+
+    const fetchServiceCategories = async () => {
+        const { data } = await supabase.from('service_categories').select('*').order('name');
+        if (data) setServiceCategories(data);
+    };
 
     const fetchCategories = async () => {
         const { data } = await supabase.from('vehicle_categories').select('*').order('name');
         if (data) setVehicleCategories(data);
+    };
+
+    const handleAddMasterData = async () => {
+        if (!newMasterName.trim()) return;
+
+        try {
+            const table = masterType === 'ServiceCategory' ? 'service_categories' : 'vehicle_categories';
+            const { error } = await supabase.from(table).insert({ name: newMasterName.trim() });
+            if (error) throw error;
+
+            toast({ title: "Success", description: `${masterType === 'ServiceCategory' ? 'Service' : 'Vehicle'} Category added` });
+            setNewMasterName("");
+            setIsAddMasterOpen(false);
+
+            // Refresh source
+            if (masterType === 'ServiceCategory') fetchServiceCategories();
+            else fetchCategories();
+
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        }
     };
 
     const filteredServices = useMemo(() => {
@@ -235,9 +279,21 @@ export default function ServicesMaster() {
             const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
             const matchesStatus = statusFilter === "all" ||
                 (statusFilter === "active" ? s.is_active : !s.is_active);
-            return matchesSearch && matchesCategory && matchesStatus;
+
+            // FC Filter Logic
+            let matchesFC = true;
+            if (fcFilter === "normal") {
+                // Show ONLY normal services (hide FC exclusive)
+                matchesFC = !s.is_fc_exclusive;
+            } else if (fcFilter === "fc") {
+                // Show ONLY FC Work services
+                matchesFC = s.is_fc_exclusive === true;
+            }
+            // "all" shows everything
+
+            return matchesSearch && matchesCategory && matchesStatus && matchesFC;
         });
-    }, [services, searchTerm, categoryFilter, statusFilter]);
+    }, [services, searchTerm, categoryFilter, statusFilter, fcFilter]);
 
     // Auto-expand logic when searching
     useEffect(() => {
@@ -656,51 +712,125 @@ export default function ServicesMaster() {
                 </div>
 
                 {/* Filters */}
-                <div className="flex flex-col md:flex-row gap-4 mb-6 items-end">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                        <div className="md:col-span-1">
-                            <SearchInput
-                                placeholder="Search services..."
-                                value={searchTerm}
-                                onChange={setSearchTerm}
-                                suggestions={suggestions}
-                            />
+                <div className="flex flex-col gap-4 mb-6">
+                    {/* View Toggle */}
+                    <div className="flex justify-start">
+                        <div className="bg-muted p-1 rounded-lg flex gap-1">
+                            <Button
+                                variant={fcFilter === 'all' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => setFcFilter('all')}
+                                className="h-7 text-xs"
+                            >
+                                All Services
+                            </Button>
+                            <Button
+                                variant={fcFilter === 'normal' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => setFcFilter('normal')}
+                                className="h-7 text-xs"
+                            >
+                                Normal Services
+                            </Button>
+                            <Button
+                                variant={fcFilter === 'fc' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => setFcFilter('fc')}
+                                className="h-7 text-xs"
+                            >
+                                FC Work
+                            </Button>
                         </div>
-                        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Categories</SelectItem>
-                                {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                        <Select value={statusFilter} onValueChange={setStatusFilter}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Status</SelectItem>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="inactive">Inactive</SelectItem>
-                            </SelectContent>
-                        </Select>
                     </div>
 
-                    {/* Price Simulator */}
-                    <div className="w-full md:w-auto bg-blue-50 p-2 rounded border border-blue-100 flex flex-col gap-1">
-                        <Label className="text-[10px] uppercase text-blue-600 font-bold">Preview Prices For</Label>
-                        <Select value={previewCategory} onValueChange={setPreviewCategory}>
-                            <SelectTrigger className="w-full md:w-[200px] h-8 bg-white">
-                                <SelectValue placeholder="Vehicle Category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="base">⭐ Base Price (Generic)</SelectItem>
-                                {vehicleCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+                            <div className="md:col-span-1">
+                                <SearchInput
+                                    placeholder="Search services..."
+                                    value={searchTerm}
+                                    onChange={setSearchTerm}
+                                    suggestions={suggestions}
+                                />
+                            </div>
+                            <div className="flex gap-1">
+                                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Categories</SelectItem>
+                                        {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    variant="outline" size="icon" className="shrink-0"
+                                    onClick={() => { setMasterType('ServiceCategory'); setIsAddMasterOpen(true); }}
+                                    title="Add Service Category"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Price Simulator */}
+                        <div className="w-full md:w-auto bg-blue-50 p-2 rounded border border-blue-100 flex flex-col gap-1">
+                            <Label className="text-[10px] uppercase text-blue-600 font-bold">Preview Prices For</Label>
+                            <div className="flex gap-1">
+                                <Select value={previewCategory} onValueChange={setPreviewCategory}>
+                                    <SelectTrigger className="w-full md:w-[200px] h-8 bg-white">
+                                        <SelectValue placeholder="Vehicle Category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="base">⭐ Base Price (Generic)</SelectItem>
+                                        {vehicleCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    variant="ghost" size="icon" className="h-8 w-8 shrink-0 bg-white border"
+                                    onClick={() => { setMasterType('VehicleCategory'); setIsAddMasterOpen(true); }}
+                                    title="Add Vehicle Category"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+
+                {/* Quick Add Master Data Dialog */}
+                <Dialog open={isAddMasterOpen} onOpenChange={setIsAddMasterOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Add {masterType === 'ServiceCategory' ? 'Service' : 'Vehicle'} Category</DialogTitle>
+                            <DialogDescription>
+                                Create a new category to organize your {masterType === 'ServiceCategory' ? 'services' : 'vehicles'}.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <Label>Category Name</Label>
+                            <Input
+                                value={newMasterName}
+                                onChange={(e) => setNewMasterName(e.target.value)}
+                                placeholder="e.g. Washing, Heavy Transport..."
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsAddMasterOpen(false)}>Cancel</Button>
+                            <Button onClick={handleAddMasterData}>Save Category</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Services Table */}
                 <Card>
@@ -878,6 +1008,30 @@ export default function ServicesMaster() {
                     </CardContent>
                 </Card>
 
+                {/* Quick Add Master Data Dialog */}
+                <Dialog open={isAddMasterOpen} onOpenChange={setIsAddMasterOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Add {masterType === 'ServiceCategory' ? 'Service' : 'Vehicle'} Category</DialogTitle>
+                            <DialogDescription>
+                                Create a new category to organize your {masterType === 'ServiceCategory' ? 'services' : 'vehicles'}.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <Label>Category Name</Label>
+                            <Input
+                                value={newMasterName}
+                                onChange={(e) => setNewMasterName(e.target.value)}
+                                placeholder="e.g. Washing, Heavy Transport..."
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsAddMasterOpen(false)}>Cancel</Button>
+                            <Button onClick={handleAddMasterData}>Save Category</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
                 {/* Add/Edit Dialog */}
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -902,7 +1056,15 @@ export default function ServicesMaster() {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Category</Label>
+                                            <div className="flex items-center justify-between">
+                                                <Label>Category</Label>
+                                                <Button
+                                                    variant="ghost" size="sm" type="button" className="h-6 w-6 p-0"
+                                                    onClick={() => { setMasterType('ServiceCategory'); setIsAddMasterOpen(true); }}
+                                                >
+                                                    <Plus className="h-3 w-3" />
+                                                </Button>
+                                            </div>
                                             <Select
                                                 value={formData.category}
                                                 onValueChange={val => setFormData({ ...formData, category: val })}

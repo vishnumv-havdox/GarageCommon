@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LogOut, Users, Shield, Plus, Search, ClipboardList,
@@ -59,6 +59,8 @@ interface WorkOrder {
   approved_at?: string | null;
   current_stage?: string | null;
   estimated_delivery_date?: string | null;
+  is_reopened?: boolean;
+  reopen_reason?: string;
 }
 
 // Delivery Status Types
@@ -177,6 +179,12 @@ export default function AdminWorkOrders() {
     completed: 0
   });
 
+  // Reopen Dialog State
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [reopenOrderId, setReopenOrderId] = useState<string | null>(null);
+  const [reopenReason, setReopenReason] = useState("");
+  const [showReopenConfig, setShowReopenConfig] = useState(false);
+
   // Update current time every minute for live countdown
   useEffect(() => {
     const interval = setInterval(() => {
@@ -199,7 +207,7 @@ export default function AdminWorkOrders() {
             vehicle_number, 
             model, 
             customer_id,
-            customers(name, phone)
+            customers(name, phone, company_name)
           )
         `)
         .order("created_at", { ascending: false });
@@ -286,6 +294,12 @@ export default function AdminWorkOrders() {
     }
   };
 
+  const handleReopenWorkOrder = () => {
+    if (!reopenOrderId || !reopenReason) return;
+    setReopenDialogOpen(false);
+    setShowReopenConfig(true);
+  };
+
   const handleFormSuccess = () => {
     setShowForm(false);
     fetchWorkOrders();
@@ -297,6 +311,8 @@ export default function AdminWorkOrders() {
     let filtered = workOrders.filter((o) =>
       o.service_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.vehicle?.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.customer?.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.id.includes(searchTerm)
     );
 
@@ -350,14 +366,25 @@ export default function AdminWorkOrders() {
   }, [workOrders]);
 
   // Get status badge variant
-  const getStatusBadge = (status: string) => {
-    const s = status.toLowerCase();
+  const getStatusBadge = (order: WorkOrder) => {
+    const s = order.status.toLowerCase();
     if (s === "pending") return <Badge variant="outline">Pending</Badge>;
     if (s === "in progress" || s === "accepted") return <Badge className="bg-blue-100 text-blue-800">In Progress</Badge>;
     if (s === "pending approval") return <Badge className="bg-orange-100 text-orange-800">Pending Approval</Badge>;
-    if (s === "approved" || s === "completed" || s === "delivered") return <Badge className="bg-green-100 text-green-800">Finalized</Badge>;
-    if (s === "rejected" || s === "cancelled") return <Badge variant="destructive">{status}</Badge>;
-    return <Badge variant="secondary">{status}</Badge>;
+    if (s === "approved" || s === "completed" || s === "delivered") {
+      return (
+        <div className="flex items-center gap-2">
+          <Badge className="bg-green-100 text-green-800">Finalized</Badge>
+          {order.is_reopened && (
+            <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse text-[10px]">
+              <RefreshCw className="h-2 w-2 mr-1" /> Reopened
+            </Badge>
+          )}
+        </div>
+      );
+    }
+    if (s === "rejected" || s === "cancelled") return <Badge variant="destructive">{order.status}</Badge>;
+    return <Badge variant="secondary">{order.status}</Badge>;
   };
 
   // List View
@@ -501,26 +528,34 @@ export default function AdminWorkOrders() {
                   {filteredOrders.map((order) => {
                     const deliveryInfo = getDeliveryStatus(order.estimated_delivery_date, currentTime);
                     const isOverdueOrUrgent = deliveryInfo.status === 'overdue' || deliveryInfo.status === 'urgent';
+                    const isFinalized = ['completed', 'approved', 'delivered', 'finalized'].includes(order.status.toLowerCase());
+
+                    // Determine background color based on status
+                    let bgClass = '';
+                    if (isFinalized) {
+                      bgClass = 'bg-green-50/50 border-green-200';
+                    } else if (isOverdueOrUrgent) {
+                      bgClass = 'border-red-300 bg-red-50/30';
+                    }
 
                     return (
                       <div
                         key={order.id}
-                        className={`border p-4 rounded-lg hover:bg-muted/50 transition-colors ${isOverdueOrUrgent ? 'border-red-300 bg-red-50/30' : ''
-                          }`}
+                        className={`border p-4 rounded-lg hover:bg-muted/50 transition-colors ${bgClass}`}
                       >
                         <div className="flex justify-between items-start">
                           <div className="cursor-pointer flex-1" onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <h3 className="font-semibold text-lg">{order.service_type}</h3>
                               <Badge variant="outline" className="text-xs font-normal">#{order.id.slice(0, 6)}</Badge>
-                              {getStatusBadge(order.status)}
-                              {deliveryInfo.status === 'overdue' && (
+                              {getStatusBadge(order)}
+                              {!['completed', 'approved', 'delivered'].includes(order.status.toLowerCase()) && deliveryInfo.status === 'overdue' && (
                                 <Badge className="bg-red-600 text-white text-xs animate-pulse">
                                   <AlertTriangle className="h-3 w-3 mr-1" />
                                   OVERDUE
                                 </Badge>
                               )}
-                              {deliveryInfo.status === 'urgent' && (
+                              {!['completed', 'approved', 'delivered'].includes(order.status.toLowerCase()) && deliveryInfo.status === 'urgent' && (
                                 <Badge className="bg-red-600 text-white text-xs">
                                   <Clock5 className="h-3 w-3 mr-1" />
                                   URGENT
@@ -532,13 +567,13 @@ export default function AdminWorkOrders() {
                               <span>
                                 <User className="h-3 w-3 inline mr-1" /> {order.customer?.name}
                                 {order.customer?.company_name && (
-                                  <span className="text-xs text-muted-foreground/70 ml-1">({order.customer.company_name})</span>
+                                  <span className="font-medium text-foreground ml-1">• {order.customer.company_name}</span>
                                 )}
                               </span>
                               <span>
                                 <Truck className="h-3 w-3 inline mr-1" /> {order.vehicle?.vehicle_number}
                               </span>
-                              {order.estimated_delivery_date && (
+                              {!['completed', 'approved', 'delivered'].includes(order.status.toLowerCase()) && order.estimated_delivery_date && (
                                 <span className={`flex items-center gap-1 font-semibold ${deliveryInfo.color}`}>
                                   <Clock5 className="h-3 w-3" />
                                   {deliveryInfo.formatted}
@@ -609,6 +644,19 @@ export default function AdminWorkOrders() {
                                 </AlertDialogContent>
                               </AlertDialog>
                             </div>
+                            {["approved", "completed", "delivered"].includes(order.status.toLowerCase()) && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="w-full mt-1 bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200"
+                                onClick={() => {
+                                  setReopenOrderId(order.id);
+                                  setReopenDialogOpen(true);
+                                }}
+                              >
+                                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reopen Work Order
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -618,9 +666,68 @@ export default function AdminWorkOrders() {
               )}
             </CardContent>
           </Card>
+
+          {/* Reopen Dialog */}
+          <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <RefreshCw className="h-5 w-5 text-orange-500" />
+                  Reopen Work Order
+                </DialogTitle>
+                <DialogDescription>
+                  This will set the work order status back to "In Progress" and notify staff.
+                  Please state the reason for reopening.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <label htmlFor="reopen-reason" className="text-sm font-medium">Reason for Reopening</label>
+                  <Textarea
+                    id="reopen-reason"
+                    placeholder="e.g., Customer requested additional work, or correction needed..."
+                    value={reopenReason}
+                    onChange={(e) => setReopenReason(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setReopenDialogOpen(false)}>Cancel</Button>
+                <Button
+                  onClick={handleReopenWorkOrder}
+                  disabled={!reopenReason.trim()}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  Reopen Work Order
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Enhanced Reopen Configuration Form */}
+          <Dialog open={showReopenConfig} onOpenChange={setShowReopenConfig}>
+            <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-0">
+              <div className="p-6">
+                {reopenOrderId && (
+                  <WorkOrderForm
+                    initialWorkOrderId={reopenOrderId}
+                    isReopening={true}
+                    reopenReason={reopenReason}
+                    onSuccess={() => {
+                      setShowReopenConfig(false);
+                      setReopenOrderId(null);
+                      setReopenReason("");
+                      fetchWorkOrders();
+                    }}
+                    onCancel={() => setShowReopenConfig(false)}
+                  />
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </main>
       </div>
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -99,6 +99,16 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
   }
   const [dbServiceTypes, setDbServiceTypes] = useState<DBServiceType[]>([])
   const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([])
+
+  interface PricingRule {
+    id: string;
+    task_template_id: string;
+    vehicle_category_id: string;
+    modifier_type: string;
+    modifier_value: number;
+    is_active: boolean;
+  }
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([])
 
   const [newServiceName, setNewServiceName] = useState("")
   const [newServiceTasks, setNewServiceTasks] = useState<string[]>([])
@@ -232,6 +242,33 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     });
   }, [dbServiceTypes, applicabilityRules, selectedVehicle]);
 
+  // Computed Task Templates (Context-Aware Pricing)
+  const computedTaskTemplates = useMemo(() => {
+    // If no vehicle selected or no category, return base prices
+    if (!selectedVehicle?.vehicle_category_id) {
+      return taskTemplates;
+    }
+
+    const catId = selectedVehicle.vehicle_category_id;
+    // console.log(`ComputedTemplates: Recomputing for Category ${catId} with ${pricingRules.length} rules.`);
+
+    return taskTemplates.map(task => {
+      // Find rule for this task and category
+      const rule = pricingRules.find(r =>
+        r.task_template_id === task.id &&
+        r.vehicle_category_id === catId &&
+        r.is_active
+      );
+
+      // Apply override
+      if (rule && rule.modifier_type === 'override') {
+        // console.log(`Applying rule for ${task.name}: ${rule.modifier_value}`); // Verbose
+        return { ...task, price: rule.modifier_value };
+      }
+      return task;
+    });
+  }, [taskTemplates, pricingRules, selectedVehicle?.vehicle_category_id]);
+
   // Derived lists for cascading dropdowns
   const availableTypes = useMemo(() => {
     return vehicleTypes.filter(t => !newVehicleData.category_id || t.category_id === newVehicleData.category_id)
@@ -265,16 +302,17 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         catsRes,
         typesRes,
         modelsRes,
-        rulesRes
+        rulesRes,
+        pricingRulesRes
       ] = await Promise.all([
         supabase.from('customers').select('id, name, company_name').order('name'),
         supabase.from('vehicles').select(`
-          id, 
-          vehicle_number, 
-          model_id, 
-          customer_id, 
-          kilometers_driven, 
-          next_service_km, 
+          id,
+          vehicle_number,
+          model_id,
+          customer_id,
+          kilometers_driven,
+          next_service_km,
           customers(name),
           vehicle_models (
             id,
@@ -297,10 +335,12 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         supabase.from('vehicle_categories').select('*').order('name'),
         supabase.from('vehicle_types').select('*').order('name'),
         supabase.from('vehicle_models').select('*').order('name'),
-        supabase.from('service_vehicle_applicability').select('*')
+        supabase.from('service_vehicle_applicability').select('*'),
+        supabase.from('pricing_rules').select('*').eq('is_active', true)
       ])
 
       if (rulesRes.data) setApplicabilityRules(rulesRes.data);
+      if (pricingRulesRes.data) setPricingRules(pricingRulesRes.data);
 
       if (mfrsRes.data) setManufacturers(mfrsRes.data)
       if (catsRes.data) setCategories(catsRes.data)
@@ -390,8 +430,8 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     if (selectedVehicle) {
       setLifecycleData(prev => ({
         ...prev,
-        odometer_reading: selectedVehicle.kilometers_driven || 0,
-        next_service_due_km: selectedVehicle.next_service_km || 0
+        odometer_reading: 0, // Force fresh entry as per requirement
+        next_service_due_km: 0 // Force fresh entry as per requirement
       }))
 
       setApplicableServiceIds(null); // Reset as we are using client-side calculation now
@@ -416,10 +456,10 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       // So we start with empty tasks, but user can add them from the selector.
       initialTasks = [];
 
-      // We still calculate priceResult to get base/calculated price metadata if needed, 
+      // We still calculate priceResult to get base/calculated price metadata if needed,
       // but we override the tasks list to be empty.
 
-      /* 
+      /*
       // Original Auto-Add Logic (Commented out)
       if (priceResult.taskBreakdown && priceResult.taskBreakdown.length > 0) {
         initialTasks = priceResult.taskBreakdown.map(tb => ({
@@ -524,7 +564,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
       if (error) throw error;
 
       setDbServiceTypes(prev => prev.map(s => s.id === editingService.id ? { ...s, name: editServiceName.trim() } : s));
-      // If selected, update selection logic? 
+      // If selected, update selection logic?
       // Complex if name is used as key. WorkOrderForm uses name as key currently.
       // Updating name in `selectedServices` and `serviceSections` is needed.
 
@@ -645,7 +685,8 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     }
   }
 
-  const handleUpdateTaskTemplate = async (task: TaskTemplate, newName: string, newPrice?: number) => {
+  const handleUpdateTaskTemplate = useCallback(async (task: TaskTemplate, newName: string, newPrice?: number) => {
+
     try {
       // 1. Update Name (Global)
       if (newName !== task.name) {
@@ -663,26 +704,34 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
         const catId = selectedVehicle.vehicle_category_id;
 
         // Check for existing rule
-        const { data: existingRules } = await supabase
+        const { data: existingRules, error: fetchError } = await supabase
           .from('pricing_rules')
           .select('id')
           .eq('task_template_id', task.id)
           .eq('vehicle_category_id', catId)
           .eq('is_active', true);
 
+        if (fetchError) console.error("Error fetching rules:", fetchError);
+
         if (existingRules && existingRules.length > 0) {
           // Update existing
-          const { error: ruleError } = await supabase
+          const { data: updatedRule, error: ruleError } = await supabase
             .from('pricing_rules')
             .update({
               modifier_type: 'override',
               modifier_value: newPrice
             })
-            .eq('id', existingRules[0].id);
+            .eq('id', existingRules[0].id)
+            .select()
+            .single();
           if (ruleError) throw ruleError;
+
+          if (updatedRule) {
+            setPricingRules(prev => prev.map(r => r.id === updatedRule.id ? updatedRule : r));
+          }
         } else {
           // Create new rule
-          const { error: ruleError } = await supabase
+          const { data: newRule, error: ruleError } = await supabase
             .from('pricing_rules')
             .insert({
               service_type_id: task.service_type_id,
@@ -693,10 +742,22 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
               name: `${newName || task.name} - ${selectedVehicle.vehicle_category_name} Override`,
               is_active: true,
               priority: 10
-            });
+            })
+            .select()
+            .single();
           if (ruleError) throw ruleError;
+
+          if (newRule) {
+            setPricingRules(prev => [...prev, newRule]);
+          }
         }
         toast({ title: "Price Updated", description: "Updated price for this vehicle category." });
+
+        // NOTE: We updated pricingRules state above, which triggers computedTaskTemplates recalc.
+        // We do NOT need to manually mutate taskTemplates anymore.
+
+        // Update local state so dropdown reflects new price immediately
+        // setTaskTemplates(prev => prev.map(t => t.id === task.id ? { ...t, price: newPrice } : t));
 
         // Trigger re-calculation of current service section by toggling it off and on? 
         // Or just wait for next interaction. 
@@ -708,7 +769,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     }
-  }
+  }, [selectedVehicle, taskTemplates]); // Dependencies to ensure fresh closure
 
   const handleDeleteTaskTemplate = async (taskId: string) => {
     try {
@@ -1128,7 +1189,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
           description: generalDescription || "No description provided",
           priority: priority,
           estimated_cost: totalEstimatedCost,
-          status: 'Pending',
+          status: 'In Progress',
           current_stage: 'Inspection', // Initial stage
           started_at: new Date().toISOString(),
           notes: JSON.stringify({
@@ -1162,7 +1223,7 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
             calculated_price: sectionData.calculatedPrice,
             base_price_snapshot: sectionData.basePrice,
             billing_price: sectionData.cost, // Initially, billing price is the same as cost/estimated_cost
-            status: 'Pending'
+            status: 'In Progress'
           })
           .select()
           .single()
@@ -1720,7 +1781,9 @@ export function WorkOrderForm({ onSuccess, onCancel }: WorkOrderFormProps) {
                     if (!data) return null; // Should not happen if selectedServices and serviceSections are in sync
 
                     const serviceId = getServiceIdByName(data.serviceType);
-                    const sectionTasks = serviceId ? taskTemplates.filter(t => t.service_type_id === serviceId) : [];
+
+                    // Use computedTaskTemplates instead of raw taskTemplates
+                    const sectionTasks = serviceId ? computedTaskTemplates.filter(t => t.service_type_id === serviceId) : [];
 
                     return (
                       <ServiceSection

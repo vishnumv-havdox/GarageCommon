@@ -116,6 +116,21 @@ interface ServiceType {
     pricing_rules?: PricingRule[];
 }
 
+// Helper for highlighting text
+const HighlightText = ({ text, highlight }: { text: string, highlight: string }) => {
+    if (!highlight.trim()) return <>{text}</>;
+    const parts = text.split(new RegExp(`(${highlight})`, 'gi'));
+    return (
+        <span>
+            {parts.map((part, i) =>
+                part.toLowerCase() === highlight.toLowerCase() ?
+                    <mark key={i} className="bg-yellow-200 rounded-sm px-0.5 text-black font-semibold">{part}</mark> :
+                    part
+            )}
+        </span>
+    );
+};
+
 export default function ServicesMaster() {
     const { user } = useAuth();
     const { toast } = useToast();
@@ -150,9 +165,13 @@ export default function ServicesMaster() {
     const [newTaskInput, setNewTaskInput] = useState("");
     const [newTaskPrice, setNewTaskPrice] = useState<number>(0);
     const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null); // Track which rule is being edited
-    const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null); // Track expanded row in table
+
+    // Expanded Rows State (Multiple expansion support)
+    const [expandedServiceIds, setExpandedServiceIds] = useState<Set<string>>(new Set());
+
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
     const [editingTaskName, setEditingTaskName] = useState("");
+    const [editingTaskPrice, setEditingTaskPrice] = useState<number>(0);
 
 
     // Pricing Rules State
@@ -211,13 +230,44 @@ export default function ServicesMaster() {
     const filteredServices = useMemo(() => {
         return services.filter(s => {
             const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                s.description?.toLowerCase().includes(searchTerm.toLowerCase());
+                s.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                s.task_templates?.some(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
             const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
             const matchesStatus = statusFilter === "all" ||
                 (statusFilter === "active" ? s.is_active : !s.is_active);
             return matchesSearch && matchesCategory && matchesStatus;
         });
     }, [services, searchTerm, categoryFilter, statusFilter]);
+
+    // Auto-expand logic when searching
+    useEffect(() => {
+        if (!searchTerm) {
+            setExpandedServiceIds(new Set());
+            return;
+        }
+
+        const idsToExpand = new Set<string>();
+        services.forEach(s => {
+            // Expand if any task matches the search term
+            if (s.task_templates?.some(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()))) {
+                idsToExpand.add(s.id);
+            }
+        });
+
+        if (idsToExpand.size > 0) {
+            setExpandedServiceIds(idsToExpand);
+        }
+    }, [searchTerm, services]);
+
+    const toggleExpansion = (id: string) => {
+        const newSet = new Set(expandedServiceIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setExpandedServiceIds(newSet);
+    };
 
     const suggestions = useMemo(() => {
         return Array.from(new Set(services.map(s => s.name)));
@@ -499,6 +549,42 @@ export default function ServicesMaster() {
         setPricingRules(pricingRules.filter((_, i) => i !== index));
     };
 
+    const updateTaskDetails = async (taskId: string, newName: string, newPrice: number) => {
+        try {
+            // Find the service that owns this task
+            const service = services.find(s => s.task_templates?.some(t => t.id === taskId));
+            if (!service) return;
+
+            // Calculate new total base price
+            const updatedTasks = service.task_templates?.map(t =>
+                t.id === taskId ? { ...t, name: newName, price: newPrice } : t
+            ) || [];
+            const newTotal = updatedTasks.reduce((sum, t) => sum + (t.price || 0), 0);
+
+            // 1. Update task template details
+            const { error: tError } = await supabase
+                .from('task_templates')
+                .update({ name: newName, price: newPrice, last_updated_by: user?.id } as any)
+                .eq('id', taskId);
+
+            if (tError) throw tError;
+
+            // 2. Update service base price
+            const { error: sError } = await supabase
+                .from('service_types')
+                .update({ base_price: newTotal, last_updated_by: user?.id } as any)
+                .eq('id', service.id);
+
+            if (sError) throw sError;
+
+            toast({ title: "Success", description: "Task details updated" });
+            setEditingTaskId(null); // Exit edit mode
+            fetchServices();
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        }
+    };
+
     const updateExistingTaskPrice = async (taskId: string, newPrice: number) => {
         try {
             // Find the service that owns this task to calculate new total
@@ -655,13 +741,13 @@ export default function ServicesMaster() {
                                     filteredServices.map((service) => (
                                         <React.Fragment key={service.id}>
                                             <TableRow
-                                                className={`cursor-pointer hover:bg-muted/50 ${expandedServiceId === service.id ? 'bg-muted/50 border-b-0' : ''}`}
-                                                onClick={() => setExpandedServiceId(expandedServiceId === service.id ? null : service.id)}
+                                                className={`cursor-pointer hover:bg-muted/50 ${expandedServiceIds.has(service.id) ? 'bg-muted/50 border-b-0' : ''}`}
+                                                onClick={() => toggleExpansion(service.id)}
                                             >
                                                 <TableCell className="font-medium">
                                                     <div className="flex flex-col">
                                                         <div className="flex items-center gap-2">
-                                                            {expandedServiceId === service.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                            {expandedServiceIds.has(service.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                             <span>{service.name}</span>
                                                         </div>
                                                         <span className="text-xs text-muted-foreground line-clamp-1 ml-6">{service.description}</span>
@@ -707,7 +793,7 @@ export default function ServicesMaster() {
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
-                                            {expandedServiceId === service.id && (
+                                            {expandedServiceIds.has(service.id) && (
                                                 <TableRow className="bg-muted/30 hover:bg-muted/30 border-t-0">
                                                     <TableCell colSpan={7} className="p-0">
                                                         <div className="p-4 pl-10 grid gap-2">
@@ -722,28 +808,40 @@ export default function ServicesMaster() {
                                                                         return (
                                                                             <div key={task.id} className="flex justify-between items-center bg-background border rounded px-3 py-2 text-sm shadow-sm">
                                                                                 {editingTaskId === task.id ? (
-                                                                                    <div className="flex items-center gap-1 flex-1 mr-2">
+                                                                                    <div className="flex items-center gap-2 flex-1 mr-2 bg-white p-1 rounded border border-blue-200">
                                                                                         <Input
                                                                                             value={editingTaskName}
                                                                                             onChange={(e) => setEditingTaskName(e.target.value)}
-                                                                                            className="h-7 text-xs"
+                                                                                            className="h-8 text-sm flex-1 min-w-[120px]"
                                                                                             autoFocus
+                                                                                            placeholder="Task Name"
                                                                                         />
-                                                                                        <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600" onClick={() => updateTaskName(task.id, editingTaskName)}>
-                                                                                            <CheckCircle2 className="h-4 w-4" />
+                                                                                        <div className="relative w-24">
+                                                                                            <span className="absolute left-2 top-2 text-xs text-muted-foreground">₹</span>
+                                                                                            <Input
+                                                                                                type="number"
+                                                                                                value={editingTaskPrice}
+                                                                                                onChange={(e) => setEditingTaskPrice(parseFloat(e.target.value) || 0)}
+                                                                                                className="h-8 text-sm pl-5"
+                                                                                            />
+                                                                                        </div>
+                                                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:bg-green-50" onClick={() => updateTaskDetails(task.id, editingTaskName, editingTaskPrice)}>
+                                                                                            <CheckCircle2 className="h-5 w-5" />
                                                                                         </Button>
-                                                                                        <Button size="icon" variant="ghost" className="h-6 w-6 text-red-600" onClick={() => setEditingTaskId(null)}>
-                                                                                            <XCircle className="h-4 w-4" />
+                                                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-50" onClick={() => setEditingTaskId(null)}>
+                                                                                            <XCircle className="h-5 w-5" />
                                                                                         </Button>
                                                                                     </div>
                                                                                 ) : (
-                                                                                    <div className="flex items-center gap-2 group/task">
-                                                                                        <span className="text-muted-foreground">{task.name}</span>
+                                                                                    <div className="flex items-center gap-2 group/task flex-1">
+                                                                                        <span className="text-muted-foreground">
+                                                                                            <HighlightText text={task.name} highlight={searchTerm} />
+                                                                                        </span>
                                                                                         <Button
                                                                                             size="icon"
                                                                                             variant="ghost"
-                                                                                            className="h-4 w-4 opacity-0 group-hover/task:opacity-100 transition-opacity"
-                                                                                            onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); }}
+                                                                                            className="h-6 w-6 opacity-0 group-hover/task:opacity-100 transition-opacity"
+                                                                                            onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); setEditingTaskPrice(task.price || 0); }}
                                                                                         >
                                                                                             <Edit className="h-3 w-3 text-muted-foreground" />
                                                                                         </Button>
@@ -951,7 +1049,7 @@ export default function ServicesMaster() {
                                                                             defaultValue={task.name}
                                                                             onBlur={(e) => {
                                                                                 if (e.target.value !== task.name) {
-                                                                                    updateTaskName(task.id, e.target.value);
+                                                                                    updateTaskDetails(task.id, e.target.value, task.price);
                                                                                 }
                                                                             }}
                                                                         />
@@ -971,13 +1069,11 @@ export default function ServicesMaster() {
                                                                     <Input
                                                                         type="number"
                                                                         className={`h-8 text-xs ${isPreview ? 'text-blue-700 font-bold bg-white' : ''}`}
-                                                                        value={effectivePrice}
-
+                                                                        value={isPreview ? effectivePrice : undefined}
+                                                                        defaultValue={isPreview ? undefined : task.price}
+                                                                        key={`${task.id}-${previewCategory}-${task.price}`} // Re-mount if category or underlying price changes
                                                                         title={isPreview ? "Edit effective price for this category" : "Edit base price"}
                                                                         onChange={(e) => {
-                                                                            // Controlled input needs state update, but here we invoke logic on Blur for base, 
-                                                                            // and for preview we need to update 'pricingRules' state immediately to reflect in Total Cost?
-                                                                            // Yes, betterUX: Update rules immediately.
                                                                             if (isPreview) {
                                                                                 const val = parseFloat(e.target.value) || 0;
                                                                                 const newRules = [...pricingRules];
@@ -1007,14 +1103,11 @@ export default function ServicesMaster() {
                                                                         onBlur={(e) => {
                                                                             if (!isPreview) {
                                                                                 const val = parseFloat(e.target.value) || 0;
-                                                                                if (val !== task.price) updateExistingTaskPrice(task.id, val);
+                                                                                if (val !== task.price) updateTaskDetails(task.id, task.name, val);
                                                                             }
                                                                         }}
-                                                                        // Base mode still relies on defaultValue/onBlur for async update, 
-                                                                        // but Preview mode is fully controlled via pricingRules state calc.
-                                                                        // We need to handle this hybrid nature.
-                                                                        defaultValue={isPreview ? undefined : task.price}
                                                                     />
+
                                                                 </div>
                                                             </div>
                                                         );

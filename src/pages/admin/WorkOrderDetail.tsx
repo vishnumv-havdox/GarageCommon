@@ -324,25 +324,7 @@ export default function WorkOrderDetail() {
         }
     };
 
-    // Handle Accept Order
-    const handleAcceptOrder = async () => {
-        if (!id) return;
-        try {
-            const { error } = await supabase
-                .from("work_orders")
-                .update({
-                    status: "In Progress",
-                    accepted_at: new Date().toISOString()
-                } as any)
-                .eq("id", id);
 
-            if (error) throw error;
-            toast({ title: "Work Order Accepted", description: "Status updated to In Progress" });
-            fetchDetails();
-        } catch (error: any) {
-            toast({ variant: "destructive", title: "Error", description: error.message });
-        }
-    };
 
     // Handle Approve/Reject Work
     const handleApproveWork = async () => {
@@ -652,11 +634,7 @@ export default function WorkOrderDetail() {
                         <Button variant="outline" onClick={() => generateInvoicePDF(workOrder.id)} title="Download Tax Invoice">
                             <IndianRupee className="h-4 w-4 mr-2" /> Invoice
                         </Button>
-                        {canAccept && (
-                            <Button className="bg-green-600 hover:bg-green-700" onClick={handleAcceptOrder}>
-                                <CheckCircle2 className="h-4 w-4 mr-2" /> Accept for Workshop
-                            </Button>
-                        )}
+
                         {/* Header actions are now mostly stage-specific in the sidebar */}
                         <AlertDialog>
                             <AlertDialogTrigger asChild>

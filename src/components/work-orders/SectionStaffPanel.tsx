@@ -191,7 +191,7 @@ export function SectionStaffPanel({
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-6 w-6">
+                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6">
                                 <Info className="h-4 w-4 text-muted-foreground" />
                             </Button>
                         </TooltipTrigger>
@@ -296,6 +296,7 @@ export function SectionStaffPanel({
                                                 <div className="flex items-center justify-between px-1">
                                                     <p className="text-[8px] font-bold text-muted-foreground uppercase">Current Tasks ({employeeWorkload.length})</p>
                                                     <Button
+                                                        type="button"
                                                         variant="ghost"
                                                         size="sm"
                                                         className="h-5 text-[8px] text-blue-600 hover:text-blue-700 p-0 px-1"

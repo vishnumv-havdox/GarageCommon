@@ -105,6 +105,8 @@ interface TaskTemplate {
     name: string;
     price: number;
     is_active: boolean;
+    hsn_code?: string;
+    sac_code?: string;
 }
 
 interface ServiceType {
@@ -122,6 +124,8 @@ interface ServiceType {
     task_templates?: TaskTemplate[];
     pricing_rules?: PricingRule[];
     is_fc_exclusive?: boolean;
+    hsn_code?: string;
+    sac_code?: string;
 }
 
 // Helper for highlighting text
@@ -170,10 +174,13 @@ export default function ServicesMaster() {
         inventory_categories: []
     });
 
+
     // Task Template management in Dialog
-    const [newTasks, setNewTasks] = useState<{ name: string, price: number }[]>([]);
+    const [newTasks, setNewTasks] = useState<{ name: string, price: number, hsn_code?: string, sac_code?: string }[]>([]);
     const [newTaskInput, setNewTaskInput] = useState("");
     const [newTaskPrice, setNewTaskPrice] = useState<number>(0);
+    const [newTaskHSN, setNewTaskHSN] = useState("");
+    const [newTaskSAC, setNewTaskSAC] = useState("");
     const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null); // Track which rule is being edited
 
     // Expanded Rows State (Multiple expansion support)
@@ -182,6 +189,8 @@ export default function ServicesMaster() {
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
     const [editingTaskName, setEditingTaskName] = useState("");
     const [editingTaskPrice, setEditingTaskPrice] = useState<number>(0);
+    const [editingTaskHSN, setEditingTaskHSN] = useState("");
+    const [editingTaskSAC, setEditingTaskSAC] = useState("");
 
 
     // Pricing Rules State
@@ -428,6 +437,10 @@ export default function ServicesMaster() {
             setPricingRules([]);
         }
         setNewTasks([]);
+        setNewTaskInput("");
+        setNewTaskPrice(0);
+        setNewTaskHSN("");
+        setNewTaskSAC("");
         setIsDialogOpen(true);
     };
 
@@ -481,7 +494,9 @@ export default function ServicesMaster() {
                     name: t.name,
                     price: t.price,
                     is_active: true,
-                    last_updated_by: user?.id
+                    last_updated_by: user?.id,
+                    hsn_code: t.hsn_code,
+                    sac_code: t.sac_code
                 }));
                 const { error: taskError } = await supabase
                     .from('task_templates')
@@ -569,9 +584,16 @@ export default function ServicesMaster() {
 
     const addTask = () => {
         if (newTaskInput.trim()) {
-            setNewTasks([...newTasks, { name: newTaskInput.trim(), price: newTaskPrice }]);
+            setNewTasks([...newTasks, {
+                name: newTaskInput.trim(),
+                price: newTaskPrice,
+                hsn_code: newTaskHSN.trim(),
+                sac_code: newTaskSAC.trim()
+            }]);
             setNewTaskInput("");
             setNewTaskPrice(0);
+            setNewTaskHSN("");
+            setNewTaskSAC("");
         }
     };
 
@@ -605,7 +627,7 @@ export default function ServicesMaster() {
         setPricingRules(pricingRules.filter((_, i) => i !== index));
     };
 
-    const updateTaskDetails = async (taskId: string, newName: string, newPrice: number) => {
+    const updateTaskDetails = async (taskId: string, newName: string, newPrice: number, hsnCode?: string, sacCode?: string) => {
         try {
             // Find the service that owns this task
             const service = services.find(s => s.task_templates?.some(t => t.id === taskId));
@@ -613,14 +635,20 @@ export default function ServicesMaster() {
 
             // Calculate new total base price
             const updatedTasks = service.task_templates?.map(t =>
-                t.id === taskId ? { ...t, name: newName, price: newPrice } : t
+                t.id === taskId ? { ...t, name: newName, price: newPrice, hsn_code: hsnCode, sac_code: sacCode } : t
             ) || [];
             const newTotal = updatedTasks.reduce((sum, t) => sum + (t.price || 0), 0);
 
             // 1. Update task template details
             const { error: tError } = await supabase
                 .from('task_templates')
-                .update({ name: newName, price: newPrice, last_updated_by: user?.id } as any)
+                .update({
+                    name: newName,
+                    price: newPrice,
+                    hsn_code: hsnCode,
+                    sac_code: sacCode,
+                    last_updated_by: user?.id
+                } as any)
                 .eq('id', taskId);
 
             if (tError) throw tError;
@@ -946,21 +974,39 @@ export default function ServicesMaster() {
                                                                                             autoFocus
                                                                                             placeholder="Task Name"
                                                                                         />
-                                                                                        <div className="relative w-24">
-                                                                                            <span className="absolute left-2 top-2 text-xs text-muted-foreground">₹</span>
-                                                                                            <Input
-                                                                                                type="number"
-                                                                                                value={editingTaskPrice}
-                                                                                                onChange={(e) => setEditingTaskPrice(parseFloat(e.target.value) || 0)}
-                                                                                                className="h-8 text-sm pl-5"
-                                                                                            />
+                                                                                        <div className="flex flex-col gap-1 w-24">
+                                                                                            <div className="relative w-full">
+                                                                                                <span className="absolute left-2 top-2 text-xs text-muted-foreground">₹</span>
+                                                                                                <Input
+                                                                                                    type="number"
+                                                                                                    value={editingTaskPrice}
+                                                                                                    onChange={(e) => setEditingTaskPrice(parseFloat(e.target.value) || 0)}
+                                                                                                    className="h-8 text-sm pl-5"
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div className="flex gap-1">
+                                                                                                <Input
+                                                                                                    className="h-6 text-[10px] px-1"
+                                                                                                    placeholder="SAC"
+                                                                                                    value={editingTaskSAC}
+                                                                                                    onChange={(e) => setEditingTaskSAC(e.target.value)}
+                                                                                                />
+                                                                                                <Input
+                                                                                                    className="h-6 text-[10px] px-1"
+                                                                                                    placeholder="HSN"
+                                                                                                    value={editingTaskHSN}
+                                                                                                    onChange={(e) => setEditingTaskHSN(e.target.value)}
+                                                                                                />
+                                                                                            </div>
                                                                                         </div>
-                                                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:bg-green-50" onClick={() => updateTaskDetails(task.id, editingTaskName, editingTaskPrice)}>
-                                                                                            <CheckCircle2 className="h-5 w-5" />
-                                                                                        </Button>
-                                                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-50" onClick={() => setEditingTaskId(null)}>
-                                                                                            <XCircle className="h-5 w-5" />
-                                                                                        </Button>
+                                                                                        <div className="flex flex-col gap-1">
+                                                                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:bg-green-50" onClick={() => updateTaskDetails(task.id, editingTaskName, editingTaskPrice, editingTaskHSN, editingTaskSAC)}>
+                                                                                                <CheckCircle2 className="h-5 w-5" />
+                                                                                            </Button>
+                                                                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-50" onClick={() => setEditingTaskId(null)}>
+                                                                                                <XCircle className="h-5 w-5" />
+                                                                                            </Button>
+                                                                                        </div>
                                                                                     </div>
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-2 group/task flex-1">
@@ -971,17 +1017,31 @@ export default function ServicesMaster() {
                                                                                             size="icon"
                                                                                             variant="ghost"
                                                                                             className="h-6 w-6 opacity-0 group-hover/task:opacity-100 transition-opacity"
-                                                                                            onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); setEditingTaskPrice(task.price || 0); }}
+                                                                                            onClick={() => {
+                                                                                                setEditingTaskId(task.id);
+                                                                                                setEditingTaskName(task.name);
+                                                                                                setEditingTaskPrice(task.price || 0);
+                                                                                                setEditingTaskHSN(task.hsn_code || "");
+                                                                                                setEditingTaskSAC(task.sac_code || "");
+                                                                                            }}
                                                                                         >
                                                                                             <Edit className="h-3 w-3 text-muted-foreground" />
                                                                                         </Button>
                                                                                     </div>
                                                                                 )}
-                                                                                <div className="flex items-center gap-2">
-                                                                                    {isOverridden && previewCategory !== 'base' && (
-                                                                                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Rule</span>
+                                                                                <div className="flex flex-col items-end gap-1">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {isOverridden && previewCategory !== 'base' && (
+                                                                                            <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Rule</span>
+                                                                                        )}
+                                                                                        <span className={`font-medium ${isOverridden ? 'text-blue-700' : ''}`}>₹{taskPrice}</span>
+                                                                                    </div>
+                                                                                    {(task.hsn_code || task.sac_code) && !editingTaskId && (
+                                                                                        <div className="flex flex-col text-[10px] text-muted-foreground text-right leading-tight">
+                                                                                            {task.sac_code && <span>SAC: {task.sac_code}</span>}
+                                                                                            {task.hsn_code && <span>HSN: {task.hsn_code}</span>}
+                                                                                        </div>
                                                                                     )}
-                                                                                    <span className={`font-medium ${isOverridden ? 'text-blue-700' : ''}`}>₹{taskPrice}</span>
                                                                                 </div>
                                                                             </div>
                                                                         );
@@ -1088,14 +1148,26 @@ export default function ServicesMaster() {
                                         />
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label>Estimated Duration</Label>
-                                        <Input
-                                            value={formData.estimated_duration}
-                                            onChange={e => setFormData({ ...formData, estimated_duration: e.target.value })}
-                                            placeholder="e.g. 2-3 hours"
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Base Price (₹)</Label>
+                                            <Input
+                                                type="number"
+                                                value={formData.base_price}
+                                                onChange={(e) => setFormData({ ...formData, base_price: parseFloat(e.target.value) })}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Estimated Duration</Label>
+                                            <Input
+                                                value={formData.estimated_duration || ""}
+                                                onChange={(e) => setFormData({ ...formData, estimated_duration: e.target.value })}
+                                                placeholder="e.g. 1 hour, 30 mins"
+                                            />
+                                        </div>
                                     </div>
+
 
                                     <div className="flex items-center gap-6">
                                         <div className="flex items-center space-x-2">
@@ -1157,25 +1229,40 @@ export default function ServicesMaster() {
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2">
-                                            <div className="flex gap-2">
-                                                <Input
-                                                    className="flex-[3]"
-                                                    value={newTaskInput}
-                                                    onChange={e => setNewTaskInput(e.target.value)}
-                                                    placeholder="Task name (e.g. Brake Pad Cleaning)"
-                                                    onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                                                />
-                                                <div className="relative flex-1">
-                                                    <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">₹</span>
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex gap-2">
                                                     <Input
-                                                        type="number"
-                                                        className="pl-5"
-                                                        value={newTaskPrice}
-                                                        onChange={e => setNewTaskPrice(parseFloat(e.target.value) || 0)}
-                                                        placeholder="Price"
+                                                        className="flex-[2]"
+                                                        value={newTaskInput}
+                                                        onChange={e => setNewTaskInput(e.target.value)}
+                                                        placeholder="Task name (e.g. Brake Pad Cleaning)"
                                                     />
+                                                    <div className="relative w-32">
+                                                        <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">₹</span>
+                                                        <Input
+                                                            type="number"
+                                                            className="pl-5"
+                                                            value={newTaskPrice}
+                                                            onChange={e => setNewTaskPrice(parseFloat(e.target.value) || 0)}
+                                                            placeholder="Price"
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <Button type="button" variant="outline" onClick={addTask}>Add</Button>
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        className="flex-1"
+                                                        value={newTaskSAC}
+                                                        onChange={e => setNewTaskSAC(e.target.value)}
+                                                        placeholder="SAC Code (Optional)"
+                                                    />
+                                                    <Input
+                                                        className="flex-1"
+                                                        value={newTaskHSN}
+                                                        onChange={e => setNewTaskHSN(e.target.value)}
+                                                        placeholder="HSN Code (Optional)"
+                                                    />
+                                                    <Button type="button" variant="outline" onClick={addTask}>Add Task</Button>
+                                                </div>
                                             </div>
                                             <p className="text-[10px] text-muted-foreground px-1 italic">
                                                 Tasks added here will be saved when you Save the Configuration.
@@ -1204,26 +1291,42 @@ export default function ServicesMaster() {
                                                                 {isPreview ? (
                                                                     <span className="flex-1 truncate">{task.name}</span>
                                                                 ) : (
-                                                                    <div className="flex flex-1 items-center mr-2">
-                                                                        <Input
-                                                                            key={task.name}
-                                                                            className="h-8 text-xs flex-1"
-                                                                            defaultValue={task.name}
-                                                                            onBlur={(e) => {
-                                                                                if (e.target.value !== task.name) {
-                                                                                    updateTaskDetails(task.id, e.target.value, task.price);
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                        <Button
-                                                                            size="icon"
-                                                                            variant="ghost"
-                                                                            className="h-8 w-8 text-destructive hover:bg-destructive/10 ml-1"
-                                                                            title="Delete Task"
-                                                                            onClick={() => handleDeleteTask(task.id)}
-                                                                        >
-                                                                            <Trash2 className="h-4 w-4" />
-                                                                        </Button>
+                                                                    <div className="flex flex-col flex-1 mr-2 gap-1">
+                                                                        <div className="flex items-center">
+                                                                            <Input
+                                                                                key={task.name}
+                                                                                className="h-8 text-xs flex-1"
+                                                                                defaultValue={task.name}
+                                                                                onBlur={(e) => {
+                                                                                    if (e.target.value !== task.name) {
+                                                                                        updateTaskDetails(task.id, e.target.value, task.price, task.hsn_code, task.sac_code);
+                                                                                    }
+                                                                                }}
+                                                                            />
+                                                                            <Button
+                                                                                size="icon"
+                                                                                variant="ghost"
+                                                                                className="h-8 w-8 text-destructive hover:bg-destructive/10 ml-1 shrink-0"
+                                                                                title="Delete Task"
+                                                                                onClick={() => handleDeleteTask(task.id)}
+                                                                            >
+                                                                                <Trash2 className="h-4 w-4" />
+                                                                            </Button>
+                                                                        </div>
+                                                                        <div className="flex gap-1">
+                                                                            <Input
+                                                                                className="h-6 text-[10px] w-1/2"
+                                                                                placeholder="SAC"
+                                                                                defaultValue={task.sac_code || ""}
+                                                                                onBlur={(e) => updateTaskDetails(task.id, task.name, task.price, task.hsn_code, e.target.value)}
+                                                                            />
+                                                                            <Input
+                                                                                className="h-6 text-[10px] w-1/2"
+                                                                                placeholder="HSN"
+                                                                                defaultValue={task.hsn_code || ""}
+                                                                                onBlur={(e) => updateTaskDetails(task.id, task.name, task.price, e.target.value, task.sac_code)}
+                                                                            />
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                                 <div className="flex items-center gap-2 w-32">
@@ -1285,7 +1388,11 @@ export default function ServicesMaster() {
                                                     <div key={i} className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded p-2 text-sm">
                                                         <div className="flex flex-col">
                                                             <span className="font-medium">{task.name}</span>
-                                                            <span className="text-xs text-blue-600">₹{task.price}</span>
+                                                            <div className="flex gap-2 text-[10px] text-muted-foreground">
+                                                                <span>₹{task.price}</span>
+                                                                {task.sac_code && <span>SAC: {task.sac_code}</span>}
+                                                                {task.hsn_code && <span>HSN: {task.hsn_code}</span>}
+                                                            </div>
                                                         </div>
                                                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeNewTask(i)}>
                                                             <XCircle className="h-3 w-3 text-destructive" />
@@ -1507,6 +1614,6 @@ export default function ServicesMaster() {
                     </AlertDialogContent>
                 </AlertDialog>
             </main>
-        </div>
+        </div >
     );
 }

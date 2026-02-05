@@ -76,6 +76,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
     const [qty, setQty] = useState(1);
     const [employees, setEmployees] = useState<any[]>([]);
     const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+    const [isIssueImmediately, setIsIssueImmediately] = useState(false);
 
     // Return request state
     const [isReturnDialogOpen, setIsReturnDialogOpen] = useState(false);
@@ -156,7 +157,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                 .select(`
           *,
           inventory:inventory(item_name, sku, unit_price),
-          employee:employees(name)
+          employee:employees!requested_by(name)
         `)
                 .eq("work_order_id", workOrderId)
                 .order("created_at", { ascending: false });
@@ -203,22 +204,60 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
         }
 
         try {
-            const { error } = await (supabase.from("part_requests") as any).insert([{
+            const initialStatus = isAdmin
+                ? (isIssueImmediately ? "issued" : "approved")
+                : "pending";
+
+            // If issuing immediately, we might need to handle the quantity deduction if the trigger/function doesn't do it automatically for 'issued' inserts.
+            // Assuming the simple insert works and triggers handle it, or we rely on the standard flow.
+            // *Standard flow usually uses RPC for issuing to ensure stock checks.*
+            // Ideally, for "Issued", we might want to call `issue_part_request` immediately after insert, or insert with 'issued' if DB handles it.
+            // Let's assume for now we insert as 'approved' then call issue if needed, OR just insert as 'approved' and let them click issue?
+            // User asked to "Assign", so 'approved' is the safe default for assignment. 
+            // If 'Issue Immediately' is checked, we should probably do a 2-step or RPC.
+            // Simplest path: Insert as 'approved' (Assigned). If issue immediately, call the issue RPC.
+
+            // Wait, inserting as 'issued' directly might bypass checks. safely: insert as 'pending' then approve?
+            // Or insert as 'approved' directly.
+
+            let status = "pending";
+            if (isAdmin) status = "approved"; // Default to approved (assigned) for admins
+
+            const { data: newReq, error } = await (supabase.from("part_requests") as any).insert([{
                 work_order_id: workOrderId,
                 item_id: selectedItemId,
                 requested_by: finalRequesterId,
                 requested_qty: qty,
-                status: "pending"
-            }]);
+                status: status,
+                approved_qty: isAdmin ? qty : 0, // Auto-approve qty if admin
+                approved_by: isAdmin ? currentEmployeeId : null
+            }]).select().single();
 
             if (error) throw error;
-            toast({ title: "Success", description: "Part request submitted" });
+
+            if (isAdmin && isIssueImmediately && newReq) {
+                // Call issue RPC
+                const { error: issueError } = await supabase.rpc("issue_part_request", {
+                    _request_id: newReq.id,
+                    _issued_qty: qty,
+                    _employee_id: currentEmployeeId
+                });
+                if (issueError) {
+                    toast({ variant: "destructive", title: "Issue Failed", description: "Part assigned but failed to issue: " + issueError.message });
+                } else {
+                    toast({ title: "Success", description: "Part assigned and issued" });
+                }
+            } else {
+                toast({ title: "Success", description: isAdmin ? "Part assigned (Approved)" : "Part request submitted" });
+            }
+
             setIsRequestDialogOpen(false);
             fetchRequests();
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         }
     };
+
 
     const handleReturnRequest = async () => {
         if (!selectedReqForReturn || !currentEmployeeId || returnQty <= 0) {
@@ -380,12 +419,12 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                             <Dialog open={isRequestDialogOpen} onOpenChange={setIsRequestDialogOpen}>
                                 <DialogTrigger asChild>
                                     <Button size="sm" className="bg-primary hover:bg-primary/90">
-                                        <Plus className="h-4 w-4 mr-1" /> Request Part
+                                        <Plus className="h-4 w-4 mr-1" /> {isAdmin ? "Assign Part" : "Request Part"}
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent>
                                     <DialogHeader>
-                                        <DialogTitle>Request New Part</DialogTitle>
+                                        <DialogTitle>{isAdmin ? "Assign Part to Employee" : "Request New Part"}</DialogTitle>
                                     </DialogHeader>
                                     <div className="space-y-4 py-4">
                                         <div className="space-y-2">
@@ -429,11 +468,27 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                                     </Select>
                                                 </div>
                                             )}
+                                            {isAdmin && (
+                                                <div className="flex items-center space-x-2 pt-8">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="issueImmediately"
+                                                        className="h-4 w-4 rounded border-gray-300"
+                                                        checked={isIssueImmediately}
+                                                        onChange={(e) => setIsIssueImmediately(e.target.checked)}
+                                                    />
+                                                    <label htmlFor="issueImmediately" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                        Issue Immediately
+                                                    </label>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     <DialogFooter>
                                         <Button variant="outline" onClick={() => setIsRequestDialogOpen(false)}>Cancel</Button>
-                                        <Button onClick={handleCreateRequest}>Submit Request</Button>
+                                        <Button onClick={handleCreateRequest}>
+                                            {isAdmin ? (isIssueImmediately ? "Assign & Issue" : "Assign Part") : "Submit Request"}
+                                        </Button>
                                     </DialogFooter>
                                 </DialogContent>
                             </Dialog>

@@ -2,18 +2,19 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '@/integrations/supabase/client';
 import { ToWords } from 'to-words';
+import { format } from "date-fns";
 
 // Constants for consistent styling
-const COLORS = {
-    primary: [39, 60, 117],      // Deep blue for invoice
-    secondary: [41, 128, 185],   // Lighter blue for work slip
-    accent: [26, 188, 156],      // Teal for highlights
-    lightBg: [248, 249, 250],    // Light background
-    darkText: [33, 37, 41],      // Dark text
-    lightText: [108, 117, 125],  // Light text
-    white: [255, 255, 255],      // White
-    success: [40, 167, 69],      // Green for totals
-    border: [222, 226, 230]      // Border color
+const COLORS: Record<string, [number, number, number]> = {
+    primary: [15, 23, 42],       // Slate-900 (Deep/Dark)
+    secondary: [100, 116, 139],  // Slate-500 (Secondary text)
+    accent: [148, 163, 184],     // Slate-400
+    lightBg: [248, 250, 252],    // Slate-50
+    darkText: [15, 23, 42],      // Slate-900
+    lightText: [100, 116, 139],  // Slate-500
+    white: [255, 255, 255],
+    success: [15, 23, 42],       // Slate-900 (Totals)
+    border: [226, 232, 240]      // Slate-200
 };
 
 const FONTS = {
@@ -69,6 +70,7 @@ interface DocumentSettings {
 interface VehicleData {
     vehicle_number: string;
     model: string;
+    kilometers_driven?: number;
     customers?: {
         name: string;
         phone: string;
@@ -171,76 +173,75 @@ class PDFGenerator {
         billNumberDisplay: string,
         type: 'work_slip' | 'invoice'
     ) {
-        // Set header color based on document type
-        const headerColor = type === 'invoice' ? COLORS.primary : COLORS.secondary;
-        this.doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+        // Remove filled background
+        // Draw header background (Now just white/transparent)
+        // this.doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+        // this.doc.rect(0, 0, this.pageWidth, headerHeight, 'F');
 
-        // Draw header background
-        const headerHeight = this.isNewPage ? 30 : 40;
-        this.doc.rect(0, 0, this.pageWidth, headerHeight, 'F');
+        const headerY = this.isNewPage ? 10 : 20;
 
         // Add logo if available and not continuation page
         let nameX = 15;
         if (this.logoBase64 && !this.isNewPage) {
             try {
-                this.doc.addImage(this.logoBase64, 'PNG', 15, 8, 15, 15);
+                this.doc.addImage(this.logoBase64, 'PNG', 15, headerY - 5, 15, 15);
                 nameX = 35;
             } catch (error) {
                 console.error('Failed to add logo:', error);
             }
         }
 
-        // Company name
-        this.setStyle(this.isNewPage ? 16 : 20, true, COLORS.white);
-        this.doc.text(company.company_name.toUpperCase(), nameX, this.isNewPage ? 12 : 18);
+        // Company name (Left)
+        this.setStyle(this.isNewPage ? 16 : 22, true, COLORS.primary);
+        this.doc.text(company.company_name.toUpperCase(), nameX, headerY + 5);
 
-        // Document title
-        this.setStyle(this.isNewPage ? 18 : 24, true, COLORS.white);
-        const title = isQuotation ? 'QUOTATION' : settings.title;
-        this.doc.text(title, this.pageWidth - 15, this.isNewPage ? 20 : 28, { align: 'right' });
+        // Document title (Left, below name, smaller)
+        this.setStyle(10, false, COLORS.secondary);
+        this.doc.text(isQuotation ? 'Quotation / Estimate' : 'Tax Invoice', nameX, headerY + 11);
 
+        // Company details (Left)
         if (!this.isNewPage) {
-            // Company details
-            this.setStyle(9, false, [240, 240, 240]);
-            this.doc.text(company.address || '', 15, 28);
-            this.doc.text(`Phone: ${company.phone || ''} • Email: ${company.email || ''}`, 15, 33);
-
-            // Document info background
-            this.doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
-            this.doc.rect(0, 40, this.pageWidth, 25, 'F');
-
-            // Bill number and dates
-            this.setStyle(10, true, COLORS.darkText);
-            this.doc.text(billNumberDisplay, 15, 52);
-
-            this.setStyle(9, false, COLORS.darkText);
-            this.doc.text(`Date: ${new Date().toLocaleDateString('en-IN', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric'
-            })}`, 15, 58);
-
-            if (workOrder.estimated_delivery_date) {
-                this.setStyle(9, true, COLORS.darkText);
-                this.doc.text("Est. Delivery:", this.pageWidth / 2, 52, { align: 'center' });
-                this.setStyle(9, false, COLORS.darkText);
-                this.doc.text(
-                    new Date(workOrder.estimated_delivery_date).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    }),
-                    this.pageWidth / 2,
-                    58,
-                    { align: 'center' }
-                );
+            this.setStyle(9, false, COLORS.accent);
+            let detailY = headerY + 17;
+            if (company.address) {
+                this.doc.text(company.address, nameX, detailY);
+                detailY += 5;
             }
+            this.doc.text(`Ph: ${company.phone || ''} • Email: ${company.email || ''}`, nameX, detailY);
+        }
+
+        // Right Side Info (Invoice No, Date)
+        const rightX = this.pageWidth - 15;
+        let rightY = headerY + 5;
+
+        // Number Label
+        this.setStyle(8, true, COLORS.secondary);
+        this.doc.text(isQuotation ? 'QUOTATION NO' : 'INVOICE NO', rightX, rightY, { align: 'right' });
+
+        // Number Value
+        this.setStyle(14, true, COLORS.primary);
+        this.doc.text(billNumberDisplay, rightX, rightY + 6, { align: 'right' });
+
+        rightY += 15;
+
+        // Date Label
+        this.setStyle(8, true, COLORS.secondary);
+        this.doc.text('DATE', rightX, rightY, { align: 'right' });
+
+        // Date Value
+        this.setStyle(10, true, COLORS.primary);
+        this.doc.text(format(new Date(), "d MMM yyyy"), rightX, rightY + 5, { align: 'right' });
+
+        // Bottom Border for Header
+        const lineY = headerY + 35;
+        this.doc.setDrawColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        this.doc.setLineWidth(0.5);
+        this.doc.line(15, lineY, this.pageWidth - 15, lineY);
+
+        if (this.isNewPage) {
+            this.currentY = lineY + 10;
         } else {
-            // Continuation header
-            this.setStyle(10, true, COLORS.darkText);
-            this.doc.text(`${billNumberDisplay} (Continued)`, 15, 40);
+            this.currentY = lineY + 10;
         }
     }
 
@@ -248,37 +249,39 @@ class PDFGenerator {
         const boxWidth = (this.pageWidth / 2) - 20;
         const boxHeight = 40;
 
-        // Customer box
-        this.drawRoundedRect(15, this.currentY, boxWidth, boxHeight, 4, true);
-        this.setStyle(10, true, COLORS.secondary);
-        this.doc.text("CUSTOMER INFORMATION", 20, this.currentY + 10);
+        // Draw Container Box (Light BG like Payslip)
+        this.doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
+        this.doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+        this.doc.roundedRect(15, this.currentY, this.pageWidth - 30, boxHeight + 10, 3, 3, 'FD');
 
-        this.setStyle(10, true, COLORS.darkText);
-        this.doc.text(workOrder.vehicle?.customers?.name || 'N/A', 20, this.currentY + 18);
+        // Customer Info (Left)
+        let contentY = this.currentY + 8;
+        this.setStyle(9, true, COLORS.accent);
+        this.doc.text("BILLED TO", 25, contentY);
 
-        this.setStyle(9, false, COLORS.lightText);
-        this.doc.text(`📞 ${workOrder.vehicle?.customers?.phone || ''}`, 20, this.currentY + 24);
+        this.setStyle(12, true, COLORS.primary);
+        this.doc.text(workOrder.vehicle?.customers?.name || 'N/A', 25, contentY + 6);
 
+        this.setStyle(9, false, COLORS.secondary);
         if (workOrder.vehicle?.customers?.address) {
-            const addressLines = this.doc.splitTextToSize(
-                workOrder.vehicle.customers.address,
-                boxWidth - 10
-            );
-            this.doc.text(addressLines, 20, this.currentY + 30);
+            const lines = this.doc.splitTextToSize(workOrder.vehicle.customers.address, boxWidth);
+            this.doc.text(lines, 25, contentY + 11);
         }
 
-        // Vehicle box
-        this.drawRoundedRect((this.pageWidth / 2) + 5, this.currentY, boxWidth, boxHeight, 4, true);
-        this.setStyle(10, true, COLORS.secondary);
-        this.doc.text("VEHICLE DETAILS", (this.pageWidth / 2) + 10, this.currentY + 10);
+        // Vehicle Info (Right)
+        const vX = (this.pageWidth / 2) + 20;
 
-        this.setStyle(12, true, COLORS.darkText);
-        this.doc.text(workOrder.vehicle?.vehicle_number || 'N/A', (this.pageWidth / 2) + 10, this.currentY + 18);
+        this.setStyle(9, true, COLORS.accent);
+        this.doc.text("VEHICLE DETAILS", vX, contentY);
 
-        this.setStyle(9, false, COLORS.lightText);
-        this.doc.text(`🚗 ${workOrder.vehicle?.model || ''}`, (this.pageWidth / 2) + 10, this.currentY + 24);
+        this.setStyle(12, true, COLORS.primary);
+        this.doc.text(workOrder.vehicle?.vehicle_number || 'N/A', vX, contentY + 6);
 
-        this.currentY += boxHeight + 15;
+        this.setStyle(9, false, COLORS.secondary);
+        this.doc.text(workOrder.vehicle?.model || '', vX, contentY + 11);
+        this.doc.text(`KM: ${workOrder.vehicle?.kilometers_driven || 'N/A'}`, vX, contentY + 16);
+
+        this.currentY += boxHeight + 20;
     }
 
     drawSectionHeader(title: string, sectionNumber: string = '') {
@@ -313,18 +316,20 @@ class PDFGenerator {
             startY: this.currentY,
             theme: 'grid',
             headStyles: {
-                fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]],
-                textColor: COLORS.white,
+                fillColor: COLORS.white,
+                textColor: COLORS.secondary,
                 fontStyle: 'bold',
-                fontSize: 9
+                fontSize: 8,
+                lineWidth: 0,
             },
             bodyStyles: {
-                fontSize: 8,
+                fontSize: 9,
                 textColor: COLORS.darkText,
-                cellPadding: 4
+                cellPadding: 4,
+                lineWidth: 0
             },
             alternateRowStyles: {
-                fillColor: [250, 250, 250]
+                fillColor: COLORS.white
             },
             margin: { top: 45 },
             didDrawPage: (data) => {
@@ -401,17 +406,14 @@ class PDFGenerator {
         this.currentY += 12;
 
         // Grand total box
-        this.doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
-        this.doc.rect(15, this.currentY, this.pageWidth - 30, 25, 'F');
-        this.doc.setDrawColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
-        this.doc.setLineWidth(1);
-        this.doc.rect(15, this.currentY, this.pageWidth - 30, 25);
+        this.doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        this.doc.roundedRect(this.pageWidth - 85, this.currentY, 70, 20, 2, 2, 'F');
 
-        this.setStyle(14, true, COLORS.primary);
-        this.doc.text("GRAND TOTAL:", 25, this.currentY + 10);
+        this.setStyle(10, true, COLORS.accent); // Slate-400 equivalent
+        this.doc.text("NET PAYABLE", this.pageWidth - 80, this.currentY + 8);
 
-        this.setStyle(18, true, COLORS.success);
-        this.doc.text(`₹${finalTotal.toFixed(2)}`, this.pageWidth - 25, this.currentY + 12, { align: 'right' });
+        this.setStyle(16, true, COLORS.white);
+        this.doc.text(`₹${finalTotal.toFixed(0)}`, this.pageWidth - 20, this.currentY + 14, { align: 'right' });
 
         this.currentY += 35;
 
@@ -525,10 +527,9 @@ class PDFGenerator {
         this.doc.line(this.pageWidth - 70, signatureY, this.pageWidth - 15, signatureY);
         this.doc.text("Authorized Signature", this.pageWidth - 15, signatureY + 5, { align: 'right' });
 
-        // Footer bar
-        const footerColor = type === 'invoice' ? COLORS.primary : COLORS.secondary;
-        this.doc.setFillColor(footerColor[0], footerColor[1], footerColor[2]);
-        this.doc.rect(0, this.pageHeight - 10, this.pageWidth, 10, 'F');
+        // Footer bar (Simple line instead of filled rect)
+        this.doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+        this.doc.line(15, this.pageHeight - 15, this.pageWidth - 15, this.pageHeight - 15);
 
         // Footer text
         if (settings.footer_text) {
@@ -596,6 +597,7 @@ const generateDocument = async (
       `).eq('id', workOrderId).single(),
             supabase.from('work_order_services').select('*').eq('work_order_id', workOrderId),
             supabase.from('invoices').select('*').eq('work_order_id', workOrderId).single(),
+            supabase.from('invoices').select('*').eq('work_order_id', workOrderId).single(),
             supabase.from('work_order_tasks').select('*').eq('work_order_id', workOrderId)
         ]);
 
@@ -605,10 +607,14 @@ const generateDocument = async (
 
         // Initialize PDF generator
         const pdfGen = new PDFGenerator();
-        await pdfGen.loadLogo(profile?.logo_url);
+        if (profile?.logo_url) {
+            await pdfGen.loadLogo(profile.logo_url);
+        }
 
         // Process data
-        const tasks = tasksData || [];
+        const tasks: any[] = tasksData || [];
+        const invoice: any = invoiceData; // Cast to avoid 'never' type inference on invoiceData properties
+
         const settings: DocumentSettings = settingsData || {
             title: type === 'invoice' ? 'TAX INVOICE' : 'WORK SLIP',
             prefix: type === 'invoice' ? 'INV-' : 'WS-',
@@ -629,26 +635,28 @@ const generateDocument = async (
         let finalTotal = 0;
 
         // Determine items and totals based on document type
-        if (type === 'invoice' && invoiceData) {
-            isQuotation = invoiceData.type === 'quotation';
+        // Determine items and totals based on document type
+        if (type === 'invoice' && invoice) {
+            isQuotation = invoice.type === 'quotation';
             const { data: invItems } = await supabase
                 .from('invoice_items')
                 .select('*')
-                .eq('invoice_id', invoiceData.id);
+                .eq('invoice_id', invoice.id);
 
             finalItems = (invItems || []) as LineItem[];
-            finalTotal = invoiceData.total || 0;
+            finalItems = (invItems || []) as LineItem[];
+            finalTotal = invoice.total || 0;
 
-            if (isQuotation && invoiceData.quotation_number) {
-                billNumberDisplay = `QTN-${invoiceData.quotation_number}`;
-            } else if (invoiceData.bill_number) {
-                billNumberDisplay = `BILL-${invoiceData.bill_number}`;
+            if (isQuotation && invoice.quotation_number) {
+                billNumberDisplay = `QTN-${invoice.quotation_number}`;
+            } else if (invoice.bill_number) {
+                billNumberDisplay = `BILL-${invoice.bill_number}`;
             }
         } else {
             // For work slip or new invoice
             if (tasks.length > 0) {
-                finalItems = tasks.map(t => ({
-                    description: t.task_name,
+                finalItems = tasks.map((t: any) => ({
+                    description: t.task_name || 'Task',
                     taxable_value: t.price || 0,
                     total: t.price || 0,
                     type: 'service' as const,

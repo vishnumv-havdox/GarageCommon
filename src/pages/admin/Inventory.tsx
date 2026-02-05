@@ -84,6 +84,9 @@ interface LifecycleHistoryItem {
   request_status: string;
   return_status: string;
   return_condition: string;
+  company_name: string;
+  requested_by_name: string;
+  approved_by_name: string | null;
 }
 
 interface ReturnRequest {
@@ -139,6 +142,18 @@ export default function AdminInventory() {
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     setSearchParams({ tab: value });
+  };
+
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (key: string) => {
+    const newResolved = new Set(expandedGroups);
+    if (newResolved.has(key)) {
+      newResolved.delete(key);
+    } else {
+      newResolved.add(key);
+    }
+    setExpandedGroups(newResolved);
   };
 
 
@@ -547,6 +562,7 @@ export default function AdminInventory() {
       new Set(history.map(h => h.sku)),
       new Set(history.map(h => h.customer_name)),
       new Set(history.map(h => h.vehicle_number)),
+      new Set(history.map(h => h.company_name)),
     ];
     return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
   }, [history]);
@@ -576,9 +592,8 @@ export default function AdminInventory() {
             }} title="Refresh Data">
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button variant="outline" onClick={() => window.location.href = "/inventory/room"}>
-
-              <ScanLine className="h-4 w-4 mr-2" /> Open Room Scanner
+            <Button variant="outline" onClick={() => navigate("/inventory/room")}>
+              <ScanLine className="h-4 w-4 mr-2" /> Scan & Issue Parts
             </Button>
 
             <Dialog open={isFormOpen} onOpenChange={(open) => {
@@ -852,7 +867,7 @@ export default function AdminInventory() {
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative flex-1">
                 <SearchInput
-                  placeholder="Filter history by part, employee, WO, or vehicle..."
+                  placeholder="Filter by part, employee, WO, vehicle, or company..."
                   value={historySearch}
                   onChange={setHistorySearch}
                   suggestions={historySuggestions}
@@ -860,92 +875,197 @@ export default function AdminInventory() {
               </div>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Lifecycle Logs</CardTitle>
-                <CardDescription>Complete audit trail of all part issuances, returns, and adjustments.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date & Time</TableHead>
-                        <TableHead>Part Details</TableHead>
-                        <TableHead>Movement</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Related To</TableHead>
-                        <TableHead>Performed By</TableHead>
-                        <TableHead>Status/Condition</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {history.length === 0 ? (
-                        <TableRow><TableCell colSpan={7} className="text-center py-10">No history logs found.</TableCell></TableRow>
-                      ) : (
-                        history
-                          .filter(h =>
-                            h.item_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
-                            h.performed_by_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
-                            h.vehicle_number?.toLowerCase().includes(historySearch.toLowerCase()) ||
-                            h.customer_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
-                            h.sku?.toLowerCase().includes(historySearch.toLowerCase())
-                          )
-                          .map((log) => (
-                            <TableRow key={log.transaction_id}>
-                              <TableCell className="text-xs whitespace-nowrap">
-                                {new Date(log.transaction_date).toLocaleString()}
-                              </TableCell>
-                              <TableCell>
+            <div className="space-y-4">
+              {Object.entries(
+                history
+                  .filter(h =>
+                    h.item_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+                    h.performed_by_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+                    h.requested_by_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+                    h.approved_by_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+                    h.vehicle_number?.toLowerCase().includes(historySearch.toLowerCase()) ||
+                    h.customer_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+                    h.company_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+                    h.sku?.toLowerCase().includes(historySearch.toLowerCase())
+                  )
+                  .reduce((groups, item) => {
+                    const key = item.work_order_id || 'general_stock_movement';
+                    if (!groups[key]) {
+                      groups[key] = {
+                        items: [],
+                        wo_id: item.work_order_id,
+                        vehicle: item.vehicle_number,
+                        customer: item.customer_name,
+                        company: item.company_name
+                      };
+                    }
+                    groups[key].items.push(item);
+                    return groups;
+                  }, {} as Record<string, { items: LifecycleHistoryItem[], wo_id: string, vehicle: string, customer: string, company: string }>)
+              )
+                .sort(([, a], [, b]) => new Date(b.items[0].transaction_date).getTime() - new Date(a.items[0].transaction_date).getTime())
+                .map(([key, group]) => {
+                  const isExpanded = expandedGroups.has(key);
+                  return (
+                    <Card key={key} className="overflow-hidden border-l-4 border-l-primary/50 transition-all duration-200">
+                      <CardHeader
+                        className="bg-muted/10 py-3 cursor-pointer hover:bg-muted/20 select-none"
+                        onClick={() => toggleGroup(key)}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                          <div className="flex items-center gap-4">
+                            <div className={`p-1 rounded-full transition-transform duration-200 ${isExpanded ? 'rotate-90 bg-primary/10' : ''}`}>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                            {group.wo_id ? (
+                              <>
                                 <div className="flex flex-col">
-                                  <span className="font-medium">{log.item_name}</span>
-                                  <span className="text-[10px] text-muted-foreground">{log.sku}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={
-                                    log.transaction_type === 'issue' ? 'default' :
-                                      log.transaction_type === 'return' ? 'secondary' :
-                                        log.transaction_type === 'restock' ? 'outline' : 'ghost'
-                                  }
-                                  className="capitalize"
-                                >
-                                  {log.transaction_type}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-bold">
-                                {log.transaction_type === 'issue' || log.transaction_type === 'reservation' ? '-' : '+'}{log.quantity}
-                              </TableCell>
-                              <TableCell>
-                                {log.work_order_id ? (
-                                  <div className="flex flex-col text-xs">
-                                    <span className="font-medium">WO: {log.work_order_id.substring(0, 8)}</span>
-                                    <span className="text-muted-foreground">{log.vehicle_number}</span>
-                                  </div>
-                                ) : '-'}
-                              </TableCell>
-                              <TableCell className="text-xs">{log.performed_by_name || 'System'}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-col gap-1">
-                                  {log.transaction_type === 'return' && (
-                                    <Badge variant="outline" className="text-[10px] w-fit">
-                                      {log.return_condition}
-                                    </Badge>
-                                  )}
-                                  <span className="text-[10px] text-muted-foreground line-clamp-1">
-                                    {log.transaction_notes}
+                                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Work Order</span>
+                                  <span className="font-bold flex items-center gap-2">
+                                    {group.wo_id.substring(0, 8)}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-4 w-4"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate(`/admin/work-orders/${group.wo_id}`);
+                                      }}
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                    </Button>
                                   </span>
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
+                                <div className="h-8 w-px bg-border/50 hidden md:block" />
+                                <div className="flex flex-col">
+                                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Vehicle</span>
+                                  <span className="font-semibold">{group.vehicle || 'N/A'}</span>
+                                </div>
+                                <div className="h-8 w-px bg-border/50 hidden md:block" />
+                                <div className="flex flex-col">
+                                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Customer / Company</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-medium">{group.customer}</span>
+                                    {group.company && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="cursor-pointer hover:bg-blue-100 text-[10px]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setHistorySearch(group.company);
+                                        }}
+                                      >
+                                        {group.company}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground uppercase tracking-wider">Type</span>
+                                <span className="font-bold text-muted-foreground">General Stock Adjustments / Non-WO</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground text-right flex flex-col items-end">
+                            <span>Latest Activity</span>
+                            <span className="font-mono">{new Date(group.items[0].transaction_date).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      {isExpanded && (
+                        <CardContent className="p-0 animate-in slide-in-from-top-2 duration-200">
+                          <Table>
+                            <TableHeader className="bg-transparent">
+                              <TableRow>
+                                <TableHead>Date & Time</TableHead>
+                                <TableHead>Part Details</TableHead>
+                                <TableHead>Qty</TableHead>
+                                <TableHead>Requested By</TableHead>
+                                <TableHead>Action By / Issuer</TableHead>
+                                <TableHead>Approved By</TableHead>
+                                <TableHead>Status</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {group.items.map((log) => (
+                                <TableRow key={log.transaction_id} className="hover:bg-muted/5 border-b-0">
+                                  <TableCell className="text-xs whitespace-nowrap">
+                                    {new Date(log.transaction_date).toLocaleString()}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{log.item_name}</span>
+                                      <span className="text-[10px] text-muted-foreground">{log.sku}</span>
+                                      <Badge
+                                        variant={
+                                          log.transaction_type === 'issue' ? 'default' :
+                                            log.transaction_type === 'return' ? 'secondary' :
+                                              log.transaction_type === 'restock' ? 'outline' : 'ghost'
+                                        }
+                                        className="capitalize text-[10px] w-fit mt-1"
+                                      >
+                                        {log.transaction_type}
+                                      </Badge>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="font-bold">
+                                    {log.transaction_type === 'issue' || log.transaction_type === 'reservation' ? '-' : '+'}{log.quantity}
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    {log.requested_by_name ? (
+                                      <div className="flex items-center gap-1 font-medium">
+                                        {log.requested_by_name}
+                                      </div>
+                                    ) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    {log.performed_by_name ? (
+                                      <div className="flex items-center gap-1">
+                                        <Badge variant="outline" className="text-[10px] font-normal border-blue-200 bg-blue-50 text-blue-700">
+                                          {log.performed_by_name}
+                                        </Badge>
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground italic">System</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    {log.approved_by_name ? (
+                                      <Badge variant="outline" className="text-[10px] font-normal border-green-200 bg-green-50 text-green-700">
+                                        {log.approved_by_name}
+                                      </Badge>
+                                    ) : '-'}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-col gap-1">
+                                      {log.transaction_type === 'return' && (
+                                        <Badge variant="outline" className="text-[10px] w-fit">
+                                          {log.return_condition}
+                                        </Badge>
+                                      )}
+                                      <span className="text-[10px] text-muted-foreground line-clamp-1" title={log.transaction_notes}>
+                                        {log.transaction_notes}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </CardContent>
                       )}
-                    </TableBody>
-                  </Table>
+                    </Card>
+                  );
+                })}
+              {history.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground border rounded-lg bg-muted/5">
+                  No history logs found.
                 </div>
-              </CardContent>
-            </Card>
+              )}
+            </div>
+
           </TabsContent>
 
           <TabsContent value="returns" className="space-y-6">

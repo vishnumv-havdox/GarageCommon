@@ -11,10 +11,12 @@ import {
     Search, CheckCircle2, AlertTriangle, ArrowLeft, Loader2
 } from "lucide-react";
 import { Html5QrcodeScanner } from "html5-qrcode";
+import { useNavigate } from "react-router-dom";
 
 export default function InventoryRoom() {
     const { user, signOut } = useAuth();
     const { toast } = useToast();
+    const navigate = useNavigate();
 
     const [loading, setLoading] = useState(false);
     const [workOrders, setWorkOrders] = useState<any[]>([]);
@@ -280,10 +282,18 @@ export default function InventoryRoom() {
                                 <p className="text-slate-500 text-sm">Select a Work Order to begin scanning parts</p>
                             </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => signOut().then(() => window.location.href = "/inventory/login")}>
-                            <LogOut className="h-5 w-5" />
+
+                        <Button variant="ghost" size="icon" onClick={() => {
+                            if (user?.role === 'admin') {
+                                navigate("/admin/inventory");
+                            } else {
+                                signOut().then(() => window.location.href = "/inventory/login");
+                            }
+                        }}>
+                            {user?.role === 'admin' ? <LogOut className="h-5 w-5 rotate-180" /> : <LogOut className="h-5 w-5" />}
                         </Button>
                     </div>
+
 
                     <Card className="border-none shadow-lg">
                         <CardHeader className="bg-white rounded-t-lg pb-4">

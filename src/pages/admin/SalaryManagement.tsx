@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { useRef } from "react";
+import { useReactToPrint } from "react-to-print";
+import { Payslip } from "@/components/employees/Payslip";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +64,7 @@ export default function SalaryManagementPage() {
     const [selectedEmp, setSelectedEmp] = useState<any>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [isPayoutDialogOpen, setIsPayoutDialogOpen] = useState(false);
+    const [companyProfile, setCompanyProfile] = useState<any>(null);
     const [payoutPeriod, setPayoutPeriod] = useState({
         start: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
         end: format(new Date(), 'yyyy-MM-dd')
@@ -79,6 +83,13 @@ export default function SalaryManagementPage() {
         id?: string;
         data?: any;
     }>({ type: null });
+
+    const payslipRef = useRef<HTMLDivElement>(null);
+
+    const handlePrint = useReactToPrint({
+        contentRef: payslipRef,
+        documentTitle: `Payslip-${selectedPayout?.employees?.name || 'Employee'}-${selectedPayout?.period_end}`,
+    });
 
     useEffect(() => {
         fetchData();
@@ -120,6 +131,15 @@ export default function SalaryManagementPage() {
                 .order("created_at", { ascending: false })
                 .limit(50);
             setAdjustments(adjData || []);
+
+            // 5. Fetch Company Profile
+            const { data: profileData } = await supabase
+                .from('company_profiles')
+                .select('*')
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            setCompanyProfile(profileData || null);
 
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -383,6 +403,21 @@ export default function SalaryManagementPage() {
                                                             </TableCell>
                                                             <TableCell className="text-right">
                                                                 <div className="flex justify-end gap-1">
+                                                                    {p.status === 'paid' && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={() => {
+                                                                                setSelectedPayout(p);
+                                                                                // Allow state to update then print
+                                                                                setTimeout(() => {
+                                                                                    handlePrint();
+                                                                                }, 100);
+                                                                            }}
+                                                                        >
+                                                                            <Printer className="h-4 w-4" />
+                                                                        </Button>
+                                                                    )}
                                                                     <Button
                                                                         variant="ghost"
                                                                         size="sm"
@@ -623,7 +658,6 @@ export default function SalaryManagementPage() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => {
-                                        setSelectedPayout(p);
                                         setIsEditingPayout(true);
                                         setEditPayoutData({ ...selectedPayout });
                                     }}
@@ -776,9 +810,11 @@ export default function SalaryManagementPage() {
                                         {isUpdatingStatus ? "Processing..." : "Mark as Paid"}
                                     </Button>
                                 )}
-                                <Button variant="outline" className="w-full flex-1" onClick={() => window.print()}>
-                                    <Printer className="mr-2 h-4 w-4" /> Print
-                                </Button>
+                                {selectedPayout?.status === 'paid' && (
+                                    <Button variant="outline" className="w-full flex-1" onClick={() => handlePrint()}>
+                                        <Printer className="mr-2 h-4 w-4" /> Print
+                                    </Button>
+                                )}
                             </>
                         )}
                     </DialogFooter>
@@ -804,25 +840,25 @@ export default function SalaryManagementPage() {
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                            className={confirmAction.type?.startsWith('delete') ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+                            className={confirmAction.type === 'delete_payout' || confirmAction.type === 'delete_adjustment' ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
                             onClick={() => {
-                                if (confirmAction.type === 'delete_payout' && confirmAction.id) {
-                                    handleDeletePayout(confirmAction.id);
-                                } else if (confirmAction.type === 'delete_adjustment' && confirmAction.id) {
-                                    handleDeleteAdjustment(confirmAction.id);
-                                } else if (confirmAction.type === 'mark_paid' && confirmAction.id) {
-                                    handleStatusUpdate(confirmAction.id, 'paid');
-                                } else if (confirmAction.type === 'generate_payouts') {
-                                    handlePayoutGeneration();
-                                }
+                                if (confirmAction.type === 'delete_payout') handleDeletePayout(confirmAction.id!);
+                                if (confirmAction.type === 'delete_adjustment') handleDeleteAdjustment(confirmAction.id!);
+                                if (confirmAction.type === 'mark_paid') handleStatusUpdate(confirmAction.id!, 'paid');
+                                if (confirmAction.type === 'generate_payouts') handlePayoutGeneration();
                                 setConfirmAction({ type: null });
                             }}
                         >
-                            {confirmAction.type?.startsWith('delete') ? "Delete" : "Confirm"}
+                            Confirm
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Hidden Payslip for Printing */}
+            <div className="hidden">
+                <Payslip ref={payslipRef} data={selectedPayout} companyProfile={companyProfile} />
+            </div>
         </div >
     );
 }

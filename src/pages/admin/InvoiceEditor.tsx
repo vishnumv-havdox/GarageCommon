@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,14 +39,32 @@ import {
     Info
 } from "lucide-react";
 import {
-    DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { Label } from "@/components/ui/label";
+
+import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { Separator } from "@/components/ui/separator";
+import { useReactToPrint } from "react-to-print";
+import { InvoiceTemplate } from "@/components/invoices/InvoiceTemplate";
 import { ToWords } from 'to-words';
 
 const toWords = new ToWords({
@@ -97,6 +115,211 @@ interface TaskTemplate {
     name: string;
 }
 
+const InvoiceItemEditor = ({
+    item,
+    index,
+    onChange,
+    onRemove,
+    isReadOnly,
+    taskTemplates,
+    serviceTypes,
+    itemType = 'service'
+}: {
+    item: InvoiceItem;
+    index: number;
+    onChange: (index: number, field: keyof InvoiceItem | Partial<InvoiceItem>, value?: any) => void;
+    onRemove: (index: number) => void;
+    isReadOnly: boolean;
+    taskTemplates: any[];
+    serviceTypes?: ServiceType[];
+    itemType?: 'service' | 'part';
+}) => {
+    const [open, setOpen] = useState(false);
+
+    // Filter tasks by selected category name
+    const selectedServiceId = serviceTypes?.find(st => st.name === item.category)?.id;
+
+    // Filter tasks by selected category name
+    // Filter tasks by selected category name if serviceTypes is present (meaning it's a Service item)
+    // If serviceTypes is undefined, it's an Inventory item, so show all templates (which are parts)
+    const filteredTasks = itemType === 'service' && serviceTypes
+        ? (selectedServiceId ? taskTemplates.filter(t => t.service_type_id === selectedServiceId) : taskTemplates)
+        : taskTemplates;
+
+    return (
+        <Card className="mb-4 relative border-l-4 border-l-primary/20 hover:border-l-primary transition-all">
+            <CardContent className="p-4 grid gap-4">
+                <div className="flex justify-between items-start gap-4">
+                    {itemType === 'service' && serviceTypes && (
+                        <div className="flex-1 space-y-2">
+                            <Label className="text-xs font-semibold text-muted-foreground uppercase">Service Category</Label>
+                            <Select
+                                value={item.category || ""}
+                                onValueChange={(val) => {
+                                    onChange(index, "category", val);
+                                    onChange(index, "description", ""); // Clear task when category changes
+                                    onChange(index, "unit_price", 0);
+                                    onChange(index, "hsn_code", "");
+                                }}
+                                disabled={isReadOnly}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Service..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {serviceTypes.map(st => (
+                                        <SelectItem key={st.id} value={st.name}>{st.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    <div className="flex-[2] space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground uppercase">Task / Item Name</Label>
+                        <Popover open={open} onOpenChange={setOpen}>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    aria-expanded={open}
+                                    className="w-full justify-between"
+                                    disabled={isReadOnly}
+                                >
+                                    {item.description || "Select or Type Item..."}
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[400px] p-0" align="start">
+                                <Command>
+                                    <CommandInput placeholder="Search tasks..." />
+                                    <CommandList>
+                                        <CommandEmpty>No task found.</CommandEmpty>
+                                        <CommandGroup heading="Tasks">
+                                            {filteredTasks.map((task) => (
+                                                <CommandItem
+                                                    key={task.id}
+                                                    value={task.name}
+                                                    onSelect={() => {
+                                                        const updates: any = { description: task.name };
+                                                        
+                                                        // Auto-fill details
+                                                        if (task.price) {
+                                                            updates.unit_price = task.price;
+                                                        }
+                                                        
+                                                        // Auto-fill HSN/SAC
+                                                        const taxCode = task.sac_code || task.hsn_code;
+                                                        if (taxCode) updates.hsn_code = taxCode;
+                                                        
+                                                        onChange(index, updates);
+                                                        setOpen(false);
+                                                    }}
+                                                >
+                                                    <Check
+                                                        className={cn(
+                                                            "mr-2 h-4 w-4",
+                                                            item.description === task.name ? "opacity-100" : "opacity-0"
+                                                        )}
+                                                    />
+                                                    {task.name}
+                                                    {task.price && <span className="ml-auto text-xs text-muted-foreground">₹{task.price}</span>}
+                                                </CommandItem>
+                                            ))}
+                                        </CommandGroup>
+                                        <CommandGroup heading="Custom">
+                                            <CommandItem
+                                                value="custom-input"
+                                                onSelect={() => { }}
+                                            >
+                                                Type to search or enter custom description below.
+                                            </CommandItem>
+                                        </CommandGroup>
+                                    </CommandList>
+                                </Command>
+                            </PopoverContent>
+                        </Popover>
+                        {/* Fallback Text Input */}
+                        <Input
+                            value={item.description || ''}
+                            onChange={(e) => onChange(index, "description", e.target.value)}
+                            placeholder="Or type custom description here..."
+                            className="mt-1"
+                            disabled={isReadOnly}
+                        />
+                    </div>
+                    {!isReadOnly && (
+                        <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => onRemove(index)}>
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                        <Label className="text-xs">HSN Code</Label>
+                        <Input
+                            value={item.hsn_code || ''}
+                            onChange={(e) => onChange(index, 'hsn_code', e.target.value)}
+                            disabled={isReadOnly}
+                            placeholder="HSN/SAC"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Quantity</Label>
+                        <Input
+                            type="number"
+                            value={item.quantity || ''}
+                            onChange={(e) => onChange(index, 'quantity', e.target.value)}
+                            disabled={isReadOnly}
+                            min={1}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Unit Price (₹)</Label>
+                        <Input
+                            type="number"
+                            value={item.unit_price || ''}
+                            onChange={(e) => onChange(index, 'unit_price', e.target.value)}
+                            disabled={isReadOnly}
+                            min={0}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">GST Rate (%)</Label>
+                        <Input
+                            type="number"
+                            value={item.gst_rate ?? ''}
+                            onChange={(e) => onChange(index, 'gst_rate', e.target.value)}
+                            disabled={isReadOnly}
+                        />
+                    </div>
+                </div>
+
+                {/* Read-only Calculations */}
+                <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg text-xs border border-slate-100 items-center">
+                    <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">Taxable</span>
+                        <span className="font-mono font-medium">₹{(item.taxable_value || 0).toFixed(2)}</span>
+                    </div>
+                    <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">CGST ({item.cgst_rate}%)</span>
+                        <span className="font-mono text-slate-600">₹{(item.cgst_amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">SGST ({item.sgst_rate}%)</span>
+                        <span className="font-mono text-slate-600">₹{(item.sgst_amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-slate-400 block text-[10px] uppercase">Line Total</span>
+                        <span className="font-bold text-base text-primary">₹{(item.total || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
 export default function InvoiceEditor() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -111,12 +334,14 @@ export default function InvoiceEditor() {
     // Catalogs
     const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
     const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([]);
+    const [inventoryItems, setInventoryItems] = useState<any[]>([]);
 
     // Derived Totals
     const [subtotal, setSubtotal] = useState(0);
     const [taxAmount, setTaxAmount] = useState(0);
     const [grandTotal, setGrandTotal] = useState(0);
     const [companyProfile, setCompanyProfile] = useState<any>(null);
+    const [invoiceSettings, setInvoiceSettings] = useState<any>(null);
 
     // Settings (could come from DB)
     const [taxRate, setTaxRate] = useState(18); // Default 18% GST (should be configurable)
@@ -141,9 +366,18 @@ export default function InvoiceEditor() {
         fetchCompanyProfile();
     }, [id]);
 
+    const printRef = React.useRef<HTMLDivElement>(null);
+    const handlePrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: invoice ? `${invoice.type === 'quotation' ? 'QTN' : 'INV'}-${invoice.bill_number || invoice.invoice_number}` : 'Invoice',
+    });
+
     const fetchCompanyProfile = async () => {
-        const { data } = await supabase.from('company_profiles').select('*').single();
-        setCompanyProfile(data);
+        const { data: profile } = await supabase.from('company_profiles').select('*').single();
+        setCompanyProfile(profile);
+
+        const { data: settings } = await supabase.from('document_settings').select('*').eq('doc_type', 'invoice').single();
+        setInvoiceSettings(settings);
     };
 
     useEffect(() => {
@@ -153,13 +387,15 @@ export default function InvoiceEditor() {
     const fetchCatalogs = async () => {
         const { data: st, error: stError } = await supabase.from('service_types').select('*').order('name');
         if (stError) console.error("Error fetching service types:", stError);
-        console.log("Service Types loaded:", st?.length);
         setServiceTypes(st || []);
 
         const { data: tt, error: ttError } = await supabase.from('task_templates').select('*').order('name');
         if (ttError) console.error("Error fetching task templates:", ttError);
-        console.log("Task Templates loaded:", tt?.length);
         setTaskTemplates(tt || []);
+
+        const { data: inv, error: invError } = await supabase.from('inventory').select('id, item_name, unit_price, sku, hsn_code').gt('quantity', 0);
+        if (invError) console.error("Error fetching inventory:", invError);
+        setInventoryItems(inv || []);
     };
 
     const fetchInvoiceData = async () => {
@@ -226,45 +462,64 @@ export default function InvoiceEditor() {
         setGrandTotal(sub + cgst_total + sgst_total);
     };
 
-    const handleItemChange = (index: number, field: keyof InvoiceItem, value: any) => {
-        const newItems = [...items];
-        const item = { ...newItems[index] };
+    const handleItemChange = (index: number, field: keyof InvoiceItem | Partial<InvoiceItem>, value?: any) => {
+        setItems(prevItems => {
+            const newItems = [...prevItems];
+            const item = { ...newItems[index] };
 
-        // @ts-ignore
-        item[field] = field === 'description' ? value : (parseFloat(value) || 0);
-
-        if (field === 'quantity' || field === 'unit_price' || field === 'gst_rate' || field === 'cgst_rate' || field === 'sgst_rate') {
-            const taxable = item.quantity * item.unit_price;
-            const gst = item.gst_rate ?? taxRate;
-
-            // If HSN changed or we are initializing, we might set these
-            if (field === 'gst_rate') {
-                item.cgst_rate = gst / 2;
-                item.sgst_rate = gst / 2;
+            if (typeof field === 'string') {
+                // Single field update
+                // @ts-ignore
+                item[field] = field === 'description' || field === 'hsn_code' || field === 'category' ? value : (parseFloat(value) || 0);
+            } else {
+                // Batch update
+                Object.assign(item, field);
             }
 
-            const cgst_r = item.cgst_rate ?? (gst / 2);
-            const sgst_r = item.sgst_rate ?? (gst / 2);
+            // Recalculate totals
+            const qty = item.quantity || 0;
+            const price = item.unit_price || 0;
+            const gst = item.gst_rate ?? taxRate; // Default to global rate if item rate unset
 
+            // Update tax rates if needed (e.g. if gst_rate specifically changed or simple re-calc)
+            // Ideally we check if gst_rate changed, but re-calculating always is safer for consistency
+            if (typeof field === 'string' && field === 'gst_rate') {
+                item.cgst_rate = gst / 2;
+                item.sgst_rate = gst / 2;
+            } else if (typeof field === 'object' && 'gst_rate' in field) {
+                item.cgst_rate = (field.gst_rate as number) / 2;
+                item.sgst_rate = (field.gst_rate as number) / 2;
+            }
+            // Ensure rates exist
+            item.cgst_rate = item.cgst_rate ?? (gst / 2);
+            item.sgst_rate = item.sgst_rate ?? (gst / 2);
+
+            // Calculations
+            const taxable = qty * price;
             item.taxable_value = taxable;
-            item.cgst_amount = taxable * (cgst_r / 100);
-            item.sgst_amount = taxable * (sgst_r / 100);
+            item.cgst_amount = taxable * (item.cgst_rate / 100);
+            item.sgst_amount = taxable * (item.sgst_rate / 100);
             item.total = taxable + item.cgst_amount + item.sgst_amount;
-        }
 
-        newItems[index] = item;
-        setItems(newItems);
+            newItems[index] = item;
+            return newItems;
+        });
     };
 
-    const handleAddItem = (category: string = "") => {
+    const handleAddItem = (category: string = "", type: string = "service") => {
         const newItem: InvoiceItem = {
             id: `temp-${Date.now()}`, // Temporary ID
             description: "",
             quantity: 1,
             unit_price: 0,
             total: 0,
-            type: 'service',
-            category: category // Use passed category
+            type: type, // Use passed type
+            category: category,
+            gst_rate: taxRate,
+            cgst_rate: taxRate / 2,
+            sgst_rate: taxRate / 2,
+            cgst_amount: 0,
+            sgst_amount: 0
         };
         setItems([...items, newItem]);
     };
@@ -447,7 +702,7 @@ export default function InvoiceEditor() {
                                     <RefreshCw className="h-4 w-4 mr-2" /> Convert to Invoice
                                 </Button>
                             )}
-                            <Button variant="outline" onClick={() => generateInvoicePDF(invoice.work_order_id, 'preview')} className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20">
+                            <Button variant="outline" onClick={() => handlePrint()} className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20">
                                 <Printer className="h-4 w-4 mr-2" /> Print
                             </Button>
                             <Button
@@ -546,6 +801,13 @@ export default function InvoiceEditor() {
                         </div>
                     </div>
 
+                    {/* Hidden Invoice for Printing - Using off-screen positioning to ensure render */}
+                    <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', minHeight: '297mm' }}>
+                        <div ref={printRef}>
+                            <InvoiceTemplate invoice={invoice} items={items} companyProfile={companyProfile} settings={invoiceSettings} />
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {/* Main Content: Items */}
                         <div className="md:col-span-2 space-y-6">
@@ -579,81 +841,33 @@ export default function InvoiceEditor() {
                                         <div className="flex items-center justify-between border-b pb-2">
                                             <h3 className="text-lg font-bold text-primary">I. SERVICE BILL</h3>
                                             {!isFinalized && (
-                                                <Button size="sm" variant="outline" onClick={() => handleAddItem("service")}>
+                                                <Button size="sm" variant="outline" onClick={() => handleAddItem("General", "service")}>
                                                     <Plus className="h-4 w-4 mr-2" /> Add Service
                                                 </Button>
                                             )}
                                         </div>
-                                        <div className="border rounded-xl shadow-sm bg-white overflow-hidden">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow className="bg-primary/5 hover:bg-primary/5 border-b-2 border-primary/20">
-                                                        <TableHead className="w-[40px] font-bold text-primary py-4 px-2 text-center border-x">#</TableHead>
-                                                        <TableHead className="font-bold text-primary px-3 border-x">Particulars</TableHead>
-                                                        <TableHead className="w-[90px] font-bold text-primary px-2 border-x">HSN</TableHead>
-                                                        <TableHead className="w-[100px] font-bold text-primary text-right px-2 border-x">Taxable</TableHead>
-                                                        <TableHead className="w-[50px] font-bold text-primary text-center px-1 border-x">%</TableHead>
-                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">CGST</TableHead>
-                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">SGST</TableHead>
-                                                        <TableHead className="w-[110px] text-right font-bold text-primary pr-4 border-x">Total</TableHead>
-                                                        <TableHead className="w-[40px] border-x"></TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {items.filter(i => i.type === 'service').map((item, idx) => {
-                                                        const originalIndex = items.findIndex(orig => orig.id === item.id);
-                                                        return (
-                                                            <TableRow key={item.id}>
-                                                                <TableCell className="px-2 font-medium text-muted-foreground text-center border-x">{idx + 1}</TableCell>
-                                                                <TableCell className="px-2 border-x">
-                                                                    <Input
-                                                                        value={item.description}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'description', e.target.value)}
-                                                                        className="h-8 border-none focus-visible:ring-1 px-1"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="px-1 border-x">
-                                                                    <Input
-                                                                        value={item.hsn_code || ''}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'hsn_code', e.target.value)}
-                                                                        className="h-8 border-none focus-visible:ring-1 px-1"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="text-right px-1 border-x">
-                                                                    <Input
-                                                                        type="number"
-                                                                        value={item.unit_price}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'unit_price', e.target.value)}
-                                                                        className="h-8 text-right font-medium border-none focus-visible:ring-1 px-1"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="px-1 border-x">
-                                                                    <Input
-                                                                        type="number"
-                                                                        value={item.gst_rate || taxRate}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'gst_rate', e.target.value)}
-                                                                        className="h-8 text-center border-none focus-visible:ring-1 px-1"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.cgst_amount?.toFixed(2)}</TableCell>
-                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.sgst_amount?.toFixed(2)}</TableCell>
-                                                                <TableCell className="text-right font-bold text-primary pr-4 whitespace-nowrap border-x">₹{item.total.toFixed(2)}</TableCell>
-                                                                <TableCell className="px-1 border-x text-center">
-                                                                    {!isFinalized && (
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveItem(originalIndex)}>
-                                                                            <Trash2 className="h-4 w-4" />
-                                                                        </Button>
-                                                                    )}
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        );
-                                                    })}
-                                                </TableBody>
-                                            </Table>
+                                        <div>
+                                            {items.filter(i => i.type === 'service').map((item, idx) => {
+                                                const originalIndex = items.findIndex(orig => orig.id === item.id);
+                                                return (
+                                                    <InvoiceItemEditor
+                                                        key={item.id}
+                                                        item={item}
+                                                        index={originalIndex}
+                                                        onChange={handleItemChange}
+                                                        onRemove={handleRemoveItem}
+                                                        isReadOnly={isFinalized}
+                                                        taskTemplates={taskTemplates}
+                                                        serviceTypes={serviceTypes}
+                                                        itemType="service"
+                                                    />
+                                                );
+                                            })}
+                                            {items.filter(i => i.type === 'service').length === 0 && (
+                                                <div className="text-center py-8 text-muted-foreground border-dashed border-2 rounded-lg bg-slate-50">
+                                                    No service items added.
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -662,81 +876,32 @@ export default function InvoiceEditor() {
                                         <div className="flex items-center justify-between border-b pb-2">
                                             <h3 className="text-lg font-bold text-primary">II. INVENTORY BILL</h3>
                                             {!isFinalized && (
-                                                <Button size="sm" variant="outline" onClick={() => handleAddItem("part")}>
+                                                <Button size="sm" variant="outline" onClick={() => handleAddItem("Spare", "part")}>
                                                     <Plus className="h-4 w-4 mr-2" /> Add Part
                                                 </Button>
                                             )}
                                         </div>
-                                        <div className="border rounded-xl shadow-sm bg-white overflow-hidden">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow className="bg-primary/5 hover:bg-primary/5 border-b-2 border-primary/20">
-                                                        <TableHead className="w-[40px] font-bold text-primary py-4 px-2 text-center border-x">#</TableHead>
-                                                        <TableHead className="font-bold text-primary px-3 border-x">Particulars</TableHead>
-                                                        <TableHead className="w-[90px] font-bold text-primary px-2 border-x">HSN</TableHead>
-                                                        <TableHead className="w-[100px] font-bold text-primary text-right px-2 border-x">Taxable</TableHead>
-                                                        <TableHead className="w-[50px] font-bold text-primary text-center px-1 border-x">%</TableHead>
-                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">CGST</TableHead>
-                                                        <TableHead className="w-[90px] font-bold text-primary text-right px-2 border-x">SGST</TableHead>
-                                                        <TableHead className="w-[110px] text-right font-bold text-primary pr-4 border-x">Total</TableHead>
-                                                        <TableHead className="w-[40px] border-x"></TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {items.filter(i => i.type === 'part').map((item, idx) => {
-                                                        const originalIndex = items.findIndex(orig => orig.id === item.id);
-                                                        return (
-                                                            <TableRow key={item.id}>
-                                                                <TableCell className="px-2 font-medium text-muted-foreground text-center border-x">{idx + 1}</TableCell>
-                                                                <TableCell className="px-2 border-x">
-                                                                    <Input
-                                                                        value={item.description}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'description', e.target.value)}
-                                                                        className="h-8 border-transparent hover:border-slate-200 focus-visible:ring-1 px-1 text-slate-900 font-medium"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="px-1 border-x">
-                                                                    <Input
-                                                                        value={item.hsn_code || ''}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'hsn_code', e.target.value)}
-                                                                        className="h-8 border-none focus-visible:ring-1 px-1"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="text-right px-1 border-x">
-                                                                    <Input
-                                                                        type="number"
-                                                                        value={item.unit_price}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'unit_price', e.target.value)}
-                                                                        className="h-8 text-right font-medium border-none focus-visible:ring-1 px-1"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="px-1 border-x">
-                                                                    <Input
-                                                                        type="number"
-                                                                        value={item.gst_rate || taxRate}
-                                                                        onChange={(e) => handleItemChange(originalIndex, 'gst_rate', e.target.value)}
-                                                                        className="h-8 text-center border-none focus-visible:ring-1 px-1"
-                                                                        disabled={isFinalized}
-                                                                    />
-                                                                </TableCell>
-                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.cgst_amount?.toFixed(2)}</TableCell>
-                                                                <TableCell className="text-right font-mono text-xs text-muted-foreground whitespace-nowrap px-2 border-x">₹{item.sgst_amount?.toFixed(2)}</TableCell>
-                                                                <TableCell className="text-right font-bold text-primary pr-4 whitespace-nowrap border-x">₹{item.total.toFixed(2)}</TableCell>
-                                                                <TableCell className="px-1 border-x text-center">
-                                                                    {!isFinalized && (
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveItem(originalIndex)}>
-                                                                            <Trash2 className="h-4 w-4" />
-                                                                        </Button>
-                                                                    )}
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        );
-                                                    })}
-                                                </TableBody>
-                                            </Table>
+                                        <div>
+                                            {items.filter(i => i.type === 'part').map((item, idx) => {
+                                                const originalIndex = items.findIndex(orig => orig.id === item.id);
+                                                return (
+                                                    <InvoiceItemEditor
+                                                        key={item.id}
+                                                        item={item}
+                                                        index={originalIndex}
+                                                        onChange={handleItemChange}
+                                                        onRemove={handleRemoveItem}
+                                                        isReadOnly={isFinalized}
+                                                        taskTemplates={inventoryItems.map(i => ({ id: i.id, name: i.item_name, price: i.unit_price, hsn_code: i.hsn_code, service_type_id: 'spare' }))}
+                                                        itemType="part"
+                                                    />
+                                                );
+                                            })}
+                                            {items.filter(i => i.type === 'part').length === 0 && (
+                                                <div className="text-center py-8 text-muted-foreground border-dashed border-2 rounded-lg bg-slate-50">
+                                                    No parts added.
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -793,65 +958,61 @@ export default function InvoiceEditor() {
 
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Payment Summary</CardTitle>
+                                    <CardTitle>Payment Details</CardTitle>
                                 </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="flex justify-between">
+                                <CardContent className="space-y-4 text-sm">
+                                    <div className="flex justify-between border-b pb-2">
                                         <span className="text-muted-foreground">Subtotal</span>
                                         <span>₹{subtotal.toFixed(2)}</span>
                                     </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-muted-foreground">Tax ({taxRate}%) {isQuotation && "(Estimate)"}</span>
+                                    <div className="flex justify-between border-b pb-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-muted-foreground">Tax</span>
+                                            {!isFinalized && (
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-[10px] text-muted-foreground">Global Rate:</span>
+                                                    <Input
+                                                        className="w-12 h-6 text-xs p-1"
+                                                        value={taxRate}
+                                                        onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                                                    />
+                                                    <span className="text-[10px]">%</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         <span>₹{taxAmount.toFixed(2)}</span>
                                     </div>
-                                    {/* Configurable Tax Rate */}
-                                    {!isFinalized && (
-                                        <div className="flex items-center gap-2 mt-2">
-                                            <span className="text-xs text-muted-foreground">Rate:</span>
-                                            <Input
-                                                type="number"
-                                                value={taxRate}
-                                                onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                                                className="h-6 w-16 text-xs"
-                                            />
-                                            <span className="text-xs text-muted-foreground">%</span>
-                                        </div>
-                                    )}
-                                    {isQuotation && (
-                                        <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
-                                            * Valid for 30 days. This is not a tax invoice.
-                                        </div>
-                                    )}
-                                    <Separator className="my-2" />
-                                    <div className="flex justify-between font-bold text-lg">
+                                    <div className="flex justify-between pt-2 text-lg font-bold">
                                         <span>Total</span>
                                         <span>₹{grandTotal.toFixed(2)}</span>
                                     </div>
-                                    <div className="mt-4 pt-4 border-t">
-                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Amount in Words:</p>
-                                        <p className="text-xs font-semibold">{toWords.convert(grandTotal)}</p>
-                                    </div>
+
+                                    {isQuotation && (
+                                        <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded border border-orange-100 mt-2">
+                                            * Valid for 30 days. This is not a tax invoice.
+                                        </div>
+                                    )}
+
+                                    <Separator className="my-4" />
+
+                                    {companyProfile?.bank_name ? (
+                                        <div className="text-xs space-y-1 bg-muted/50 p-2 rounded">
+                                            <div className="font-semibold text-muted-foreground mb-1">Bank Account</div>
+                                            <div className="flex justify-between"><span>Bank:</span> <span>{companyProfile.bank_name}</span></div>
+                                            <div className="flex justify-between"><span>Acct:</span> <span>{companyProfile.acc_number}</span></div>
+                                            <div className="flex justify-between"><span>IFSC:</span> <span>{companyProfile.ifsc}</span></div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground italic">
+                                            No bank details configured. Go to Settings.
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
-
-                            {!isQuotation && companyProfile && (
-                                <Card>
-                                    <CardHeader className="py-3">
-                                        <CardTitle className="text-sm">Bank Account Details</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="text-xs space-y-1">
-                                        <div className="flex justify-between"><span className="text-muted-foreground">Acc Name:</span> <span className="font-medium">{companyProfile.acc_name || companyProfile.company_name}</span></div>
-                                        <div className="flex justify-between"><span className="text-muted-foreground">Acc No:</span> <span className="font-medium font-mono">{companyProfile.acc_number}</span></div>
-                                        <div className="flex justify-between"><span className="text-muted-foreground">IFSC:</span> <span className="font-medium font-mono">{companyProfile.ifsc}</span></div>
-                                        <div className="flex justify-between"><span className="text-muted-foreground">Bank:</span> <span className="font-medium">{companyProfile.bank_name}</span></div>
-                                        {companyProfile.upi_id && <div className="flex justify-between"><span className="text-muted-foreground">UPI ID:</span> <span className="font-medium">{companyProfile.upi_id}</span></div>}
-                                    </CardContent>
-                                </Card>
-                            )}
                         </div>
                     </div>
-                </main>
-            </div>
-        </div>
+                </main >
+            </div >
+        </div >
     );
 }

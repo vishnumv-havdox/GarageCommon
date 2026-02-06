@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useRequests } from "@/contexts/RequestsContext";
 import { Shield, LogOut, Menu, Building2 } from "lucide-react";
 import { navConfig } from "@/config/accessControl";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -16,6 +17,7 @@ export function AdminSidebar() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [company, setCompany] = useState<any>(null);
+  const { totalPending } = useRequests();
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -61,13 +63,18 @@ export function AdminSidebar() {
               to={item.path}
               end={item.end}
               onClick={() => setOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors relative ${isActive
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
             >
               <Icon className="h-5 w-5" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.label === "Inbox" && totalPending > 0 && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                  {totalPending}
+                </span>
+              )}
             </NavLink>
           );
         })}

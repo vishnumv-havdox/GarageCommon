@@ -92,7 +92,7 @@ interface WorkOrder {
     priority: string;
     vehicle_id: string;
     vehicle: { vehicle_number: string; model: string; customer_id: string } | null;
-    customer: { id: string; name: string; phone?: string; email?: string; address?: string } | null;
+    customer: { id: string; name: string; company_name?: string; phone?: string; email?: string; address?: string } | null;
     created_at: string;
     notes?: string;
     estimated_cost?: number;
@@ -343,7 +343,7 @@ export default function WorkOrderDetail() {
             vehicle_type, 
             customer_id, 
             model_id,
-            customers(id, name, phone, email, address)
+            customers(id, name, company_name, phone, email, address)
           )
         `)
                 .eq("id", id)
@@ -358,7 +358,7 @@ export default function WorkOrderDetail() {
             const customer = vehicle?.customers;
             setWorkOrder({
                 ...woDataRaw,
-                customer: customer || { id: "", name: "Unknown", phone: "", email: "", address: "" }
+                customer: customer || { id: "", name: "Unknown", company_name: "", phone: "", email: "", address: "" }
             } as any);
 
             // Fetch Services, Tasks, and Employees
@@ -1135,13 +1135,23 @@ export default function WorkOrderDetail() {
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <div className="flex flex-col items-end gap-1">
-                                                            <Badge
-                                                                variant={emp.status === 'Accepted' ? 'default' : 'secondary'}
-                                                                className={`text-[9px] uppercase tracking-tighter px-2 h-4 border-0 ${emp.status === 'Accepted' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-500 hover:bg-orange-600 text-white'
-                                                                    }`}
-                                                            >
-                                                                {emp.status === 'Accepted' ? 'Working' : 'Pending'}
-                                                            </Badge>
+                                                            {(() => {
+                                                                const isFinished = ['completed', 'delivered', 'cancelled', 'rejected'].includes(workOrder?.status?.toLowerCase() || '') || s.status?.toLowerCase() === 'completed';
+                                                                const displayStatus = isFinished ? 'Completed' : (emp.status === 'Accepted' ? 'Working' : 'Pending');
+                                                                // Use Blue for Completed, Green for Working, Orange for Pending
+                                                                const badgeClass = isFinished
+                                                                    ? 'bg-blue-600 hover:bg-blue-700'
+                                                                    : (emp.status === 'Accepted' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-500 hover:bg-orange-600 text-white');
+
+                                                                return (
+                                                                    <Badge
+                                                                        variant={'default'}
+                                                                        className={`text-[9px] uppercase tracking-tighter px-2 h-4 border-0 ${badgeClass}`}
+                                                                    >
+                                                                        {displayStatus}
+                                                                    </Badge>
+                                                                );
+                                                            })()}
                                                             {emp.accepted_at && (
                                                                 <span className="text-[9px] text-muted-foreground font-mono">
                                                                     {format(new Date(emp.accepted_at), "MMM d, HH:mm")}
@@ -1382,7 +1392,14 @@ export default function WorkOrderDetail() {
                                 <div className="flex items-start gap-3">
                                     <div className="p-2 bg-primary/10 rounded-lg"><User className="h-5 w-5 text-primary" /></div>
                                     <div>
-                                        <h4 className="font-bold">{workOrder.customer?.name}</h4>
+                                        <h4 className="font-bold">
+                                            {workOrder.customer?.name}
+                                            {workOrder.customer?.company_name && (
+                                                <span className="block text-sm font-normal text-muted-foreground">
+                                                    🏢 {workOrder.customer.company_name}
+                                                </span>
+                                            )}
+                                        </h4>
                                         <p className="text-sm text-muted-foreground">{workOrder.customer?.phone}</p>
                                         <p className="text-xs text-muted-foreground">{workOrder.customer?.email}</p>
                                         {workOrder.customer?.address && (

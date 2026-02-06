@@ -813,6 +813,7 @@ export default function StaffDashboard() {
                     )
                     const progress = calculateProgress(currentStageTasks)
                     const allRepairsCompleted = repairsAvailable && progress.completed === progress.total && progress.total > 0 && !isFinished
+                    const deliveryInfo = getDeliveryStatus(work.estimated_delivery_date, currentTime)
 
                     return (
                       <Card key={work.id} className={cn(
@@ -824,110 +825,106 @@ export default function StaffDashboard() {
                         !work.priority && "border-l-4 border-l-gray-200"
                       )}>
                         <CardContent className="p-0">
-                          {/* Header */}
+                          {/* Header - RESTRUCTURED: Services above Description */}
                           <div className="p-4 border-b bg-muted/30">
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Wrench className="h-5 w-5 text-primary" />
-                                  <h3 className="font-semibold text-lg">{work.vehicle_number}</h3>
-                                  {work.company_name && (
-                                    <span className="text-sm text-muted-foreground">({work.company_name})</span>
-                                  )}
-                                  {activeTab === "active" && (
-                                    <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                                      Pos: {index + 1}
+                                <div className="flex items-center gap-2 mb-2">
+                                  {/* Status/Priority Badges First */}
+                                  <Badge variant={
+                                    work.priority === 'urgent' ? 'destructive' :
+                                      work.priority === 'high' ? 'default' :
+                                        'outline'
+                                  } className="uppercase text-[10px] tracking-wider">
+                                    {work.priority}
+                                  </Badge>
+
+                                  {deliveryInfo.status !== 'none' && (
+                                    <Badge variant="outline" className={cn("flex items-center gap-1", deliveryInfo.color)}>
+                                      <Clock className="h-3 w-3" />
+                                      {deliveryInfo.formatted}
                                     </Badge>
                                   )}
-                                  <Badge variant="outline">{work.vehicle_model}</Badge>
-                                  {work.priority === "urgent" && (
-                                    <Badge variant="destructive">Urgent</Badge>
-                                  )}
                                 </div>
-                                <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                                  <span className="flex items-center gap-1">
-                                    <User className="h-3 w-3" />
-                                    {work.customer_name}
-                                    {work.company_name && (
-                                      <span className="text-xs text-muted-foreground/70 ml-1">({work.company_name})</span>
-                                    )}
-                                  </span>
-                                  {/* Show all service types for consolidated work orders */}
-                                  {(work as any).service_types && (work as any).service_types.size > 1 ? (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-xs">Services:</span>
-                                      {Array.from((work as any).service_types).map((st: string, i: number) => (
-                                        <Badge key={i} variant="outline" className="text-[10px]">
+
+                                <CardTitle className="text-xl flex items-center gap-2 mb-1">
+                                  {work.vehicle_number}
+                                  <span className="text-muted-foreground font-normal text-base">- {work.vehicle_model}</span>
+                                </CardTitle>
+
+                                <CardDescription className="flex items-center gap-2 mb-3">
+                                  <User className="h-3 w-3" /> {work.customer_name}
+                                  {work.company_name && <span className="text-xs bg-muted px-1.5 py-0.5 rounded">🏢 {work.company_name}</span>}
+                                </CardDescription>
+
+                                {/* Services Section - Moved Above Description */}
+                                <div className="mb-3">
+                                  {(work as any).service_types && (work as any).service_types.size > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      {Array.from((work as any).service_types).map((st: any, i: number) => (
+                                        <Badge key={i} variant="secondary" className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
+                                          <Wrench className="h-3 w-3 mr-1" />
                                           {st}
                                         </Badge>
                                       ))}
                                     </div>
                                   ) : (
-                                    <span className="flex items-center gap-1">
-                                      <Briefcase className="h-3 w-3" />
+                                    <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                                      <Wrench className="h-3 w-3 mr-1" />
                                       {work.service_type}
-                                    </span>
-                                  )}
-                                  {work.is_reopened && (
-                                    <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse text-[10px] h-4 py-0">
-                                      <RefreshCw className="h-2 w-2 mr-1" /> Reopened
                                     </Badge>
                                   )}
-                                  {work.estimated_delivery_date && (() => {
-                                    const deliveryInfo = getDeliveryStatus(work.estimated_delivery_date, currentTime);
-                                    return (
-                                      <span className={`flex items-center gap-1 font-semibold ${deliveryInfo.color}`}>
-                                        <Clock className="h-3 w-3" />
-                                        {deliveryInfo.formatted}
-                                      </span>
-                                    );
-                                  })()}
                                 </div>
 
-                                {/* Overall Progress */}
-                                <div className="mt-3 max-w-xs">
-                                  <div className="flex justify-between items-center text-[10px] font-bold text-muted-foreground uppercase mb-1">
-                                    <span>Overall Completion</span>
+                                {/* Description Section - Below Services */}
+                                {work.description && (
+                                  <div className="text-sm text-muted-foreground bg-background/50 p-2 rounded border border-dashed">
+                                    <span className="font-semibold text-xs uppercase tracking-wider block mb-1">Instructions:</span>
+                                    {work.description}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Right Side Status Badges */}
+                              <div className="flex flex-col items-end gap-2 ml-4">
+                                {getInspectionStatusBadge(work.inspection_status)}
+                                {canAccept ? (
+                                  <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                    <Clock className="h-3 w-3 mr-1" /> Action Required
+                                  </Badge>
+                                ) : isWaitingForInspection ? (
+                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                    <Eye className="h-3 w-3 mr-1" /> Inspection Pending
+                                  </Badge>
+                                ) : isWaitingForAdminRelease ? (
+                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                    <Lock className="h-3 w-3 mr-1" /> Admin Release Pending
+                                  </Badge>
+                                ) : hasAccepted ? (
+                                  <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                                    <CheckCircle2 className="h-3 w-3 mr-1" /> Work Started
+                                  </Badge>
+                                ) : null}
+
+                                {work.is_reopened && (
+                                  <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse text-[10px]">
+                                    <RefreshCw className="h-2 w-2 mr-1" /> Reopened
+                                  </Badge>
+                                )}
+
+                                {/* Progress */}
+                                <div className="mt-2 w-24">
+                                  <div className="flex justify-between text-[10px] items-center mb-1 font-medium text-muted-foreground">
+                                    <span>Progress</span>
                                     <span>{work.progress}%</span>
                                   </div>
                                   <Progress value={work.progress} className="h-1.5" />
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {getInspectionStatusBadge(work.inspection_status)}
-                                {canAccept ? (
-                                  <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                                    <Clock className="h-3 w-3 mr-1" />
-                                    Action Required
-                                  </Badge>
-                                ) : isWaitingForInspection ? (
-                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                    <Eye className="h-3 w-3 mr-1" />
-                                    Inspection Pending
-                                  </Badge>
-                                ) : isWaitingForAdminRelease ? (
-                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                    <Lock className="h-3 w-3 mr-1" />
-                                    Admin Release Pending
-                                  </Badge>
-                                ) : hasAccepted ? (
-                                  <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
-                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    Work Started
-                                  </Badge>
-                                ) : null}
-                                {isFinished && (
-                                  <Badge variant="default" className="bg-zinc-800">
-                                    {['completed', 'delivered', 'approved'].includes(work.work_order_status?.toLowerCase())
-                                      ? "Successfully Delivered"
-                                      : work.work_order_status}
-                                  </Badge>
-                                )}
-                              </div>
                             </div>
                           </div>
 
-                          {/* Waiting State Banner */}
+                          {/* Waiting States Banners */}
                           {isWaitingForInspection && (
                             <div className="p-8 bg-muted/20 border-b flex flex-col items-center justify-center text-center gap-2">
                               <div className="h-12 w-12 rounded-full bg-yellow-100 flex items-center justify-center mb-2">
@@ -1006,10 +1003,8 @@ export default function StaffDashboard() {
                             </div>
                           )}
 
-
-
-                          {/* Tasks Section - Visible when NOT pending acceptance */}
-                          {hasAccepted && !isFinished && work.tasks && work.tasks.length > 0 && (
+                          {/* Tasks Section - Visible when NOT pending acceptance OR when finished (History) */}
+                          {(hasAccepted || isFinished) && work.tasks && work.tasks.length > 0 && (
                             <div className="p-4 space-y-4">
                               {/* Show all unique tasks (no duplication) */}
                               {(() => {
@@ -1057,7 +1052,7 @@ export default function StaffDashboard() {
                                                 <div className="flex-1 flex items-center gap-2 flex-wrap">
                                                   <label
                                                     htmlFor={`task-${task.id}`}
-                                                    className={`text-sm cursor-pointer ${task.is_completed ? "line-through text-muted-foreground" : ""}`}
+                                                    className={`text-sm cursor-pointer ${task.is_completed && !isFinished ? "line-through text-muted-foreground" : "font-medium"}`}
                                                   >
                                                     {index + 1}. {task.task_name}
                                                   </label>
@@ -1135,13 +1130,6 @@ export default function StaffDashboard() {
                             </div>
                           )}
 
-
-                          {/* Description */}
-                          <div className="p-4 text-sm text-muted-foreground border-b bg-muted/5">
-                            <span className="font-semibold block mb-1">Service Description:</span>
-                            {work.description}
-                          </div>
-
                           {/* Parts Section */}
                           <div className="p-4 border-b">
                             <Button
@@ -1192,13 +1180,12 @@ export default function StaffDashboard() {
                       </Card>
                     );
                   })}
-                </div>
+                </div >
               )}
-            </CardContent>
-          </Card>
-        </div>
-      </main>
-    </div>
+            </CardContent >
+          </Card >
+        </div >
+      </main >
+    </div >
   );
 }
-

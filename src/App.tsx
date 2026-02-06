@@ -31,7 +31,10 @@ import InventoryRoom from "./pages/inventory/InventoryRoom";
 import StaffDashboard from "./pages/staff/Dashboard";
 import CustomerPortal from "./pages/customer/Portal";
 import NotFound from "./pages/NotFound";
+import RequestsInbox from "./pages/admin/RequestsInbox";
+import RequestConfirmation from "./pages/admin/RequestConfirmation";
 import { accessControlConfig } from "@/config/accessControl";
+import { RequestsProvider } from "@/contexts/RequestsContext";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +49,8 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/work-orders/:id": AdminWorkOrderDetail,
   "/admin/analytics": AdminAnalytics,
   "/admin/progress": AdminProgress,
+  "/admin/requests": RequestsInbox,
+  "/admin/requests/confirmation": RequestConfirmation,
   "/admin/inventory": AdminInventory,
   "/admin/invoices": AdminInvoices,
   "/admin/invoices/:id": AdminInvoiceEditor,
@@ -67,32 +72,34 @@ const routeComponents: Record<string, React.ComponentType> = {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/auth" element={<Login />} />
-          <Route path="/inventory/login" element={<InventoryLogin />} />
+        <RequestsProvider>
+          <Toaster />
+          <Sonner />
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/auth" element={<Login />} />
+            <Route path="/inventory/login" element={<InventoryLogin />} />
 
-          {/* Generate routes from centralized access control config */}
-          {accessControlConfig
-            .filter(rule => rule.path !== "*" && rule.path !== "/inventory/login" && routeComponents[rule.path])
-            .map(rule => (
-              <Route
-                key={rule.path}
-                path={rule.path}
-                element={
-                  <ProtectedRoute allowedRoles={rule.allowedRoles}>
-                    {React.createElement(routeComponents[rule.path])}
-                  </ProtectedRoute>
-                }
-              />
-            ))}
+            {/* Generate routes from centralized access control config */}
+            {accessControlConfig
+              .filter(rule => rule.path !== "*" && rule.path !== "/inventory/login" && routeComponents[rule.path])
+              .map(rule => (
+                <Route
+                  key={rule.path}
+                  path={rule.path}
+                  element={
+                    <ProtectedRoute allowedRoles={rule.allowedRoles}>
+                      {React.createElement(routeComponents[rule.path])}
+                    </ProtectedRoute>
+                  }
+                />
+              ))}
 
-          {/* Catch-all route */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+            {/* Catch-all route */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </RequestsProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

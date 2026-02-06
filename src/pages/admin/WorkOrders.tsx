@@ -168,7 +168,7 @@ export default function AdminWorkOrders() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'overdue' | 'today' | 'week' | 'none'>('all');
+  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'overdue' | 'today' | 'week' | 'none' | 'completed'>('all');
   const [currentTime, setCurrentTime] = useState(Date.now());
 
   // Stats
@@ -336,11 +336,13 @@ export default function AdminWorkOrders() {
 
         switch (deliveryFilter) {
           case 'overdue':
-            return deliveryTime < now;
+            return deliveryTime < now && !['completed', 'delivered', 'approved', 'cancelled', 'rejected'].includes(o.status.toLowerCase());
           case 'today':
             return deliveryTime >= todayStart && deliveryTime <= todayEnd;
           case 'week':
             return deliveryTime >= now && deliveryTime <= weekEnd;
+          case 'completed':
+            return ['completed', 'delivered', 'approved'].includes(o.status.toLowerCase());
           default:
             return true;
         }
@@ -484,6 +486,15 @@ export default function AdminWorkOrders() {
               >
                 <AlertTriangle className="h-3 w-3 mr-1" />
                 Overdue
+              </Button>
+              <Button
+                variant={deliveryFilter === 'completed' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setDeliveryFilter('completed')}
+                className={deliveryFilter === 'completed' ? 'bg-green-600 hover:bg-green-700' : 'text-xs'}
+              >
+                <CheckCircle2 className="h-3 w-3 mr-1" />
+                Completed
               </Button>
               <Button
                 variant={deliveryFilter === 'today' ? 'default' : 'outline'}

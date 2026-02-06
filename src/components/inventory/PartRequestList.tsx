@@ -278,7 +278,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                 _quantity: returnQty,
                 _reason: returnReason,
                 _condition: returnCondition,
-                _employee_id: currentEmployeeId
+                _employee_id: isAdmin ? selectedEmployeeId : currentEmployeeId
             });
 
             if (rpcError) throw rpcError;
@@ -598,13 +598,27 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                                                 onClick={() => {
                                                                     setSelectedReqForReturn(req);
                                                                     setReturnQty(req.issued_qty);
+                                                                    if (isAdmin && req.requested_by) {
+                                                                        setSelectedEmployeeId(req.requested_by);
+                                                                    }
                                                                     setIsReturnDialogOpen(true);
                                                                 }}
                                                             >
-                                                                <ArrowLeftRight className="h-3 w-3" /> Request Return
+                                                                <ArrowLeftRight className="h-3 w-3" /> Stop Using / Return
                                                             </Button>
                                                         )}
                                                     </div>
+                                                )}
+                                                {/* Allow Stop Using for Approved but not issued parts (Cancel) */}
+                                                {(req.status === 'approved' && req.issued_qty === 0) && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="text-destructive hover:bg-destructive/10"
+                                                        onClick={() => handleReject(req.id)}
+                                                    >
+                                                        Stop Using / Cancel
+                                                    </Button>
                                                 )}
                                             </div>
                                         </TableCell>
@@ -629,6 +643,22 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                 <div className="font-bold">{selectedReqForReturn?.inventory?.item_name}</div>
                                 <div className="text-muted-foreground">Issued Qty: {selectedReqForReturn?.issued_qty}</div>
                             </div>
+
+                            {isAdmin && (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Returned By</label>
+                                    <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select employee" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {employees.map((emp) => (
+                                                <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">

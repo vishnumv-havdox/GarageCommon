@@ -50,7 +50,7 @@ export const accessControlConfig: AccessRule[] = [
   // Admin routes
   {
     path: "/admin",
-    allowedRoles: ["admin"],
+    allowedRoles: ["admin", "manager"],
     redirectTo: "/dashboard",
     description: "Admin dashboard",
     exact: true,
@@ -158,6 +158,18 @@ export const accessControlConfig: AccessRule[] = [
     description: "Services Master management - admin and manager",
   },
 
+  {
+    path: "/admin/requests",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Request Inbox - Pending Approvals",
+  },
+  {
+    path: "/admin/requests/confirmation",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Request Approval Confirmation",
+  },
   {
     path: "/admin/settings",
     allowedRoles: ["admin", "manager"],
@@ -275,6 +287,7 @@ export interface NavItem {
 
 export const navConfig: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", roles: ["admin", "staff", "customer"], end: true },
+  { label: "Inbox", path: "/admin/requests", icon: Inbox, roles: ["admin", "manager"] },
   { label: "Users", path: "/admin/users", icon: Shield, roles: ["admin"] },
   { label: "Employees", path: "/admin/employees", icon: UserCog, roles: ["admin"] },
   { label: "Customers", path: "/admin/customers", icon: Users, roles: ["admin", "manager"] },
@@ -300,6 +313,6 @@ export const navConfig: NavItem[] = [
 import {
   Shield, UserCog, Users, Truck, FileText, Package, Receipt,
   Briefcase, User, Settings, Activity, BarChart3, PieChart, QrCode,
-  CalendarCheck, Banknote, Wrench
+  CalendarCheck, Banknote, Wrench, Inbox
 } from "lucide-react";
 

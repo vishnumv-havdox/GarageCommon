@@ -134,6 +134,18 @@ export const accessControlConfig: AccessRule[] = [
     description: "Unified Customer & Vehicle Analytics - admin and manager",
   },
   {
+    path: "/admin/customers/:id/ledger",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Detailed Customer Ledger and Financial History",
+  },
+  {
+    path: "/admin/ledger",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Customer Ledger Overview",
+  },
+  {
     path: "/admin/access-control",
     allowedRoles: ["admin"],
     redirectTo: "/dashboard",
@@ -293,6 +305,7 @@ export const navConfig: NavItem[] = [
   { label: "Customers", path: "/admin/customers", icon: Users, roles: ["admin", "manager"] },
   { label: "Vehicles", path: "/admin/vehicles", icon: Truck, roles: ["admin", "manager"] },
   { label: "Work Orders", path: "/admin/work-orders", icon: FileText, roles: ["admin", "manager"] },
+  { label: "Ledger", path: "/admin/ledger", icon: BookText, roles: ["admin", "manager"] },
   { label: "Performance", path: "/admin/analytics", icon: BarChart3, roles: ["admin"] },
   { label: "Progress", path: "/admin/progress", icon: Activity, roles: ["admin", "manager", "staff"] },
   { label: "Inventory", path: "/admin/inventory", icon: Package, roles: ["admin"] },
@@ -313,6 +326,6 @@ export const navConfig: NavItem[] = [
 import {
   Shield, UserCog, Users, Truck, FileText, Package, Receipt,
   Briefcase, User, Settings, Activity, BarChart3, PieChart, QrCode,
-  CalendarCheck, Banknote, Wrench, Inbox
+  CalendarCheck, Banknote, Wrench, Inbox, BookText
 } from "lucide-react";
 

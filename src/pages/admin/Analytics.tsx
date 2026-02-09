@@ -39,9 +39,15 @@ export default function AdminAnalytics() {
             setOpData(opRes);
 
             // Fetch Financial Data
-            const { data: finRes, error: finError } = await supabase.rpc('get_financial_analytics');
-            if (finError) throw finError;
-            setFinData(finRes);
+            const { data: finRes, error: finError } = await supabase.rpc('get_financial_analytics_v2');
+            if (finError) {
+                console.error("Falling back to v1 analytics:", finError);
+                const { data: v1Res, error: v1Error } = await supabase.rpc('get_financial_analytics');
+                if (v1Error) throw v1Error;
+                setFinData(v1Res);
+            } else {
+                setFinData(finRes);
+            }
 
             // Fetch Employee Data
             const { data: empRes, error: empError } = await supabase.rpc('get_employee_analytics');
@@ -117,12 +123,12 @@ export default function AdminAnalytics() {
                     </Card>
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Rework Rate</CardTitle>
-                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                            <CardTitle className="text-sm font-medium">Realization Rate</CardTitle>
+                            <TrendingUp className={`h-4 w-4 ${finData?.realization_rate > 95 ? 'text-green-600' : 'text-orange-600'}`} />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{opData?.rework_rate?.toFixed(2)}%</div>
-                            <p className="text-xs text-muted-foreground">Target: &lt; 2%</p>
+                            <div className="text-2xl font-bold">{finData?.realization_rate?.toFixed(1) || '100'}%</div>
+                            <p className="text-xs text-muted-foreground">₹{finData?.total_deductions?.toLocaleString()} in deductions</p>
                         </CardContent>
                     </Card>
                 </div>

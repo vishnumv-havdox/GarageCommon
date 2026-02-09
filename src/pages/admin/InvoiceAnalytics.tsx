@@ -7,7 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsContent, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogFooter
+} from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
@@ -19,13 +36,14 @@ import {
 } from "recharts";
 import {
     IndianRupee, TrendingUp, TrendingDown, Calendar, Download,
-    FileText, CreditCard, Users, AlertCircle, ArrowUpRight, ArrowDownRight, Search, Filter, BarChart3
+    FileText, CreditCard, Users, AlertCircle, ArrowUpRight, ArrowDownRight, Search, Filter, BarChart3,
+    ChevronUp, ChevronDown
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CustomerAnalyticsModal } from "@/components/analytics/CustomerAnalyticsModal";
 
 // Colors for charts
@@ -35,11 +53,36 @@ export default function InvoiceAnalytics() {
     const { user } = useAuth();
     const { toast } = useToast();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [loading, setLoading] = useState(true);
+
+    // Get active tab from URL or default to overview
+    const activeTab = searchParams.get('tab') || 'overview';
+
+    // Page Title based on tab
+    const pageTitle = activeTab === 'customers' ? 'Customer Insights' : 'Financial Insights';
+    const pageDesc = activeTab === 'customers'
+        ? 'Deep dive into customer spending and payment patterns.'
+        : 'Real-time analytics and financial reporting.';
+
+    const handleTabChange = (value: string) => {
+        setSearchParams({ tab: value });
+    };
 
     // Data State
     const [invoices, setInvoices] = useState<any[]>([]);
     const [payments, setPayments] = useState<any[]>([]);
+    const [paymentLinks, setPaymentLinks] = useState<any[]>([]);
+
+    // Export State
+    const [exportDialogOpen, setExportDialogOpen] = useState(false);
+    const [exportOptions, setExportOptions] = useState({
+        status: 'all', // all, paid, unpaid, partial
+        company: 'all',
+        includePending: true,
+        includeDeductions: true,
+        type: 'financial' as 'financial' | 'customer'
+    });
 
     // Customer Tab State
     const [customerSearch, setCustomerSearch] = useState("");
@@ -54,6 +97,7 @@ export default function InvoiceAnalytics() {
         from: startOfMonth(new Date()),
         to: new Date(),
     });
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         fetchData();
@@ -64,7 +108,15 @@ export default function InvoiceAnalytics() {
         try {
             const { data: invoicesData, error: invoicesError } = await supabase
                 .from('invoices')
-                .select('*, customer:customers(id, name, email, phone, company_name, created_at), work_order:work_orders(service_type)');
+                .select(`
+                    *,
+                    customer:customers(id, name, email, phone, company_name, created_at),
+                    work_order:work_orders(
+                        id,
+                        service_type,
+                        vehicle:vehicles(vehicle_number)
+                    )
+                `);
 
             if (invoicesError) throw invoicesError;
 
@@ -74,8 +126,15 @@ export default function InvoiceAnalytics() {
 
             if (paymentsError) throw paymentsError;
 
+            const { data: linksData, error: linksError } = await supabase
+                .from('payment_links')
+                .select('*, payment:payments(*), invoice:invoices(customer_id)');
+
+            if (linksError) throw linksError;
+
             setInvoices(invoicesData || []);
             setPayments(paymentsData || []);
+            setPaymentLinks(linksData || []);
         } catch (error: any) {
             console.error('Error fetching analytics data:', error);
             toast({
@@ -126,17 +185,19 @@ export default function InvoiceAnalytics() {
     // --- Metrics Calculation ---
     const metrics = useMemo(() => {
         const totalInvoiced = filteredData.invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+        const totalDeductions = filteredData.invoices.reduce((sum, inv) => sum + (inv.total_deductions || 0), 0);
         const totalReceived = filteredData.payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount || 0), 0);
 
-        // Pending includes: 
-        // 1. Invoices not fully paid (simple heuristic: Total Invoiced - Total Approved Payments linked to those invoices)
-        // For simplicity in this view, we can use invoice status or calc manually. 
-        // Let's use filtered invoices status for a quick check, but exact calculation is better.
+        // Realization Rate: (Received + Deduction) / Invoiced
+        // Or simply Collected / Invoiced. Usually Realization Rate = Received / (Total - Specific Credits). 
+        // Let's use: (Received / (Invoiced - Deductions)) or (Received + Deductions) / Invoiced.
+        // Business logic: Realization = (Approved Payments) / (Total Invoiced Amount)
+        const realizationRate = totalInvoiced > 0 ? (totalReceived / totalInvoiced) * 100 : 0;
+
         const pendingInvoices = filteredData.invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Draft');
-        const pendingAmount = pendingInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0); // This is approximate (doesn't account for partial payments if any allowed)
+        const pendingAmount = pendingInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
 
         const overdueInvoices = filteredData.invoices.filter(inv => {
-            // Assuming 'due_date' exists, mostly it's created_at + terms. Let's assume overdue if not paid > 30 days for now or use created_at if no due_date
             const created = new Date(inv.created_at);
             const isOverdue = (new Date().getTime() - created.getTime()) > (30 * 24 * 60 * 60 * 1000); // 30 days
             return inv.status !== 'Paid' && inv.status !== 'Draft' && isOverdue;
@@ -146,9 +207,11 @@ export default function InvoiceAnalytics() {
         return {
             totalInvoiced,
             totalReceived,
+            totalDeductions,
+            realizationRate,
             pendingAmount,
             overdueAmount,
-            netRevenue: totalReceived // Net revenue is usually actual cash in hand
+            netRevenue: totalReceived
         };
     }, [filteredData]);
 
@@ -172,54 +235,88 @@ export default function InvoiceAnalytics() {
                     totalReceived: 0,
                     pendingAmount: 0,
                     serviceCount: 0,
-                    lastPaymentDate: null
+                    lastPaymentDate: null,
+                    vehicles: new Set<string>(),
+                    workOrders: []
                 });
             }
 
             const customer = metricsMap.get(customerId);
             customer.totalInvoiced += (inv.total || 0);
+            customer.totalDeductions = (customer.totalDeductions || 0) + (inv.total_deductions || 0);
             customer.serviceCount += 1;
 
-            // Pending logic: (Total - Paid for this invoice). 
-            // Better: Sum of unpaid invoices.
-            if (inv.status !== 'Paid') {
+            if (inv.work_order) {
+                if (inv.work_order.vehicle?.vehicle_number) {
+                    customer.vehicles.add(inv.work_order.vehicle.vehicle_number);
+                }
+                customer.workOrders.push({
+                    id: inv.work_order.id,
+                    service: inv.work_order.service_type,
+                    bill_number: inv.bill_number,
+                    type: inv.type || 'invoice'
+                });
+            }
+
+            if (inv.status !== 'Paid' && inv.status !== 'Draft') {
                 customer.pendingAmount += (inv.total || 0);
             }
         });
 
-        // Process Payments (Link to customer via invoice if possible, or just aggregate if we had customer_id in payments)
-        // Since we don't have customer_id in payments table directly (usually), we rely on invoice linkage.
-        // But `payments` fetched here are raw. We need to match them to invoices.
-        // Optimization: Create an invoiceId -> customerId map.
+        // Create an invoiceId -> customerId map.
         const invoiceCustomerMap = new Map();
         invoices.forEach(inv => invoiceCustomerMap.set(inv.id, inv.customer_id));
 
+        // Process Payments (Link to customer via invoice)
+
+        // Better Approach:
+        // Iterate filtered payments.
         filteredData.payments.forEach(pay => {
             if (pay.status !== 'approved') return;
 
-            // If payment has customer_id directly (ideal), use it. Else infer from invoice.
-            // Assuming simplified schema where payments link to invoice.
-            // If payment isn't linked to invoice (e.g. advance), this might be tricky. 
-            // Let's assume most have invoice_id.
-            let customerId = (pay as any).customer_id; // Check if exists
+            // Calculate Cash Ratio (to exclude deductions from revenue)
+            const totalValue = (pay.amount || 0) + (pay.deduction_amount || 0);
+            const cashRatio = totalValue > 0 ? (pay.amount || 0) / totalValue : 0;
 
-            if (!customerId && pay.invoice_id) {
-                customerId = invoiceCustomerMap.get(pay.invoice_id);
-            }
+            // Check if this payment has links in the global `paymentLinks` state
+            const links = paymentLinks.filter((l: any) => l.payment_id === pay.id);
 
-            if (customerId && metricsMap.has(customerId)) {
-                const customer = metricsMap.get(customerId);
-                customer.totalReceived += (pay.amount || 0);
+            if (links.length > 0) {
+                // Distributed Payment
+                links.forEach((link: any) => {
+                    // Find customer for this link's invoice
+                    const customerId = link.invoice?.customer_id || invoiceCustomerMap.get(link.invoice_id);
+                    if (customerId && metricsMap.has(customerId)) {
+                        const customer = metricsMap.get(customerId);
+                        // Derived Cash Amount = Amount Applied * (Cash / Total Value)
+                        const cashAmount = (link.amount_applied || 0) * cashRatio;
+                        customer.totalReceived += cashAmount;
 
-                const payDate = new Date(pay.created_at);
-                if (!customer.lastPaymentDate || payDate > customer.lastPaymentDate) {
-                    customer.lastPaymentDate = payDate;
+                        // Update last payment date
+                        const payDate = new Date(pay.created_at);
+                        if (!customer.lastPaymentDate || payDate > customer.lastPaymentDate) {
+                            customer.lastPaymentDate = payDate;
+                        }
+                    }
+                });
+            } else if (pay.invoice_id) {
+                // Direct Payment (Legacy or Single)
+                const customerId = invoiceCustomerMap.get(pay.invoice_id);
+                if (customerId && metricsMap.has(customerId)) {
+                    const customer = metricsMap.get(customerId);
+                    // For direct payments, pay.amount is already the Cash Received.
+                    customer.totalReceived += (pay.amount || 0);
+
+                    const payDate = new Date(pay.created_at);
+                    if (!customer.lastPaymentDate || payDate > customer.lastPaymentDate) {
+                        customer.lastPaymentDate = payDate;
+                    }
                 }
             }
         });
 
         return Array.from(metricsMap.values());
-    }, [filteredData, invoices]);
+    }, [filteredData, invoices, paymentLinks]);
 
     const sortedCustomers = useMemo(() => {
         let data = [...customerMetrics];
@@ -250,8 +347,8 @@ export default function InvoiceAnalytics() {
 
         if (sortConfig) {
             data.sort((a, b) => {
-                const aValue = a[sortConfig.key];
-                const bValue = b[sortConfig.key];
+                const aValue = (a as any)[sortConfig.key];
+                const bValue = (b as any)[sortConfig.key];
 
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
@@ -264,6 +361,65 @@ export default function InvoiceAnalytics() {
 
         return data;
     }, [customerMetrics, customerSearch, sortConfig, customerFilter]);
+
+    const groupedCustomers = useMemo(() => {
+        const groups = new Map<string, any>();
+
+        sortedCustomers.forEach(c => {
+            const groupKey = c.company || `individual-${c.id}`;
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, {
+                    id: groupKey,
+                    isGroup: !!c.company,
+                    company: c.company,
+                    name: c.company ? c.company : c.name,
+                    customers: [],
+                    totalInvoiced: 0,
+                    totalReceived: 0,
+                    totalDeductions: 0,
+                    pendingAmount: 0,
+                    serviceCount: 0,
+                    lastPaymentDate: null,
+                    vehicles: new Set<string>()
+                });
+            }
+
+            const group = groups.get(groupKey);
+            group.customers.push(c);
+            group.totalInvoiced += c.totalInvoiced;
+            group.totalReceived += c.totalReceived;
+            group.totalDeductions += (c.totalDeductions || 0);
+            group.pendingAmount += c.pendingAmount;
+            group.serviceCount += c.serviceCount;
+
+            if (c.vehicles) {
+                c.vehicles.forEach((v: string) => group.vehicles.add(v));
+            }
+
+            if (c.lastPaymentDate && (!group.lastPaymentDate || c.lastPaymentDate > group.lastPaymentDate)) {
+                group.lastPaymentDate = c.lastPaymentDate;
+            }
+        });
+
+        return Array.from(groups.values());
+    }, [sortedCustomers]);
+
+    const uniqueCompanies = useMemo(() => {
+        const companies = new Set<string>();
+        invoices.forEach(inv => {
+            if (inv.customer?.company_name) {
+                companies.add(inv.customer.company_name);
+            }
+        });
+        return Array.from(companies).sort();
+    }, [invoices]);
+
+    const toggleGroup = (company: string) => {
+        const newSet = new Set(expandedGroups);
+        if (newSet.has(company)) newSet.delete(company);
+        else newSet.add(company);
+        setExpandedGroups(newSet);
+    };
 
     // --- Chart Data Preparation ---
     const chartData = useMemo(() => {
@@ -288,13 +444,9 @@ export default function InvoiceAnalytics() {
         const methodData = Object.keys(methodCounts).map(key => ({ name: key, value: methodCounts[key] }));
 
         // 3. Customer Revenue (Top 5)
-        const customerRevenue = new Map();
-        filteredData.invoices.forEach(inv => {
-            const name = inv.customer?.name || 'Unknown';
-            customerRevenue.set(name, (customerRevenue.get(name) || 0) + inv.total);
-        });
-        const customerData = Array.from(customerRevenue.entries())
-            .map(([name, value]) => ({ name, value }))
+        // Use customerMetrics which already aggregates everything correctly
+        const customerData = customerMetrics
+            .map(c => ({ name: c.name, value: c.totalReceived }))
             .sort((a, b) => b.value - a.value)
             .slice(0, 5);
 
@@ -335,107 +487,169 @@ export default function InvoiceAnalytics() {
         setSortConfig({ key, direction });
     };
 
-    const handleExport = (formatType: 'pdf' | 'csv', type: 'financial' | 'customer' = 'financial') => {
-        if (type === 'financial') {
-            if (formatType === 'pdf') {
-                const doc = new jsPDF();
-                doc.text("Financial Insight Report", 14, 20);
-                doc.setFontSize(10);
-                doc.text(`Period: ${dateRange?.from ? format(dateRange.from, 'PPP') : ''} - ${dateRange?.to ? format(dateRange.to, 'PPP') : ''}`, 14, 30);
+    const handleExport = (formatType: 'pdf' | 'csv') => {
+        const { type, status, company } = exportOptions;
 
-                const tableData = filteredData.invoices.map(inv => [
-                    inv.invoice_number,
-                    format(new Date(inv.created_at), 'MMM d, yyyy'),
-                    inv.customer?.name || 'Unknown',
-                    inv.status,
-                    `Rs. ${inv.total.toLocaleString()}`
-                ]);
+        let dataToExport = type === 'customer' ? sortedCustomers : filteredData.invoices;
 
-                autoTable(doc, {
-                    startY: 40,
-                    head: [['Invoice #', 'Date', 'Customer', 'Status', 'Total']],
-                    body: tableData,
-                });
+        // Apply filters
+        if (status !== 'all') {
+            dataToExport = dataToExport.filter((item: any) => {
+                if (type === 'customer') {
+                    if (status === 'paid') return item.pendingAmount === 0;
+                    if (status === 'unpaid') return item.pendingAmount > 0;
+                    return true;
+                } else {
+                    return item.status.toLowerCase() === status.toLowerCase();
+                }
+            });
+        }
 
-                // Add Summary
-                const finalY = (doc as any).lastAutoTable.finalY + 10;
-                doc.text(`Total Invoiced: Rs. ${metrics.totalInvoiced.toLocaleString()}`, 14, finalY);
-                doc.text(`Total Received: Rs. ${metrics.totalReceived.toLocaleString()}`, 14, finalY + 7);
-                doc.text(`Pending: Rs. ${metrics.pendingAmount.toLocaleString()}`, 14, finalY + 14);
+        if (company !== 'all') {
+            dataToExport = dataToExport.filter((item: any) => {
+                const compName = type === 'customer' ? item.company : (item.customer?.company_name);
+                return compName === company;
+            });
+        }
 
-                doc.save("financial_report.pdf");
-            } else {
-                // CSV Export
-                const headers = ['Invoice Number', 'Date', 'Customer', 'Status', 'Total'];
-                const rows = filteredData.invoices.map(inv => [
-                    inv.invoice_number,
-                    format(new Date(inv.created_at), 'yyyy-MM-dd'),
-                    inv.customer?.name || 'Unknown',
-                    inv.status,
-                    inv.total
-                ]);
+        if (formatType === 'pdf') {
+            const doc = new jsPDF();
+            const title = type === 'customer' ? "Customer Financial Analysis" : "Financial Insight Report";
+            doc.text(title, 14, 20);
+            doc.setFontSize(10);
+            const period = `Period: ${dateRange?.from ? format(dateRange.from, 'PPP') : ''} - ${dateRange?.to ? format(dateRange.to, 'PPP') : ''}`;
+            const filterInfo = `Filters: Status=${status}, Company=${company}`;
+            doc.text(`${period} | ${filterInfo}`, 14, 30);
 
-                const csvContent = [
-                    headers.join(','),
-                    ...rows.map(r => r.join(','))
-                ].join('\n');
-
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.setAttribute('download', 'financial_report.csv');
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            }
-        } else {
-            // Customer Export
-            if (formatType === 'pdf') {
-                const doc = new jsPDF();
-                doc.text("Customer Financial Analysis", 14, 20);
-
-                const tableData = sortedCustomers.map(c => [
+            let headers, body;
+            if (type === 'customer') {
+                headers = [['Customer', 'Services', 'Total Billed', 'Paid', 'Deductions', 'Pending']];
+                body = dataToExport.map((c: any) => [
                     c.name,
                     c.serviceCount,
                     `Rs. ${c.totalInvoiced.toLocaleString()}`,
                     `Rs. ${c.totalReceived.toLocaleString()}`,
+                    `Rs. ${(c.totalDeductions || 0).toLocaleString()}`,
                     `Rs. ${c.pendingAmount.toLocaleString()}`,
                 ]);
-
-                autoTable(doc, {
-                    startY: 30,
-                    head: [['Customer', 'Services', 'Total Billed', 'Paid', 'Pending']],
-                    body: tableData,
-                });
-
-                doc.save("customer_analytics.pdf");
             } else {
-                const headers = ['Customer', 'Services', 'Total Billed', 'Paid', 'Pending', 'Last Payment'];
-                const rows = sortedCustomers.map(c => [
-                    c.name,
-                    c.serviceCount,
-                    c.totalInvoiced,
-                    c.totalReceived,
-                    c.pendingAmount,
-                    c.lastPaymentDate ? format(c.lastPaymentDate, 'yyyy-MM-dd') : '-'
+                headers = [['Invoice #', 'Date', 'Customer', 'Status', 'Total']];
+                body = dataToExport.map((inv: any) => [
+                    `${inv.type === 'quotation' ? 'QUO' : 'INV'}-${inv.bill_number || 'Draft'}`,
+                    format(new Date(inv.created_at), 'MMM d, yyyy'),
+                    inv.customer?.name || 'Unknown',
+                    inv.status,
+                    `Rs. ${(inv.total || 0).toLocaleString()}`
                 ]);
-
-                const csvContent = [
-                    headers.join(','),
-                    ...rows.map(r => r.join(','))
-                ].join('\n');
-
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.setAttribute('download', 'customer_analytics.csv');
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
             }
+
+            autoTable(doc, {
+                startY: 40,
+                head: headers,
+                body: body,
+            });
+
+            if (type === 'financial') {
+                const finalY = (doc as any).lastAutoTable.finalY + 10;
+                const totalInvoiced = dataToExport.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
+                const totalDeductions = dataToExport.reduce((sum: number, inv: any) => sum + (inv.total_deductions || 0), 0);
+                doc.text(`Exported Total: Rs. ${totalInvoiced.toLocaleString()}`, 14, finalY);
+                doc.text(`Exported Deductions: Rs. ${totalDeductions.toLocaleString()}`, 14, finalY + 7);
+            }
+
+            doc.save(`${type}_report_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+        } else {
+            // CSV Logic (simplified for brevity)
+            const headers = type === 'customer' ? ['Customer', 'Services', 'Total', 'Paid', 'Deductions', 'Pending'] : ['Number', 'Date', 'Customer', 'Status', 'Total'];
+            const rows = dataToExport.map((item: any) => {
+                if (type === 'customer') return [item.name, item.serviceCount, item.totalInvoiced, item.totalReceived, item.totalDeductions, item.pendingAmount];
+                return [item.bill_number, item.created_at, item.customer?.name, item.status, item.total];
+            });
+
+            const csvContent = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', `${type}_export.csv`);
+            link.click();
         }
+
+        setExportDialogOpen(false);
         toast({ title: "Export Successful", description: `Report downloaded as ${formatType.toUpperCase()}` });
     };
+
+    const AdvancedExportDialog = () => (
+        <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                    <Download className="h-4 w-4" /> Export Report
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle>Export Options</DialogTitle>
+                    <DialogDescription>
+                        Select the criteria for your generated report.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="type" className="text-right text-xs">Report Type</Label>
+                        <Select
+                            value={exportOptions.type}
+                            onValueChange={(v: any) => setExportOptions({ ...exportOptions, type: v })}
+                        >
+                            <SelectTrigger className="col-span-3 text-xs h-8">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="financial">Financial (Invoices)</SelectItem>
+                                <SelectItem value="customer">Customer Financials</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="status" className="text-right text-xs">Status</Label>
+                        <Select
+                            value={exportOptions.status}
+                            onValueChange={(v) => setExportOptions({ ...exportOptions, status: v })}
+                        >
+                            <SelectTrigger className="col-span-3 text-xs h-8">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All</SelectItem>
+                                <SelectItem value="paid">Paid / Settled</SelectItem>
+                                <SelectItem value="unpaid">Unpaid / Pending</SelectItem>
+                                <SelectItem value="partial">Partial Payments</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="company" className="text-right text-xs">Company</Label>
+                        <Select
+                            value={exportOptions.company}
+                            onValueChange={(v) => setExportOptions({ ...exportOptions, company: v })}
+                        >
+                            <SelectTrigger className="col-span-3 text-xs h-8">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Companies</SelectItem>
+                                {uniqueCompanies.map(c => (
+                                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <DialogFooter className="gap-2 sm:gap-0">
+                    <Button variant="outline" size="sm" onClick={() => handleExport('csv')}>CSV</Button>
+                    <Button size="sm" onClick={() => handleExport('pdf')}>PDF</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 
     return (
         <div className="flex bg-background min-h-screen">
@@ -445,8 +659,8 @@ export default function InvoiceAnalytics() {
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Financial Insights</h1>
-                        <p className="text-muted-foreground">Real-time analytics and financial reporting.</p>
+                        <h1 className="text-3xl font-bold tracking-tight">{pageTitle}</h1>
+                        <p className="text-muted-foreground">{pageDesc}</p>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -507,16 +721,11 @@ export default function InvoiceAnalytics() {
                             </Popover>
                         )}
 
-                        <Button variant="outline" onClick={() => handleExport('csv', 'financial')}>
-                            <FileText className="mr-2 h-4 w-4" /> CSV
-                        </Button>
-                        <Button onClick={() => handleExport('pdf', 'financial')}>
-                            <Download className="mr-2 h-4 w-4" /> PDF Report
-                        </Button>
+                        <AdvancedExportDialog />
                     </div>
                 </div>
 
-                <Tabs defaultValue="overview" className="space-y-4">
+                <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
                     <TabsList>
                         <TabsTrigger value="overview">Overview</TabsTrigger>
                         <TabsTrigger value="customers">Customer Insights</TabsTrigger>
@@ -540,13 +749,30 @@ export default function InvoiceAnalytics() {
                             </Card>
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Total Invoiced</CardTitle>
-                                    <FileText className="h-4 w-4 text-muted-foreground" />
+                                    <CardTitle className="text-sm font-medium">Realization Rate</CardTitle>
+                                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">₹{metrics.totalInvoiced.toLocaleString()}</div>
+                                    <div className="text-2xl font-bold">{metrics.realizationRate.toFixed(1)}%</div>
+                                    <div className="flex items-center gap-1 mt-1">
+                                        <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
+                                            <div className="bg-primary h-full transition-all duration-500" style={{ width: `${metrics.realizationRate}%` }} />
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-bold">
+                                        Collection efficiency
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Total Deductions</CardTitle>
+                                    <TrendingDown className="h-4 w-4 text-orange-500" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-orange-600">₹{metrics.totalDeductions.toLocaleString()}</div>
                                     <p className="text-xs text-muted-foreground">
-                                        Total value of invoices generated
+                                        Lost revenue due to deductions
                                     </p>
                                 </CardContent>
                             </Card>
@@ -735,13 +961,8 @@ export default function InvoiceAnalytics() {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={() => handleExport('csv', 'customer')}>
-                                    <FileText className="mr-2 h-4 w-4" /> Export CSV
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => handleExport('pdf', 'customer')}>
-                                    <Download className="mr-2 h-4 w-4" /> Export PDF
-                                </Button>
+                            <div className="flex gap-2 text-xs text-muted-foreground italic">
+                                Use the export button in the header for advanced options
                             </div>
                         </div>
 
@@ -755,49 +976,127 @@ export default function InvoiceAnalytics() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="cursor-pointer" onClick={() => handleCustomerSort('name')}>Customer</TableHead>
+                                            <TableHead>Vehicles & History</TableHead>
                                             <TableHead className="text-center cursor-pointer" onClick={() => handleCustomerSort('serviceCount')}>Services</TableHead>
                                             <TableHead className="text-right cursor-pointer" onClick={() => handleCustomerSort('totalInvoiced')}>Total Billed</TableHead>
                                             <TableHead className="text-right cursor-pointer" onClick={() => handleCustomerSort('totalReceived')}>Paid</TableHead>
+                                            <TableHead className="text-right text-orange-600">Deductions</TableHead>
                                             <TableHead className="text-right cursor-pointer" onClick={() => handleCustomerSort('pendingAmount')}>Pending</TableHead>
                                             <TableHead className="text-right">Last Payment</TableHead>
-                                            <TableHead className="text-right">Action</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {sortedCustomers.map((customer) => (
-                                            <TableRow key={customer.id}>
-                                                <TableCell className="font-medium">
-                                                    <div>{customer.name}</div>
-                                                    {customer.company && <div className="text-xs font-semibold text-muted-foreground">{customer.company}</div>}
-                                                    <div className="text-xs text-muted-foreground">{customer.email}</div>
-                                                </TableCell>
-                                                <TableCell className="text-center">{customer.serviceCount}</TableCell>
-                                                <TableCell className="text-right">₹{customer.totalInvoiced.toLocaleString()}</TableCell>
-                                                <TableCell className="text-right text-green-600">₹{customer.totalReceived.toLocaleString()}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <span className={customer.pendingAmount > 0 ? "text-red-600 font-bold" : "text-muted-foreground"}>
-                                                        ₹{customer.pendingAmount.toLocaleString()}
-                                                    </span>
-                                                </TableCell>
-                                                <TableCell className="text-right text-xs">
-                                                    {customer.lastPaymentDate ? format(customer.lastPaymentDate, 'MMM d, yyyy') : '-'}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-2">
-                                                        <Button size="sm" variant="outline" onClick={() => setSelectedCustomerForAnalytics(customer)}>
-                                                            <BarChart3 className="h-4 w-4 mr-1" /> Analytics
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" onClick={() => navigate('/admin/customers')}>
-                                                            Profile
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
+                                        {groupedCustomers.map((group) => (
+                                            <>
+                                                <TableRow
+                                                    key={group.id}
+                                                    className={cn(
+                                                        group.isGroup && "bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors uppercase",
+                                                        !group.isGroup && "hover:bg-muted/20"
+                                                    )}
+                                                    onClick={() => group.isGroup && toggleGroup(group.company)}
+                                                >
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-2">
+                                                            {group.isGroup && (
+                                                                expandedGroups.has(group.company) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                                                            )}
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className={cn(group.isGroup ? "text-base font-bold" : "font-medium")}>
+                                                                        {group.name}
+                                                                    </div>
+                                                                    {!group.isGroup && (
+                                                                        <Button size="sm" variant="outline" className="h-7 px-2 text-[10px]" onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            navigate(`/admin/customers/${group.customers[0].id}/ledger`);
+                                                                        }}>
+                                                                            <BarChart3 className="h-3.5 w-3.5 mr-1" /> Ledger
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                                {group.isGroup && (
+                                                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                                                                        {group.customers.length} Individual{group.customers.length > 1 ? 's' : ''}
+                                                                    </div>
+                                                                )}
+                                                                {!group.isGroup && <div className="text-[10px] lowercase text-muted-foreground">{group.customers[0]?.email}</div>}
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {Array.from(group.vehicles as Set<string>).map(v => (
+                                                                    <Badge key={v} variant="secondary" className="text-[9px] py-0 font-mono">{v}</Badge>
+                                                                ))}
+                                                            </div>
+                                                            {group.isGroup && (
+                                                                <div className="text-[10px] text-muted-foreground italic">Company wide vehicles</div>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-center font-bold">{group.serviceCount}</TableCell>
+                                                    <TableCell className="text-right">₹{group.totalInvoiced.toLocaleString()}</TableCell>
+                                                    <TableCell className="text-right text-green-600">₹{group.totalReceived.toLocaleString()}</TableCell>
+                                                    <TableCell className="text-right text-orange-600">₹{(group.totalDeductions || 0).toLocaleString()}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <span className={group.pendingAmount > 0 ? "text-red-600 font-bold" : "text-muted-foreground"}>
+                                                            ₹{group.pendingAmount.toLocaleString()}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-xs">
+                                                        {group.lastPaymentDate ? format(group.lastPaymentDate, 'MMM d, yyyy') : '-'}
+                                                    </TableCell>
+                                                </TableRow>
+
+                                                {group.isGroup && expandedGroups.has(group.company) && group.customers.map((customer) => (
+                                                    <TableRow key={customer.id} className="bg-muted/5">
+                                                        <TableCell className="pl-10 font-medium border-l-2 border-primary/20">
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    <div className="text-sm">{customer.name}</div>
+                                                                    <div className="text-[10px] text-muted-foreground lowercase">{customer.email}</div>
+                                                                </div>
+                                                                <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => navigate(`/admin/customers/${customer.id}/ledger`)}>
+                                                                    <BarChart3 className="h-3.5 w-3.5 mr-1" /> Ledger
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {Array.from(customer.vehicles as Set<string>).map(v => (
+                                                                        <Badge key={v} variant="outline" className="text-[8px] py-0 font-mono bg-background">{v}</Badge>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="text-[9px] text-muted-foreground truncate max-w-[150px] font-mono">
+                                                                    {customer.workOrders.slice(0, 3).map((wo: any) =>
+                                                                        `${wo.type === 'quotation' ? 'QUO' : 'INV'}-${wo.bill_number || 'Draft'}`
+                                                                    ).join(', ')}{customer.workOrders.length > 3 ? '...' : ''}
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-center">{customer.serviceCount}</TableCell>
+                                                        <TableCell className="text-right">₹{customer.totalInvoiced.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right text-green-600">₹{customer.totalReceived.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right text-orange-600">₹{(customer.totalDeductions || 0).toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right">
+                                                            <span className={customer.pendingAmount > 0 ? "text-red-600 font-bold" : "text-muted-foreground"}>
+                                                                ₹{customer.pendingAmount.toLocaleString()}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-xs">
+                                                            {customer.lastPaymentDate ? format(customer.lastPaymentDate, 'MMM d, yyyy') : '-'}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </>
                                         ))}
-                                        {sortedCustomers.length === 0 && (
+                                        {groupedCustomers.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                                    No customers found matching criteria
+                                                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                                                    No results found matching criteria
                                                 </TableCell>
                                             </TableRow>
                                         )}

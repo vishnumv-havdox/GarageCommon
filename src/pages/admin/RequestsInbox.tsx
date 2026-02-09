@@ -82,11 +82,14 @@ export default function RequestsInbox() {
                         id,
                         invoice_number,
                         bill_number,
+                        total,
+                        total_deductions,
                         customer:customers(name, phone),
                         work_order:work_orders(
                             vehicle:vehicles(vehicle_number)
                         )
-                    )
+                    ),
+                    deduction_amount
                 `)
                 .eq("status", "pending")
                 .order("created_at", { ascending: false });
@@ -193,9 +196,9 @@ export default function RequestsInbox() {
         setProcessingId(request.id);
         try {
             // @ts-ignore
-            const { error } = await supabase
-                .from("part_requests")
-                .update({ status: "rejected" } as any)
+            const { error } = await (supabase
+                .from("part_requests") as any)
+                .update({ status: "rejected" })
                 .eq("id", request.id);
 
             if (error) throw error;
@@ -214,28 +217,64 @@ export default function RequestsInbox() {
         setProcessingId(payment.id);
         try {
             // 1. Update Payment Status to 'approved'
-            const { error: payError } = await supabase
-                .from("payments")
+            const { error: payError } = await (supabase
+                .from("payments") as any)
                 .update({ status: 'approved' })
                 .eq("id", payment.id);
 
             if (payError) throw payError;
 
-            // 2. Update Invoice Status to 'Paid' (if full payment? For now assume manual verification implies sufficient check)
-            // Ideally we check amounts, but let's set it to 'Paid' or generic 'Partially Paid' logic if complex.
-            // For simplicity in Inbox, we mark Payment as Approved.
-            // AND mark invoice as Paid? Usually yes for single-payment flows.
-            // Use 'Paid' if it covers total, but we don't have total here easily.
-            // Safe bet: Just approve payment. Invoice status update might be trigger or manual.
-            // Actually Invoices.tsx logic: "status: 'Paid'" on verification.
-            if (payment.invoice?.id) {
-                await supabase
-                    .from("invoices")
-                    .update({ status: 'Paid' }) // Simplification
-                    .eq("id", payment.invoice.id);
+            // 2. Fetch all linked invoices via payment_links
+            const { data: links } = await supabase
+                .from("payment_links")
+                .select("*, invoice:invoices(*)")
+                .eq("payment_id", payment.id);
+
+            const invoicesToUpdate = links || (payment.invoice ? [{
+                invoice_id: payment.invoice.id,
+                amount_applied: payment.amount,
+                invoice: payment.invoice
+            }] : []);
+
+            // 3. Update each linked invoice
+            for (const link of invoicesToUpdate as any[]) {
+                const inv = link.invoice || payment.invoice;
+                if (!inv) continue;
+
+                // Update total_deductions if this payment had a deduction linked to it
+                // Note: For simplicity, we apply full deduction_amount to the first invoice if multi-bill, 
+                // but usually deduction is per-payment.
+                let newDeductions = (inv.total_deductions || 0);
+                if (payment.deduction_amount > 0 && invoicesToUpdate.length === 1) {
+                    newDeductions += payment.deduction_amount;
+                }
+
+                // Fetch ALL approved payments for this invoice to calculate NEW balance
+                const { data: allInvoiceLinks } = await supabase
+                    .from("payment_links")
+                    .select("*, payment:payments(status)")
+                    .eq("invoice_id", inv.id);
+
+                const totalPaid = (allInvoiceLinks as any[])?.reduce((sum, l) => {
+                    if (l.payment?.status === 'approved' || l.payment_id === payment.id) {
+                        return sum + (l.amount_applied || 0);
+                    }
+                    return sum;
+                }, 0) || 0;
+
+                const remainingBalance = Math.max(0, (inv.total || 0) - totalPaid - newDeductions);
+                const newStatus = remainingBalance <= 0 ? 'Paid' : 'Partial';
+
+                await (supabase
+                    .from("invoices") as any)
+                    .update({
+                        status: newStatus,
+                        total_deductions: newDeductions
+                    } as any)
+                    .eq("id", inv.id);
             }
 
-            toast({ title: "Payment Verified", description: "Payment approved and invoice updated." });
+            toast({ title: "Payment Verified", description: "Payment approved and invoices updated." });
             await refreshCounts();
 
             // Redirect to Confirmation
@@ -249,6 +288,7 @@ export default function RequestsInbox() {
                 }
             });
         } catch (error: any) {
+            console.error("Error approving payment:", error);
             toast({ variant: "destructive", title: "Error", description: error.message });
             setProcessingId(null);
         }
@@ -257,8 +297,8 @@ export default function RequestsInbox() {
     const handleRejectPayment = async (payment: any) => {
         setProcessingId(payment.id);
         try {
-            const { error } = await supabase
-                .from("payments")
+            const { error } = await (supabase
+                .from("payments") as any)
                 .update({ status: 'rejected' })
                 .eq("id", payment.id);
 
@@ -534,6 +574,12 @@ export default function RequestsInbox() {
                                                 <div className="flex justify-between items-center text-xs">
                                                     <span className="text-muted-foreground">Vehicle:</span>
                                                     <span className="font-bold">{pay.invoice.work_order.vehicle.vehicle_number}</span>
+                                                </div>
+                                            )}
+                                            {pay.deduction_amount > 0 && (
+                                                <div className="flex justify-between items-center text-xs text-orange-600 bg-orange-50 p-1 rounded">
+                                                    <span className="font-medium">Deduction:</span>
+                                                    <span className="font-bold">₹{pay.deduction_amount.toLocaleString()}</span>
                                                 </div>
                                             )}
                                         </div>

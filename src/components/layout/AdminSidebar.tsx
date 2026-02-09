@@ -8,6 +8,7 @@ import { useRequests } from "@/contexts/RequestsContext";
 import { Shield, LogOut, Menu, Building2 } from "lucide-react";
 import { navConfig } from "@/config/accessControl";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { UserProfileDialog } from "@/components/profile/UserProfileDialog";
 
 // Re-export for backward compatibility
 export { navConfig };
@@ -16,6 +17,7 @@ export function AdminSidebar() {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [company, setCompany] = useState<any>(null);
   const { totalPending } = useRequests();
 
@@ -53,9 +55,21 @@ export function AdminSidebar() {
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {filteredNav.map((item) => {
           const Icon = item.icon || Shield;
-          const isActive = item.end
-            ? location.pathname === item.path
-            : location.pathname.startsWith(item.path);
+          const isLedgerPath = location.pathname === "/admin/ledger" || (location.pathname.startsWith('/admin/customers/') && location.pathname.endsWith('/ledger'));
+
+          let isActive = false;
+          if (item.label === "Ledger") {
+            isActive = isLedgerPath;
+          } else if (item.label === "Customers") {
+            isActive = location.pathname.startsWith('/admin/customers') && !isLedgerPath;
+          } else if (item.label === "Financials") {
+            // Financials might point to invoice-analytics general
+            isActive = location.pathname === "/admin/invoice-analytics";
+          } else {
+            isActive = item.end
+              ? location.pathname === item.path
+              : location.pathname.startsWith(item.path);
+          }
 
           return (
             <NavLink
@@ -81,7 +95,10 @@ export function AdminSidebar() {
       </nav>
 
       <div className="p-4 border-t mt-auto">
-        <div className="flex items-center gap-3 mb-3">
+        <div
+          className="flex items-center gap-3 mb-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
+          onClick={() => setProfileOpen(true)}
+        >
           <Badge variant="default">{user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'User'}</Badge>
           <span className="text-sm truncate max-w-[120px]">
             {user?.full_name || user?.email || "User"}
@@ -97,6 +114,7 @@ export function AdminSidebar() {
           Logout
         </Button>
       </div>
+      <UserProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
     </div>
   );
 

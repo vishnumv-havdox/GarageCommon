@@ -1002,9 +1002,9 @@ export default function AdminInventory() {
                                       <span className="text-[10px] text-muted-foreground">{log.sku}</span>
                                       <Badge
                                         variant={
-                                          log.transaction_type === 'issue' ? 'default' :
+                                          log.transaction_type === 'issue' ? 'destructive' :
                                             log.transaction_type === 'return' ? 'secondary' :
-                                              log.transaction_type === 'restock' ? 'outline' : 'ghost'
+                                              log.transaction_type === 'restock' ? 'outline' : 'outline'
                                         }
                                         className="capitalize text-[10px] w-fit mt-1"
                                       >

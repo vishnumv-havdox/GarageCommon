@@ -28,6 +28,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 
 // Import ProgressTracker component
 import { CompactProgressTracker } from "@/components/work-orders/ProgressTracker";
@@ -134,6 +135,10 @@ export default function CustomerPortal() {
   // Payment State
   const [profile, setProfile] = useState<any>(null);
   const [payingInvoice, setPayingInvoice] = useState<any | null>(null);
+  const [payingInvoices, setPayingInvoices] = useState<any[]>([]); // New state for multi-bill
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [deductionReason, setDeductionReason] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"UPI" | "Bank Transfer" | "Cash">("UPI");
   const [paymentProof, setPaymentProof] = useState<File | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
@@ -141,7 +146,20 @@ export default function CustomerPortal() {
   // Invoice View State
   const [viewingInvoice, setViewingInvoice] = useState<any | null>(null);
   const [viewingInvoiceItems, setViewingInvoiceItems] = useState<any[]>([]);
+  const [viewingInvoicePayments, setViewingInvoicePayments] = useState<any[]>([]);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+
+  // Sync payment amount when paying invoices change
+  useEffect(() => {
+    if (payingInvoice) {
+      setPaymentAmount(payingInvoice.total || 0);
+      setDeductionReason("");
+    } else if (payingInvoices.length > 0) {
+      const total = payingInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+      setPaymentAmount(total);
+      setDeductionReason("");
+    }
+  }, [payingInvoice, payingInvoices]);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -183,6 +201,19 @@ export default function CustomerPortal() {
       console.error("Exception fetching profile:", e);
     }
   }, []);
+
+  // Auto-set payment amount when invoice is selected
+  useEffect(() => {
+    if (payingInvoices.length > 0) {
+      const totalDue = payingInvoices.reduce((sum, i) => sum + (i.balance || 0), 0);
+      setPaymentAmount(totalDue);
+    } else if (payingInvoice) {
+      setPaymentAmount(payingInvoice.balance || 0);
+    } else {
+      setPaymentAmount(0);
+    }
+    setDeductionReason("");
+  }, [payingInvoice, payingInvoices]);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -228,9 +259,10 @@ export default function CustomerPortal() {
 
       let vehiclesRes: any = { data: [], error: null };
       let invoicesRes: any = { data: [], error: null };
+      let adminClient: any = null;
 
       if (SERVICE_ROLE_KEY) {
-        const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+        adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
           auth: { autoRefreshToken: false, persistSession: false }
         });
 
@@ -249,12 +281,39 @@ export default function CustomerPortal() {
         ]);
       }
 
+      // Fetch all payment links for these invoices to calculate balance
+      const invoiceIds = (invoicesRes.data || []).map((inv: any) => inv.id);
+      const { data: allLinks } = await (SERVICE_ROLE_KEY ? adminClient : supabase)
+        .from('payment_links')
+        .select('*, payment:payments(status)')
+        .in('invoice_id', invoiceIds);
+
+      const processedInvoices = (invoicesRes.data || []).map((inv: any) => {
+        const links = (allLinks as any[])?.filter(l => l.invoice_id === inv.id) || [];
+        const paidAmount = links
+          .filter(l => l.payment?.status === 'approved')
+          .reduce((sum, l) => sum + (l.amount_applied || 0), 0);
+
+        // Direct payments (legacy/single invoice link)
+        // Some older payments might be linked directly via invoice_id on the payments table
+        // But our new flow uses payment_links. For safety, we can check inv.payments too if they are approved.
+        // Actually, the select("*, payments(status)") in invoicesRes already gives us some info.
+
+        const balance = Math.max(0, (inv.total || 0) - paidAmount - (inv.total_deductions || 0));
+
+        return {
+          ...inv,
+          paid_amount: paidAmount,
+          balance
+        };
+      });
+
       // Set vehicles and invoices state
       setVehicles(vehiclesRes.data || []);
 
       debug += `Vehicles found: ${vehiclesRes.data?.length || 0}\n`;
-      debug += `Invoices found: ${invoicesRes.data?.length || 0}\n`;
-      setInvoices(invoicesRes.data || []);
+      debug += `Invoices found: ${processedInvoices.length}\n`;
+      setInvoices(processedInvoices);
 
       // Get customer's vehicle IDs
       const customerVehicleIds = (vehiclesRes.data || []).map((v: any) => v.id);
@@ -651,6 +710,34 @@ export default function CustomerPortal() {
       } else {
         setViewingInvoiceItems([]);
       }
+
+      // Fetch Payments via links
+      const { data: links, error: linksError } = await supabase
+        .from('payment_links')
+        .select('*, payment:payments(*)')
+        .eq('invoice_id', invoice.id);
+
+      if (linksError) throw linksError;
+
+      const linkedPayments = (links as any[])?.map(l => ({
+        ...l.payment,
+        amount_applied: l.amount_applied
+      })) || [];
+
+      // Fetch direct payments (legacy/direct)
+      const { data: directPayments } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('invoice_id', (invoice as any).id);
+
+      const allDetailedPayments = [...linkedPayments];
+      (directPayments as any[])?.forEach(dp => {
+        if (!allDetailedPayments.some(p => p.id === dp.id)) {
+          allDetailedPayments.push({ ...dp, amount_applied: dp.amount });
+        }
+      });
+
+      setViewingInvoicePayments(allDetailedPayments);
     } catch (err: any) {
       console.error("Error fetching invoice items:", err);
       toast({
@@ -664,15 +751,17 @@ export default function CustomerPortal() {
   };
 
   const handlePaymentSubmit = async () => {
-    if (!paymentProof || !payingInvoice) {
-      toast({ variant: "destructive", title: "Missing Information", description: "Please upload a payment proof." });
+    const invoicesToLink = payingInvoices.length > 0 ? payingInvoices : (payingInvoice ? [payingInvoice] : []);
+
+    if (!paymentProof || invoicesToLink.length === 0) {
+      toast({ variant: "destructive", title: "Missing Information", description: "Please upload a payment proof and select invoices." });
       return;
     }
 
     setIsSubmittingPayment(true);
     try {
       const fileExt = paymentProof.name.split('.').pop();
-      const fileName = `proof-${payingInvoice.id}-${Date.now()}.${fileExt}`;
+      const fileName = `proof-${invoicesToLink[0].id}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -685,25 +774,50 @@ export default function CustomerPortal() {
         .from('payment-proofs')
         .getPublicUrl(filePath);
 
-      const { error: insertError } = await (supabase as any)
+      const totalBalance = invoicesToLink.reduce((sum, inv) => sum + (inv.balance || 0), 0);
+      const deductionAmount = Math.max(0, totalBalance - paymentAmount);
+
+      // 1. Insert Payment
+      const { data: paymentData, error: insertError } = await (supabase as any)
         .from('payments')
         .insert({
-          invoice_id: payingInvoice.id,
-          amount: payingInvoice.total,
+          invoice_id: invoicesToLink.length === 1 ? invoicesToLink[0].id : null, // Support legacy/simple view
+          amount: paymentAmount,
+          deduction_amount: deductionAmount,
+          deduction_reason: deductionAmount > 0 ? deductionReason : null,
           payment_method: paymentMethod,
           proof_url: publicUrl,
           status: 'pending'
-        });
-
+        })
+        .select()
       if (insertError) throw insertError;
+
+      // 2. Link Invoices
+      if (paymentData) {
+        const links = invoicesToLink.map(inv => ({
+          payment_id: paymentData.id,
+          invoice_id: inv.id,
+          amount_applied: invoicesToLink.length === 1 ? paymentAmount : inv.balance
+        }));
+
+        const { error: linksError } = await (supabase as any)
+          .from('payment_links')
+          .insert(links);
+
+        if (linksError) throw linksError;
+      }
 
       toast({
         title: "Payment Submitted",
         description: "Your payment reference has been submitted for verification."
       });
       setPayingInvoice(null);
+      setPayingInvoices([]);
+      setSelectedInvoiceIds([]);
       setPaymentProof(null);
       setPaymentMethod("UPI");
+      setPaymentAmount(0);
+      setDeductionReason("");
 
       fetchData();
 
@@ -1587,66 +1701,114 @@ export default function CustomerPortal() {
                   <p className="text-muted-foreground text-center py-8">No invoices yet</p>
                 ) : (
                   <div className="space-y-4">
-                    {invoices.filter(i => i.type !== 'quotation').map((invoice) => (
-                      <div key={invoice.id} className="border p-4 rounded-lg bg-card/50">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-lg">
-                                {invoice.bill_number ? `Bill #${invoice.bill_number}` : invoice.invoice_number}
-                              </h3>
-                              <Badge variant={
-                                invoice.status === 'Paid' ? 'default' :
-                                  invoice.status === 'Draft' ? 'secondary' :
-                                    'destructive' // Finalized/Unpaid
-                              } className={invoice.status === 'Paid' ? 'bg-green-600' : ''}>
-                                {invoice.status}
-                              </Badge>
+                    {invoices.filter(i => i.type !== 'Paid' && i.status !== 'Draft' && i.type !== 'quotation').length > 0 && (
+                      <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{selectedInvoiceIds.length} Selected</Badge>
+                          <span className="text-sm font-medium">
+                            Total Due: ₹{invoices.filter(i => selectedInvoiceIds.includes(i.id)).reduce((sum, i) => sum + (i.balance || 0), 0).toLocaleString()}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          disabled={selectedInvoiceIds.length === 0}
+                          onClick={() => {
+                            const selected = invoices.filter(i => selectedInvoiceIds.includes(i.id));
+                            setPayingInvoices(selected);
+                          }}
+                          className="bg-green-600 hover:bg-green-700 h-8"
+                        >
+                          <CreditCard className="h-4 w-4 mr-2" /> Pay Selected
+                        </Button>
+                      </div>
+                    )}
+                    {invoices.filter(i => i.type !== 'quotation').map((invoice) => {
+                      const isPayable = invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending');
+                      return (
+                        <div key={invoice.id} className="border p-4 rounded-lg bg-card/50">
+                          <div className="flex items-start gap-4">
+                            {isPayable && (
+                              <div className="pt-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600"
+                                  checked={selectedInvoiceIds.includes(invoice.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedInvoiceIds(prev => [...prev, invoice.id]);
+                                    } else {
+                                      setSelectedInvoiceIds(prev => prev.filter(id => id !== invoice.id));
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
+                            <div className="flex-1 flex justify-between items-start">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="font-semibold text-lg">
+                                    {invoice.bill_number ? `Bill #${invoice.bill_number}` : invoice.invoice_number}
+                                  </h3>
+                                  <Badge variant={
+                                    invoice.status === 'Paid' ? 'default' :
+                                      invoice.status === 'Draft' ? 'secondary' :
+                                        'destructive'
+                                  } className={invoice.status === 'Paid' ? 'bg-green-600' : ''}>
+                                    {invoice.status}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {format(new Date(invoice.created_at), "MMM d, yyyy")}
+                                </p>
+                                <div className="space-y-1 mt-2">
+                                  <div className="text-lg font-bold">₹{invoice.balance.toLocaleString()} Due</div>
+                                  <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                                    Total Bill: ₹{invoice.total.toLocaleString()}
+                                    {invoice.paid_amount > 0 && ` • Paid: ₹${invoice.paid_amount.toLocaleString()}`}
+                                    {invoice.total_deductions > 0 && ` • Deductions: ₹${invoice.total_deductions.toLocaleString()}`}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex items-center gap-2"
+                                  onClick={() => generateInvoicePDF(invoice.work_order_id)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                  Download PDF
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex items-center gap-2"
+                                  onClick={() => handleViewInvoice(invoice)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  View
+                                </Button>
+                                {isPayable && (
+                                  <Button
+                                    size="sm"
+                                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                                    onClick={() => setPayingInvoice(invoice)}
+                                  >
+                                    <CreditCard className="h-4 w-4" />
+                                    {invoice.type === 'quotation' ? 'Pay Advance' : 'Pay Now'}
+                                  </Button>
+                                )}
+                                {(invoice.status !== 'Paid' && (invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending'))) && (
+                                  <Badge variant="outline" className="border-yellow-500 text-yellow-600">
+                                    <Hourglass className="h-3 w-3 mr-1" /> Verifying
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                              {format(new Date(invoice.created_at), "MMM d, yyyy")}
-                            </p>
-                            <p className="text-lg font-bold mt-2">₹{(invoice.total || 0).toLocaleString()}</p>
-                          </div>
-                          <div className="flex items-center">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex items-center gap-2"
-                              onClick={() => generateInvoicePDF(invoice.work_order_id)}
-                            >
-                              <Download className="h-4 w-4" />
-                              Download PDF
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex items-center gap-2 ml-2"
-                              onClick={() => handleViewInvoice(invoice)}
-                            >
-                              <Eye className="h-4 w-4" />
-                              View
-                            </Button>
-                            {/* Allow payment for Unpaid Invoices AND Quotations */}
-                            {(invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending')) && (
-                              <Button
-                                size="sm"
-                                className="flex items-center gap-2 ml-2 bg-green-600 hover:bg-green-700"
-                                onClick={() => setPayingInvoice(invoice)}
-                              >
-                                <CreditCard className="h-4 w-4" />
-                                {invoice.type === 'quotation' ? 'Pay Advance' : 'Pay Now'}
-                              </Button>
-                            )}
-                            {(invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending')) && (
-                              <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
-                                <Hourglass className="h-3 w-3 mr-1" /> Verifying
-                              </Badge>
-                            )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -1714,7 +1876,7 @@ export default function CustomerPortal() {
                                 Pay Advance
                               </Button>
                             )}
-                            {(invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending')) && (
+                            {(invoice.status !== 'Paid' && (invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending'))) && (
                               <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
                                 <Hourglass className="h-3 w-3 mr-1" /> Verifying
                               </Badge>
@@ -1732,20 +1894,90 @@ export default function CustomerPortal() {
       </main>
 
       {/* Payment Dialog */}
-      <Dialog open={!!payingInvoice} onOpenChange={(open) => !open && setPayingInvoice(null)}>
+      <Dialog
+        open={!!payingInvoice || payingInvoices.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPayingInvoice(null);
+            setPayingInvoices([]);
+          }
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Make Payment</DialogTitle>
             <DialogDescription>
-              Submit payment details for {payingInvoice?.type === 'quotation' ? 'Quotation' : 'Invoice'} #{payingInvoice?.type === 'quotation' ? payingInvoice?.invoice_number : (payingInvoice?.bill_number || payingInvoice?.invoice_number)}
+              {payingInvoices.length > 1
+                ? `Paying for ${payingInvoices.length} Invoices`
+                : `Submit payment details for ${payingInvoice?.type === 'quotation' ? 'Quotation' : 'Invoice'} #${payingInvoice?.type === 'quotation' ? payingInvoice?.invoice_number : (payingInvoice?.bill_number || payingInvoice?.invoice_number)}`
+              }
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
-              <span className="text-sm font-medium">Total Amount</span>
-              <span className="text-xl font-bold">₹{payingInvoice?.total?.toLocaleString()}</span>
+            <div className="p-3 bg-muted rounded-lg space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Balance Due</span>
+                <span className="text-lg font-bold text-primary">
+                  ₹{(payingInvoices.length > 0
+                    ? payingInvoices.reduce((sum, i) => sum + (i.balance || 0), 0)
+                    : (payingInvoice?.balance || 0)
+                  ).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-muted-foreground uppercase tracking-widest pt-1 border-t border-muted-foreground/10">
+                <span>Total Bill Amount</span>
+                <span>₹{(payingInvoices.length > 0
+                  ? payingInvoices.reduce((sum, i) => sum + (i.total || 0), 0)
+                  : (payingInvoice?.total || 0)
+                ).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-muted-foreground/20">
+                <span className="text-sm font-bold">Amount Paying</span>
+                <div className="relative w-32">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold">₹</span>
+                  <Input
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                    className="pl-7 font-bold text-right text-lg h-10 ring-2 ring-primary/20"
+                  />
+                </div>
+              </div>
             </div>
+
+
+            {paymentAmount < (payingInvoices.length > 0
+              ? payingInvoices.reduce((sum, i) => sum + (i.balance || 0), 0)
+              : (payingInvoice?.balance || 0)
+            ) && (
+                <div className="space-y-2 p-3 border border-orange-200 bg-orange-50 rounded-lg animate-in fade-in slide-in-from-top-2">
+                  <Label className="text-orange-800 font-semibold flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    Reason for Deduction
+                  </Label>
+                  <Select value={deductionReason} onValueChange={setDeductionReason}>
+                    <SelectTrigger className="bg-white border-orange-200">
+                      <SelectValue placeholder="Select reason..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Round Off">Round Off</SelectItem>
+                      <SelectItem value="Service Issue">Service Issue/Discount</SelectItem>
+                      <SelectItem value="Part Issue">Part Issue</SelectItem>
+                      <SelectItem value="TDS">TDS Deduction</SelectItem>
+                      <SelectItem value="Retention">Retention Amount</SelectItem>
+                      <SelectItem value="Other">Other (Specify in comments)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {deductionReason === "Other" && (
+                    <Input
+                      placeholder="Describe reason..."
+                      className="mt-2 bg-white"
+                      onChange={(e) => setDeductionReason(e.target.value)}
+                    />
+                  )}
+                </div>
+              )}
 
             <div className="space-y-2">
               <Label>Payment Method</Label>
@@ -1905,13 +2137,70 @@ export default function CustomerPortal() {
                     ))
                   )}
                 </tbody>
-                <tfoot className="bg-muted/50 font-medium">
-                  <tr>
-                    <td colSpan={3} className="p-3 text-right">Grand Total</td>
-                    <td className="p-3 text-right">₹{viewingInvoice?.total?.toLocaleString()}</td>
-                  </tr>
-                </tfoot>
               </table>
+            </div>
+
+            {/* Summary & Payments Area */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+              {/* Payment Summary */}
+              <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-dashed">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Invoice Total:</span>
+                  <span className="font-bold">₹{viewingInvoice?.total?.toLocaleString()}</span>
+                </div>
+                {viewingInvoicePayments.length > 0 && (
+                  <>
+                    <div className="flex justify-between items-center text-sm text-green-600">
+                      <span>Total Paid:</span>
+                      <span className="font-bold">₹{viewingInvoicePayments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0).toLocaleString()}</span>
+                    </div>
+                    {viewingInvoice?.total_deductions > 0 && (
+                      <div className="flex justify-between items-center text-sm text-orange-600">
+                        <span>Deductions Applied:</span>
+                        <span className="font-bold">₹{viewingInvoice?.total_deductions?.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between items-center text-base font-black pt-1">
+                      <span>Remaining Balance:</span>
+                      <span className={Math.max(0, viewingInvoice?.total - viewingInvoicePayments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (viewingInvoice?.total_deductions || 0)) <= 0 ? "text-green-600" : "text-destructive"}>
+                        ₹{Math.max(0, viewingInvoice?.total - viewingInvoicePayments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (viewingInvoice?.total_deductions || 0)).toLocaleString()}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Payment Logs */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-bold flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" /> Payment Logs
+                </h4>
+                {viewingInvoicePayments.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">No payments recorded yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
+                    {viewingInvoicePayments.map((p) => (
+                      <div key={p.id} className="p-2 border rounded text-[11px] bg-background">
+                        <div className="flex justify-between">
+                          <span className="font-bold">₹{(p.amount_applied || p.amount).toLocaleString()}</span>
+                          <Badge variant={p.status === 'approved' ? 'default' : 'outline'} className="h-4 text-[9px]">
+                            {p.status}
+                          </Badge>
+                        </div>
+                        <p className="text-muted-foreground mt-0.5">
+                          {format(new Date(p.created_at), "MMM d")} via {p.payment_method}
+                        </p>
+                        {p.deduction_amount > 0 && (
+                          <p className="text-orange-600 font-medium mt-1">
+                            -{p.deduction_amount} ({p.deduction_reason})
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2189,6 +2478,6 @@ export default function CustomerPortal() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div >
+    </div>
   );
 }

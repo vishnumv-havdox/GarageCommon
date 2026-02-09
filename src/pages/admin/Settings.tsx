@@ -61,7 +61,7 @@ export default function Settings() {
         }
     };
 
-    const handeSaveProfile = async () => {
+    const handleSaveProfile = async () => {
         setSaving(true);
         try {
             const payload = { ...profile };
@@ -168,6 +168,22 @@ export default function Settings() {
                                             />
                                         </div>
                                         <div className="space-y-2">
+                                            <Label>Owner Name</Label>
+                                            <Input
+                                                value={profile.owner_name || ''}
+                                                onChange={e => setProfile({ ...profile, owner_name: e.target.value })}
+                                                placeholder="e.g. John Doe"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Owner Phone</Label>
+                                            <Input
+                                                value={profile.owner_phone || ''}
+                                                onChange={e => setProfile({ ...profile, owner_phone: e.target.value })}
+                                                placeholder="e.g. +91 98765 43210"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
                                             <Label>Email</Label>
                                             <Input
                                                 value={profile.email || ''}
@@ -195,53 +211,53 @@ export default function Settings() {
                                                 onChange={e => setProfile({ ...profile, tax_id: e.target.value })}
                                             />
                                         </div>
-                                        <div className="space-y-4 md:col-span-2">
-                                            <Label>Company Logo</Label>
-                                            <div className="flex items-center gap-6 p-4 border rounded-lg bg-muted/50">
-                                                {profile.logo_url ? (
-                                                    <img
-                                                        src={profile.logo_url}
-                                                        alt="Logo Preview"
-                                                        className="h-20 w-20 object-contain rounded border bg-white"
-                                                    />
-                                                ) : (
-                                                    <div className="h-20 w-20 flex items-center justify-center border-2 border-dashed rounded bg-muted">
-                                                        <Building2 className="h-8 w-8 text-muted-foreground/50" />
-                                                    </div>
-                                                )}
-                                                <div className="flex-1 space-y-2">
-                                                    <Input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        onChange={async (e) => {
-                                                            const file = e.target.files?.[0];
-                                                            if (!file) return;
-                                                            setSaving(true);
-                                                            try {
-                                                                const fileExt = file.name.split('.').pop();
-                                                                const fileName = `logo-${Date.now()}.${fileExt}`;
-                                                                const { error: uploadError } = await supabase.storage
-                                                                    .from('public-assets')
-                                                                    .upload(fileName, file);
-                                                                if (uploadError) throw uploadError;
-                                                                const { data: { publicUrl } } = supabase.storage
-                                                                    .from('public-assets')
-                                                                    .getPublicUrl(fileName);
-                                                                setProfile({ ...profile, logo_url: publicUrl });
-                                                                toast({ title: "Logo Uploaded", description: "Remember to save your profile." });
-                                                            } catch (error: any) {
-                                                                toast({ variant: "destructive", title: "Upload Failed", description: error.message });
-                                                            } finally {
-                                                                setSaving(false);
-                                                            }
-                                                        }}
-                                                    />
-                                                    <p className="text-[10px] text-muted-foreground">Recommended: Square PNG with transparent background.</p>
+                                    </div>
+                                    <div className="space-y-4 md:col-span-2">
+                                        <Label>Company Logo</Label>
+                                        <div className="flex items-center gap-6 p-4 border rounded-lg bg-muted/50">
+                                            {profile.logo_url ? (
+                                                <img
+                                                    src={profile.logo_url}
+                                                    alt="Logo Preview"
+                                                    className="h-20 w-20 object-contain rounded border bg-white"
+                                                />
+                                            ) : (
+                                                <div className="h-20 w-20 flex items-center justify-center border-2 border-dashed rounded bg-muted">
+                                                    <Building2 className="h-8 w-8 text-muted-foreground/50" />
                                                 </div>
+                                            )}
+                                            <div className="flex-1 space-y-2">
+                                                <Input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={async (e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (!file) return;
+                                                        setSaving(true);
+                                                        try {
+                                                            const fileExt = file.name.split('.').pop();
+                                                            const fileName = `logo-${Date.now()}.${fileExt}`;
+                                                            const { error: uploadError } = await supabase.storage
+                                                                .from('public-assets')
+                                                                .upload(fileName, file);
+                                                            if (uploadError) throw uploadError;
+                                                            const { data: { publicUrl } } = supabase.storage
+                                                                .from('public-assets')
+                                                                .getPublicUrl(fileName);
+                                                            setProfile({ ...profile, logo_url: publicUrl });
+                                                            toast({ title: "Logo Uploaded", description: "Remember to save your profile." });
+                                                        } catch (error: any) {
+                                                            toast({ variant: "destructive", title: "Upload Failed", description: error.message });
+                                                        } finally {
+                                                            setSaving(false);
+                                                        }
+                                                    }}
+                                                />
+                                                <p className="text-[10px] text-muted-foreground">Recommended: Square PNG with transparent background.</p>
                                             </div>
                                         </div>
                                     </div>
-                                    <Button onClick={handeSaveProfile} disabled={saving} className="mt-4">
+                                    <Button onClick={handleSaveProfile} disabled={saving} className="mt-4">
                                         {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Profile
                                     </Button>
                                 </CardContent>
@@ -547,7 +563,7 @@ export default function Settings() {
                                         </div>
                                     </div>
 
-                                    <Button onClick={handeSaveProfile} disabled={saving}>
+                                    <Button onClick={handleSaveProfile} disabled={saving}>
                                         {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Settings
                                     </Button>
                                 </CardContent>
@@ -556,6 +572,6 @@ export default function Settings() {
                     </Tabs>
                 </main>
             </div>
-        </div>
+        </div >
     );
 }

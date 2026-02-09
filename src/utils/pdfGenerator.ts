@@ -33,7 +33,7 @@ const toWords = new ToWords({
         currencyOptions: {
             name: 'Rupee',
             plural: 'Rupees',
-            symbol: '₹',
+            symbol: 'Rs. ',
             fractionalUnit: {
                 name: 'Paisa',
                 plural: 'Paise',
@@ -44,7 +44,7 @@ const toWords = new ToWords({
 });
 
 // Interfaces for better type safety
-interface CompanyProfile {
+export interface CompanyProfile {
     company_name: string;
     address: string;
     phone: string;
@@ -56,6 +56,8 @@ interface CompanyProfile {
     bank_name?: string;
     ifsc?: string;
     upi_id?: string;
+    owner_name?: string;
+    owner_phone?: string;
 }
 
 interface DocumentSettings {
@@ -207,7 +209,21 @@ class PDFGenerator {
                 this.doc.text(company.address, nameX, detailY);
                 detailY += 5;
             }
-            this.doc.text(`Ph: ${company.phone || ''} • Email: ${company.email || ''}`, nameX, detailY);
+
+            const mainPhone = company.phone || '';
+            const ownerPhone = (company as any).owner_phone;
+            const ownerName = (company as any).owner_name;
+
+            let contactLine = `Ph: ${mainPhone}`;
+            if (ownerPhone) contactLine += ` | Owner: ${ownerPhone}`;
+            if (company.email) contactLine += ` • Email: ${company.email}`;
+
+            this.doc.text(contactLine, nameX, detailY);
+
+            if (ownerName) {
+                detailY += 5;
+                this.doc.text(`Owner: ${ownerName}`, nameX, detailY);
+            }
         }
 
         // Right Side Info (Invoice No, Date)
@@ -307,11 +323,11 @@ class PDFGenerator {
                 (index + 1).toString(),
                 item.description || 'Item',
                 item.hsn_code || '-',
-                `₹${(item.taxable_value || 0).toFixed(2)}`,
+                `Rs. ${(item.taxable_value || 0).toFixed(2)}`,
                 `${item.gst_rate || 18}%`,
-                `₹${(item.cgst_amount || 0).toFixed(2)}`,
-                `₹${(item.sgst_amount || 0).toFixed(2)}`,
-                `₹${(item.total || 0).toFixed(2)}`
+                `Rs. ${(item.cgst_amount || 0).toFixed(2)}`,
+                `Rs. ${(item.sgst_amount || 0).toFixed(2)}`,
+                `Rs. ${(item.total || 0).toFixed(2)}`
             ]),
             startY: this.currentY,
             theme: 'grid',
@@ -364,11 +380,11 @@ class PDFGenerator {
         this.doc.text(`${title} Total:`, startX, this.currentY + 5);
 
         this.setStyle(11, true, COLORS.success);
-        this.doc.text(`₹${totals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY + 5, { align: 'right' });
+        this.doc.text(`Rs. ${totals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY + 5, { align: 'right' });
 
         this.setStyle(8, false, COLORS.lightText);
         this.doc.text(
-            `Taxable: ₹${totals.taxable.toFixed(2)} | GST: ₹${(totals.cgst + totals.sgst).toFixed(2)}`,
+            `Taxable: Rs. ${totals.taxable.toFixed(2)} | GST: Rs. ${(totals.cgst + totals.sgst).toFixed(2)}`,
             this.pageWidth - 15,
             this.currentY + 10,
             { align: 'right' }
@@ -393,11 +409,11 @@ class PDFGenerator {
         // Breakdown
         this.setStyle(10, false, COLORS.darkText);
         this.doc.text("Service Charges:", 15, this.currentY);
-        this.doc.text(`₹${serviceTotals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY, { align: 'right' });
+        this.doc.text(`Rs. ${serviceTotals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY, { align: 'right' });
         this.currentY += 8;
 
         this.doc.text("Parts & Materials:", 15, this.currentY);
-        this.doc.text(`₹${partTotals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY, { align: 'right' });
+        this.doc.text(`Rs. ${partTotals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY, { align: 'right' });
         this.currentY += 12;
 
         // Divider
@@ -413,7 +429,7 @@ class PDFGenerator {
         this.doc.text("NET PAYABLE", this.pageWidth - 80, this.currentY + 8);
 
         this.setStyle(16, true, COLORS.white);
-        this.doc.text(`₹${finalTotal.toFixed(0)}`, this.pageWidth - 20, this.currentY + 14, { align: 'right' });
+        this.doc.text(`Rs. ${finalTotal.toFixed(0)}`, this.pageWidth - 20, this.currentY + 14, { align: 'right' });
 
         this.currentY += 35;
 
@@ -443,7 +459,7 @@ class PDFGenerator {
         const totalSGST = serviceTotals.sgst + partTotals.sgst;
 
         autoTable(this.doc, {
-            head: [['Tax Component', 'Amount (₹)']],
+            head: [['Tax Component', 'Amount (Rs. )']],
             body: [
                 ['Total Taxable Value', totalTaxable.toFixed(2)],
                 ['Total CGST (9%)', totalCGST.toFixed(2)],
@@ -750,5 +766,296 @@ const generateDocument = async (
     } catch (error) {
         console.error("PDF Generation failed:", error);
         throw new Error(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+};
+
+export const generateLedgerPDF = async (
+    customer: any,
+    transactions: any[],
+    companyProfile: CompanyProfile,
+    dateRange: { from?: Date; to?: Date }
+) => {
+    try {
+        const pdfGen = new PDFGenerator();
+        if (companyProfile?.logo_url) {
+            await pdfGen.loadLogo(companyProfile.logo_url);
+        }
+
+        const doc = pdfGen.getDocument();
+        const pageWidth = doc.internal.pageSize.width;
+
+        // Helper to draw footer
+        const drawFooter = (pageNo: number, totalPages: number) => {
+            const footerY = doc.internal.pageSize.height - 10;
+            doc.setFontSize(8);
+            doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+            doc.text(`${companyProfile.company_name} | Generated by Amma Auto Service`, 15, footerY);
+            doc.text(`Page ${pageNo} of ${totalPages}`, pageWidth - 15, footerY, { align: 'right' });
+        };
+
+        // Custom Header for Ledger
+        pdfGen.setCurrentY(15);
+
+        // Logo
+        if ((pdfGen as any).logoBase64) {
+            try {
+                doc.addImage((pdfGen as any).logoBase64, 'PNG', 15, 10, 20, 20);
+            } catch (e) {
+                console.warn("Logo add failed", e);
+            }
+        }
+
+        // Company Details
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        doc.text(companyProfile.company_name.toUpperCase(), 40, 18);
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+        doc.text(`Ph: ${companyProfile.phone || ''} ${companyProfile.owner_phone ? `| Owner: ${companyProfile.owner_phone}` : ''}`, 40, 24);
+        if (companyProfile.owner_name) {
+            doc.text(`Owner: ${companyProfile.owner_name}`, 40, 29);
+        }
+
+        // Right Side: Report Title
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        doc.text("Billing Detail", pageWidth - 15, 20, { align: 'right' });
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+        doc.text("All work orders and invoices associated with this customer.", pageWidth - 15, 25, { align: 'right' });
+
+        const dateStr = dateRange.from && dateRange.to
+            ? `${format(dateRange.from, 'dd MMM yyyy')} - ${format(dateRange.to, 'dd MMM yyyy')}`
+            : `As on ${format(new Date(), 'dd MMM yyyy')}`;
+        doc.text(dateStr, pageWidth - 15, 30, { align: 'right' });
+
+        // Divider
+        doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+        doc.line(15, 35, pageWidth - 15, 35);
+
+        // Customer Details Section
+        pdfGen.setCurrentY(45);
+        doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
+        doc.roundedRect(15, 40, pageWidth - 30, 25, 3, 3, 'F');
+
+        doc.setFontSize(10);
+        doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+        doc.text("CUSTOMER DETAILS", 20, 48);
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        doc.text(customer.name.toUpperCase(), 20, 55);
+        if (customer.company_name) {
+            doc.setFontSize(9);
+            doc.text(customer.company_name, 20, 60);
+        }
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLORS.darkText[0], COLORS.darkText[1], COLORS.darkText[2]);
+        doc.text(`Phone: ${customer.phone || 'N/A'}`, pageWidth - 20, 55, { align: 'right' });
+
+        // Summary Metrics in Box
+        const summaryX = pageWidth / 2 - 20;
+        doc.text(`Total Invoiced: Rs. ${transactions.reduce((acc, t) => acc + (t.total || 0), 0).toLocaleString()}`, summaryX, 55);
+        doc.text(`Total Paid: Rs. ${transactions.reduce((acc, t) => acc + (t.paid_amount || 0), 0).toLocaleString()}`, summaryX, 61);
+
+        // Table
+        const tableBody = transactions.map(t => {
+            const woId = t.work_order?.id ? t.work_order.id.slice(0, 8) : '-';
+            const serviceVehicle = `${t.work_order?.service_type || '-'}\n${t.work_order?.vehicle?.vehicle_number || '-'}`;
+
+            return [
+                format(new Date(t.created_at), 'dd MMM yyyy'),
+                t.bill_number ? `${t.type === 'quotation' ? 'QTN' : 'INV'}-${t.bill_number}` : 'Draft',
+                woId,
+                serviceVehicle,
+                `Rs. ${t.total.toLocaleString()}`,
+                `Rs. ${t.paid_amount.toLocaleString()}`,
+                `Rs. ${t.total_deductions?.toLocaleString() || '0'}`,
+                `Rs. ${t.balance?.toLocaleString() || '0'}`,
+                t.status || '-',
+                '-' // Action
+            ];
+        });
+
+        autoTable(doc, {
+            startY: 70,
+            head: [['Date', 'Bill #', 'Work Order ID', 'Service / Vehicle', 'Total', 'Paid', 'Deducted', 'Balance', 'Status', 'Action']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: {
+                fillColor: COLORS.primary,
+                textColor: COLORS.white,
+                fontStyle: 'bold',
+                fontSize: 7,
+                halign: 'center'
+            },
+            bodyStyles: {
+                fontSize: 7,
+                textColor: COLORS.darkText,
+                cellPadding: 2
+            },
+            columnStyles: {
+                4: { halign: 'right' },
+                5: { halign: 'right' },
+                6: { halign: 'right' },
+                7: { halign: 'right', fontStyle: 'bold' }
+            },
+            alternateRowStyles: {
+                fillColor: COLORS.lightBg
+            }
+        });
+
+        // Footer
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            drawFooter(i, totalPages);
+        }
+
+        doc.save(`${customer.name.replace(/\s+/g, '_')}_Ledger_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+        return true;
+
+    } catch (error) {
+        console.error("Ledger Generation Failed:", error);
+        throw error;
+    }
+};
+/**
+ * Generates a professional summary report for the Ledger Overview page
+ */
+export const generateLedgerSummaryPDF = async (
+    data: any[],
+    companyProfile: CompanyProfile,
+    filters: {
+        dateRange?: { from?: Date; to?: Date };
+        status?: string;
+        companyType?: string;
+    },
+    transactions?: any[]
+) => {
+    try {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        // Helper to draw footer
+        const drawFooter = (page: number, total: number) => {
+            const footerY = doc.internal.pageSize.height - 10;
+            doc.setFontSize(8);
+            doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+            doc.text(`${companyProfile.company_name} | Ledger Summary Report`, 15, footerY);
+            doc.text(`Page ${page} of ${total}`, pageWidth - 15, footerY, { align: 'right' });
+        };
+
+        // Header Section
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        doc.text(companyProfile.company_name.toUpperCase(), 15, 20);
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+        let detailY = 26;
+        if (companyProfile.address) {
+            doc.text(companyProfile.address, 15, detailY);
+            detailY += 5;
+        }
+        doc.text(`Ph: ${companyProfile.phone || ''} ${companyProfile.owner_phone ? `| Owner: ${companyProfile.owner_phone}` : ''}`, 15, detailY);
+
+        // Right Side: Report Title
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        doc.text("LEDGER TRANSACTIONS", pageWidth - 15, 20, { align: 'right' });
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+        const dateStr = filters.dateRange?.from && filters.dateRange?.to
+            ? `${format(filters.dateRange.from, 'dd MMM yyyy')} - ${format(filters.dateRange.to, 'dd MMM yyyy')}`
+            : `As on ${format(new Date(), 'dd MMM yyyy')}`;
+        doc.text(dateStr, pageWidth - 15, 26, { align: 'right' });
+
+        const filterStr = `Status: ${filters.status || 'All'} | Company: ${filters.companyType || 'All'}`;
+        doc.text(filterStr, pageWidth - 15, 31, { align: 'right' });
+
+        // Divider
+        doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+        doc.line(15, 40, pageWidth - 15, 40);
+
+        // Transactions Table
+        if (transactions && transactions.length > 0) {
+            const lastY = 50;
+
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+            doc.text("TRANSACTION HISTORY", 15, lastY);
+
+            const transStartedY = lastY + 5;
+
+            const transBody = transactions.map(t => [
+                t.date ? format(new Date(t.date), "dd MMM yy") : "-",
+                t.customer || "-",
+                t.vehicle || "-",
+                t.ref || "-",
+                t.amount ? `Rs. ${t.amount.toLocaleString()}` : "-",
+                t.paid ? `Rs. ${t.paid.toLocaleString()}` : "-",
+                t.deductions ? `Rs. ${t.deductions.toLocaleString()}` : "-",
+                t.balance !== undefined ? `Rs. ${t.balance.toLocaleString()}` : "-",
+                t.paymentMode || "-",
+                t.status || "-"
+            ]);
+
+            autoTable(doc, {
+                startY: transStartedY,
+                head: [["Date", "Customer", "Vehicle", "Ref #", "Billed", "Paid", "Deductions", "Balance", "Mode", "Status"]],
+                body: transBody,
+                theme: "grid",
+                headStyles: {
+                    fillColor: COLORS.primary,
+                    textColor: COLORS.white,
+                    fontStyle: "bold",
+                    fontSize: 7,
+                    halign: "center"
+                },
+                bodyStyles: {
+                    fontSize: 6.5,
+                    textColor: COLORS.darkText,
+                    cellPadding: 2
+                },
+                columnStyles: {
+                    4: { halign: "right" },
+                    5: { halign: "right" },
+                    6: { halign: "right" },
+                    7: { halign: "right", fontStyle: "bold" }
+                },
+                alternateRowStyles: {
+                    fillColor: COLORS.lightBg
+                }
+            });
+        }
+
+        // Footer
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            drawFooter(i, totalPages);
+        }
+
+        doc.save(`Ledger_Summary_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+        return true;
+    } catch (error) {
+        console.error("Ledger Summary Generation Failed:", error);
+        throw error;
     }
 };

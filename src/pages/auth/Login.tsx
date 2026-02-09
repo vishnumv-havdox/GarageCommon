@@ -6,13 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Truck } from "lucide-react";
+import { Loader2, Truck, Eye, EyeOff } from "lucide-react";
+
 
 export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loginData, setLoginData] = useState({ email: "", password: "" });
+  const [companyProfile, setCompanyProfile] = useState<any>(null);
 
   useEffect(() => {
     // Check if user is already logged in
@@ -27,6 +30,19 @@ export default function Login() {
         navigate("/dashboard");
       }
     });
+
+    const fetchCompanyProfile = async () => {
+      const { data, error } = await supabase
+        .from('company_profiles')
+        .select('*')
+        .single();
+
+      if (!error && data) {
+        setCompanyProfile(data);
+      }
+    };
+
+    fetchCompanyProfile();
 
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -61,12 +77,24 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2 text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary/10 rounded-full">
-              <Truck className="h-8 w-8 text-primary" />
-            </div>
+            {companyProfile?.logo_url ? (
+              <img
+                src={companyProfile.logo_url}
+                alt="Logo"
+                className="h-16 w-auto object-contain"
+              />
+            ) : (
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Truck className="h-8 w-8 text-primary" />
+              </div>
+            )}
           </div>
-          <CardTitle className="text-3xl">Service Center</CardTitle>
-          <CardDescription>Manage your vehicle service operations</CardDescription>
+          <CardTitle className="text-3xl">
+            {companyProfile?.company_name || "Service Center"}
+          </CardTitle>
+          <CardDescription>
+            {companyProfile?.company_name ? "Manage your vehicle service operations" : "Manage your vehicle service operations"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -83,14 +111,28 @@ export default function Login() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={loginData.password}
-                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  className="pr-10"
+                  value={loginData.password}
+                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (
@@ -102,6 +144,8 @@ export default function Login() {
                 "Login"
               )}
             </Button>
+
+
           </form>
         </CardContent>
       </Card>

@@ -181,6 +181,13 @@ export default function WorkOrderDetail() {
     const [newTaskPrice, setNewTaskPrice] = useState("");
     const [isAddingTask, setIsAddingTask] = useState(false);
     const [predefinedTasks, setPredefinedTasks] = useState<any[]>([]);
+    const [billingInfo, setBillingInfo] = useState({
+        totalInvoiced: 0,
+        totalPaid: 0,
+        totalDeductions: 0,
+        balance: 0,
+        status: 'Unpaid' as 'Paid' | 'Partial' | 'Unpaid' | 'N/A'
+    });
 
     useEffect(() => {
         const fetchPredefinedTasks = async () => {
@@ -439,6 +446,41 @@ export default function WorkOrderDetail() {
                 stages: stagesData as any,
                 tasks: tasksData as any
             } : null);
+
+            // 5. Fetch Billing Info
+            const { data: invoices, error: invError } = await supabase
+                .from('invoices')
+                .select(`
+                    id, 
+                    total, 
+                    total_deductions,
+                    payment_links(amount_applied, payment:payments(*))
+                `)
+                .eq('work_order_id', id);
+
+            if (!invError && invoices) {
+                let totalInvoiced = 0;
+                let totalPaid = 0;
+                let totalDeductions = 0;
+
+                (invoices as any[]).forEach((inv: any) => {
+                    totalInvoiced += inv.total || 0;
+                    totalDeductions += inv.total_deductions || 0;
+                    inv.payment_links?.forEach((link: any) => {
+                        if (link.payment?.status === 'approved') {
+                            totalPaid += link.amount_applied || link.payment.amount;
+                        }
+                    });
+                });
+
+                const balance = totalInvoiced - totalPaid - totalDeductions;
+                let status: any = 'Unpaid';
+                if (totalPaid + totalDeductions >= totalInvoiced && totalInvoiced > 0) status = 'Paid';
+                else if (totalPaid > 0 || totalDeductions > 0) status = 'Partial';
+                else if (totalInvoiced === 0) status = 'N/A';
+
+                setBillingInfo({ totalInvoiced, totalPaid, totalDeductions, balance, status });
+            }
         } catch (error: any) {
             console.error("Fetch error:", error);
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -950,6 +992,11 @@ export default function WorkOrderDetail() {
                             <h1 className="text-xl font-bold flex items-center gap-2">
                                 Work Order #{workOrder.id.slice(0, 8)}
                                 {getStatusBadge(workOrder.status)}
+                                {billingInfo.status !== 'N/A' && (
+                                    <Badge variant={billingInfo.status === 'Paid' ? 'default' : billingInfo.status === 'Partial' ? 'secondary' : 'destructive'} className={billingInfo.status === 'Paid' ? 'bg-green-600' : ''}>
+                                        {billingInfo.status} Payment
+                                    </Badge>
+                                )}
                                 {workOrder.is_reopened && (
                                     <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse">
                                         <RefreshCw className="h-3 w-3 mr-1" /> Reopened
@@ -976,6 +1023,13 @@ export default function WorkOrderDetail() {
                         <Button variant="outline" onClick={() => generateInvoicePDF(workOrder.id)} title="Download Tax Invoice">
                             <IndianRupee className="h-4 w-4 mr-2" /> Invoice
                         </Button>
+
+                        <div className="flex flex-col items-end justify-center px-4 border-l ml-2">
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Balance</span>
+                            <span className={`text-lg font-black font-mono leading-none ${billingInfo.balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                                ₹{billingInfo.balance.toLocaleString()}
+                            </span>
+                        </div>
 
                         {/* Header actions are now mostly stage-specific in the sidebar */}
                         <AlertDialog>

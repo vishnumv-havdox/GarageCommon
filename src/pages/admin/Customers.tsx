@@ -45,8 +45,10 @@ interface Invoice {
   id: string;
   customer_id: string;
   bill_number?: number;
+  invoice_number?: string;
   status: string;
   total: number;
+  total_deductions: number;
   created_at: string;
 }
 
@@ -381,6 +383,25 @@ export default function AdminCustomers() {
 
                                 {isExpanded && (
                                   <div className="mt-3 space-y-4 pl-6 border-l-2 border-muted">
+                                    {/* Billing Overview Summary */}
+                                    <div className="bg-muted/30 border rounded-lg p-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                      <div>
+                                        <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Invoiced</p>
+                                        <p className="text-sm font-bold">₹{(invoices[customer.id]?.reduce((sum, i) => sum + (i.total || 0), 0) || 0).toLocaleString()}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Paid (Full)</p>
+                                        <p className="text-sm font-bold text-green-600">₹{(invoices[customer.id]?.filter(i => i.status === 'Paid').reduce((sum, i) => sum + (i.total || 0), 0) || 0).toLocaleString()}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Deductions</p>
+                                        <p className="text-sm font-bold text-orange-600">₹{(invoices[customer.id]?.reduce((sum, i) => sum + (i.total_deductions || 0), 0) || 0).toLocaleString()}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Pending</p>
+                                        <p className="text-sm font-black text-destructive">₹{Math.max(0, (invoices[customer.id]?.reduce((sum, i) => sum + (i.total || 0), 0) || 0) - (invoices[customer.id]?.filter(i => i.status === 'Paid').reduce((sum, i) => sum + (i.total || 0), 0) || 0) - (invoices[customer.id]?.reduce((sum, i) => sum + (i.total_deductions || 0), 0) || 0)).toLocaleString()}</p>
+                                      </div>
+                                    </div>
                                     {/* Vehicles */}
                                     {customerVehicles.length > 0 && (
                                       <div className="space-y-2">
@@ -428,6 +449,9 @@ export default function AdminCustomers() {
                                               </div>
                                               <p className="text-xs text-muted-foreground mt-1">
                                                 {format(new Date(inv.created_at), "MMM d, yyyy")} • ₹{(inv.total || 0).toLocaleString()}
+                                                {inv.total_deductions > 0 && (
+                                                  <span className="text-orange-600 font-medium ml-2">(-{inv.total_deductions} Deducted)</span>
+                                                )}
                                               </p>
                                             </div>
                                             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => window.location.href = `/admin/invoices/${inv.id}`}>

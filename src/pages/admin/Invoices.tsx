@@ -108,8 +108,17 @@ export default function AdminInvoices() {
             *,
             invoice:invoices(
                id, invoice_number, bill_number, total, 
-               customer:customers(name, phone),
-               work_order:work_orders(vehicle:vehicles(vehicle_number))
+               customer:customers(name, phone)
+            ),
+            payment_links(
+              id,
+              invoice_id,
+              amount_applied,
+              invoice:invoices(
+                id, invoice_number, bill_number, total,
+                customer:customers(name, phone),
+                work_order:work_orders(vehicle:vehicles(vehicle_number))
+              )
             )
           `)
           .eq('status', 'pending')
@@ -191,15 +200,66 @@ export default function AdminInvoices() {
 
       if (paymentError) throw paymentError;
 
-      // 2. Update Invoice Status
-      const { error: invoiceError } = await supabase
-        .from('invoices')
-        .update({ status: 'Paid' })
-        .eq('id', verifyPayment.invoice_id);
+      // 2. Update all linked Invoices Status
+      const linkedInvoiceIds = verifyPayment.payment_links?.map((l: any) => l.invoice_id) || [];
+      if (verifyPayment.invoice_id) linkedInvoiceIds.push(verifyPayment.invoice_id);
 
-      if (invoiceError) throw invoiceError;
+      const uniqueInvoiceIds = Array.from(new Set(linkedInvoiceIds)).filter(id => id); // Filter out null/undefined
 
-      toast({ title: "Payment Approved", description: "Invoice marked as Paid." });
+      if (uniqueInvoiceIds.length > 0) {
+        // If there's a deduction, we should record it on the invoices?
+        // For simplicity now, we mark all as Paid. 
+        // In a more complex system, we'd record 'total_deductions' on the invoice.
+        const { error: invoiceError } = await supabase
+          .from('invoices')
+          .update({
+            status: 'Paid',
+            // If it's a single invoice with deduction, record it
+            ...(uniqueInvoiceIds.length === 1 && verifyPayment.deduction_amount > 0 ? {
+              total_deductions: (verifyPayment.invoice?.total_deductions || 0) + verifyPayment.deduction_amount
+            } : {})
+          })
+          .in('id', uniqueInvoiceIds);
+
+        if (invoiceError) throw invoiceError;
+
+        // 3. Auto-reject other pending payments for these invoices (Duplicate requests)
+        // Find payments linked via payment_links
+        const { data: linkedDuplicates } = await supabase
+          .from('payment_links')
+          .select('payment_id')
+          .in('invoice_id', uniqueInvoiceIds);
+
+        const linkedPaymentIds = linkedDuplicates?.map((l: any) => l.payment_id) || [];
+
+        // Find payments linked directly via invoice_id
+        const { data: directDuplicates } = await supabase
+          .from('payments')
+          .select('id')
+          .in('invoice_id', uniqueInvoiceIds)
+          .eq('status', 'pending');
+
+        const directPaymentIds = directDuplicates?.map((p: any) => p.id) || [];
+
+        // Combine and filter unique IDs to reject
+        const idsToReject = Array.from(new Set([...linkedPaymentIds, ...directPaymentIds]))
+          .filter(id => id !== verifyPayment.id);
+
+        if (idsToReject.length > 0) {
+          const { error: rejectError } = await supabase
+            .from('payments')
+            .update({
+              status: 'rejected',
+              admin_remarks: 'Auto-rejected: Invoice marked as Paid via another request'
+            })
+            .in('id', idsToReject)
+            .eq('status', 'pending'); // Double check status is pending
+
+          if (rejectError) console.error("Error auto-rejecting duplicates:", rejectError);
+        }
+      }
+
+      toast({ title: "Payment Approved", description: `${uniqueInvoiceIds.length} Invoice(s) marked as Paid.` });
       setVerifyPayment(null);
       fetchData(); // Refresh list
 
@@ -228,18 +288,20 @@ export default function AdminInvoices() {
 
       if (paymentError) throw paymentError;
 
-      // 2. Update Invoice Status (Revert to Finalized/Unpaid)
-      // Assuming status 'generated' or logic handles it. 
-      // If previous status was 'Generated' or just not 'Paid'.
-      // We'll set it to 'Generated' (which displays as Unpaid in customer view usually).
-      // Or just leave it as whatever it was before 'Payment Verification Pending' if we tracked it.
-      // But 'Generated' is safe.
-      const { error: invoiceError } = await supabase
-        .from('invoices')
-        .update({ status: 'Generated' })
-        .eq('id', verifyPayment.invoice_id);
+      // 2. Update all linked Invoices Status (Revert to Finalized/Unpaid)
+      const linkedInvoiceIds = verifyPayment.payment_links?.map((l: any) => l.invoice_id) || [];
+      if (verifyPayment.invoice_id) linkedInvoiceIds.push(verifyPayment.invoice_id);
 
-      if (invoiceError) throw invoiceError;
+      const uniqueInvoiceIds = Array.from(new Set(linkedInvoiceIds)).filter(id => id); // Filter out null/undefined
+
+      if (uniqueInvoiceIds.length > 0) {
+        const { error: invoiceError } = await supabase
+          .from('invoices')
+          .update({ status: 'Generated' })
+          .in('id', uniqueInvoiceIds);
+
+        if (invoiceError) throw invoiceError;
+      }
 
       toast({ title: "Payment Rejected", description: "Customer will be notified." });
       setVerifyPayment(null);
@@ -610,8 +672,19 @@ export default function AdminInvoices() {
                             <div className="text-xs text-muted-foreground">{payment.invoice?.customer?.phone}</div>
                           </TableCell>
                           <TableCell>
-                            <div>{payment.invoice?.bill_number ? `Bill #${payment.invoice.bill_number}` : payment.invoice?.invoice_number}</div>
-                            <div className="text-xs text-muted-foreground">{payment.invoice?.work_order?.vehicle?.vehicle_number}</div>
+                            <div className="flex flex-col">
+                              <span className="font-medium">
+                                {payment.payment_links && payment.payment_links.length > 1
+                                  ? "Multiple Invoices"
+                                  : (payment.invoice?.bill_number ? `Bill #${payment.invoice.bill_number}` : (payment.invoice?.invoice_number || 'N/A'))
+                                }
+                              </span>
+                              {payment.payment_links && payment.payment_links.length > 1 && (
+                                <Badge variant="outline" className="w-fit text-[10px] mt-1 bg-blue-50 text-blue-700 border-blue-200">
+                                  {payment.payment_links.length} Bills
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>₹{payment.amount?.toLocaleString()}</TableCell>
                           <TableCell>
@@ -659,8 +732,25 @@ export default function AdminInvoices() {
                         <IndianRupee className="h-4 w-4" /> Payment Details
                       </h3>
                       <div className="grid grid-cols-2 gap-2 text-sm">
-                        <span className="text-muted-foreground">Amount:</span>
+                        <span className="text-muted-foreground">Amount Paid:</span>
                         <span className="font-bold">₹{verifyPayment.amount?.toLocaleString()}</span>
+
+                        {verifyPayment.deduction_amount > 0 && (
+                          <>
+                            <span className="text-orange-600 font-medium">Deduction:</span>
+                            <span className="font-bold text-orange-600">₹{verifyPayment.deduction_amount?.toLocaleString()}</span>
+
+                            <span className="text-muted-foreground">Reason:</span>
+                            <Badge variant="outline" className="text-[10px] bg-orange-50">{verifyPayment.deduction_reason}</Badge>
+
+                            <span className="text-muted-foreground">Settlement:</span>
+                            <Badge variant="outline" className="text-[10px]">{verifyPayment.is_final_settlement ? 'Full/Final' : 'Partial'}</Badge>
+
+                            <Separator className="col-span-2 my-1" />
+                            <span className="font-medium text-muted-foreground">Total Value:</span>
+                            <span className="font-bold">₹{(verifyPayment.amount + verifyPayment.deduction_amount).toLocaleString()}</span>
+                          </>
+                        )}
 
                         <span className="text-muted-foreground">Method:</span>
                         <span>{verifyPayment.payment_method}</span>
@@ -672,24 +762,42 @@ export default function AdminInvoices() {
 
                     <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
                       <h3 className="font-medium flex items-center gap-2 border-b pb-2">
-                        <FileText className="h-4 w-4" /> Invoice Details
+                        <FileText className="h-4 w-4" /> Linked Invoices
                       </h3>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <span className="text-muted-foreground">Customer:</span>
-                        <span>{verifyPayment.invoice?.customer?.name}</span>
-
-                        <span className="text-muted-foreground">Phone:</span>
-                        <span>{verifyPayment.invoice?.customer?.phone}</span>
-
-                        <span className="text-muted-foreground">Vehicle:</span>
-                        <span>{verifyPayment.invoice?.work_order?.vehicle?.vehicle_number}</span>
-                      </div>
-                      <div className="pt-2">
-                        <Button variant="outline" size="sm" className="w-full" asChild>
-                          <a href={`/admin/invoices/${verifyPayment.invoice_id}`} target="_blank" rel="noreferrer">
-                            <ExternalLink className="h-3 w-3 mr-2" /> View Full Invoice
-                          </a>
-                        </Button>
+                      <div className="space-y-3">
+                        {verifyPayment.payment_links && verifyPayment.payment_links.length > 0 ? (
+                          verifyPayment.payment_links.map((link: any) => (
+                            <div key={link.id} className="text-sm p-2 bg-background rounded-md border flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{link.invoice?.bill_number ? `Bill #${link.invoice.bill_number}` : (link.invoice?.invoice_number || 'N/A')}</p>
+                                <p className="text-[10px] text-muted-foreground">{link.invoice?.customer?.name} • {link.invoice?.work_order?.vehicle?.vehicle_number}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold">₹{link.invoice?.total?.toLocaleString()}</p>
+                                <Button variant="ghost" size="icon" className="h-6 w-6" asChild>
+                                  <a href={`/admin/invoices/${link.invoice?.id}`} target="_blank" rel="noreferrer">
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                </Button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-sm p-2 bg-background rounded-md border flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{verifyPayment.invoice?.bill_number ? `Bill #${verifyPayment.invoice.bill_number}` : (verifyPayment.invoice?.invoice_number || 'N/A')}</p>
+                              <p className="text-[10px] text-muted-foreground">{verifyPayment.invoice?.customer?.name} • {verifyPayment.invoice?.work_order?.vehicle?.vehicle_number}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold">₹{verifyPayment.invoice?.total?.toLocaleString()}</p>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" asChild>
+                                <a href={`/admin/invoices/${verifyPayment.invoice_id}`} target="_blank" rel="noreferrer">
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 

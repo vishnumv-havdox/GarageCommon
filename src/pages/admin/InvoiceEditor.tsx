@@ -36,7 +36,8 @@ import {
     Eye,
     Lock,
     RefreshCw,
-    Info
+    Info,
+    Receipt
 } from "lucide-react";
 import {
     DropdownMenuContent,
@@ -202,16 +203,16 @@ const InvoiceItemEditor = ({
                                                     value={task.name}
                                                     onSelect={() => {
                                                         const updates: any = { description: task.name };
-                                                        
+
                                                         // Auto-fill details
                                                         if (task.price) {
                                                             updates.unit_price = task.price;
                                                         }
-                                                        
+
                                                         // Auto-fill HSN/SAC
                                                         const taxCode = task.sac_code || task.hsn_code;
                                                         if (taxCode) updates.hsn_code = taxCode;
-                                                        
+
                                                         onChange(index, updates);
                                                         setOpen(false);
                                                     }}
@@ -330,6 +331,7 @@ export default function InvoiceEditor() {
     // Data
     const [invoice, setInvoice] = useState<any>(null);
     const [items, setItems] = useState<InvoiceItem[]>([]);
+    const [payments, setPayments] = useState<any[]>([]);
 
     // Catalogs
     const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
@@ -410,13 +412,40 @@ export default function InvoiceEditor() {
                     work_order:work_orders(
                         *,
                         vehicle:vehicles!vehicle_id(*)
+                    ),
+                    payment_links(
+                      amount_applied,
+                      payment:payments(*)
                     )
                 `)
                 .eq('id', id)
                 .single();
 
             if (invError) throw invError;
+            if (!inv) throw new Error("Invoice not found");
             setInvoice(inv);
+
+            // Extract payments from links
+            const linkedPayments = (inv as any).payment_links?.map((l: any) => ({
+                ...l.payment,
+                amount_applied: l.amount_applied
+            })) || [];
+
+            // Also fetch payments that directly reference this invoice_id (legacy or direct)
+            const { data: directPayments } = await supabase
+                .from('payments')
+                .select('*')
+                .eq('invoice_id', id);
+
+            // Merge and deduplicate
+            const allPayments = [...linkedPayments];
+            directPayments?.forEach((dp: any) => {
+                if (!allPayments.some(p => p.id === dp.id)) {
+                    allPayments.push({ ...dp, amount_applied: dp.amount });
+                }
+            });
+
+            setPayments(allPayments);
 
             // 2. Fetch Items
             const { data: invItems, error: itemsError } = await supabase
@@ -959,6 +988,114 @@ export default function InvoiceEditor() {
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Payment Details</CardTitle>
+                                    {/* Subtotal & Taxes Section */}
+                                    <div className="space-y-3 bg-muted/20 p-6 rounded-xl border border-dashed">
+                                        <div className="flex justify-between items-center text-sm text-muted-foreground italic">
+                                            <span>Subtotal</span>
+                                            <span className="font-mono">₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm text-muted-foreground italic">
+                                            <span>Total Tax (GST)</span>
+                                            <span className="font-mono">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <Separator className="bg-muted-foreground/10" />
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-lg font-bold">Grand Total</span>
+                                            <span className="text-2xl font-black text-primary font-mono tracking-tighter">
+                                                ₹{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+
+                                        {/* Payment Summary */}
+                                        {invoice?.status !== 'Draft' && (
+                                            <>
+                                                <Separator className="bg-muted-foreground/10" />
+                                                <div className="space-y-2 pt-2">
+                                                    <div className="flex justify-between items-center text-sm text-green-600 font-medium">
+                                                        <span>Total Paid</span>
+                                                        <span className="font-mono">₹{payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0).toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-sm text-orange-600 font-medium">
+                                                        <span>Deductions Applied</span>
+                                                        <span className="font-mono">₹{(invoice?.total_deductions || 0).toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center pt-2 border-t font-bold text-lg">
+                                                        <span>Balance Due</span>
+                                                        <span className={grandTotal - payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (invoice?.total_deductions || 0) <= 0 ? "text-green-600 font-mono" : "text-destructive font-mono"}>
+                                                            ₹{Math.max(0, grandTotal - payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (invoice?.total_deductions || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Payment History Section */}
+                                    {payments.length > 0 && (
+                                        <div className="mt-8 space-y-4">
+                                            <h3 className="font-bold text-lg flex items-center gap-2">
+                                                <Receipt className="h-5 w-5 text-primary" /> Payment History
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {payments.map((p) => (
+                                                    <div key={p.id} className="p-4 border rounded-lg bg-background hover:bg-muted/5 transition-colors group">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-bold">₹{(p.amount_applied || p.amount).toLocaleString()}</span>
+                                                                    <Badge variant={p.status === 'approved' ? 'default' : p.status === 'pending' ? 'outline' : 'destructive'} className={p.status === 'approved' ? 'bg-green-600 text-[10px]' : 'text-[10px]'}>
+                                                                        {p.status}
+                                                                    </Badge>
+                                                                </div>
+                                                                <p className="text-xs text-muted-foreground mt-1">
+                                                                    {format(new Date(p.created_at), "MMM d, yyyy • hh:mm a")} via {p.payment_method}
+                                                                </p>
+                                                            </div>
+                                                            {p.proof_url && (
+                                                                <Button variant="ghost" size="sm" className="h-8 text-xs p-1" asChild>
+                                                                    <a href={p.proof_url} target="_blank" rel="noreferrer">
+                                                                        <Download className="h-3 w-3 mr-1" /> Proof
+                                                                    </a>
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                        {p.deduction_amount > 0 && (
+                                                            <div className="mt-2 py-1 px-2 bg-orange-50 border border-orange-100 rounded text-[11px] text-orange-700 flex justify-between items-center">
+                                                                <span>Deduction: <span className="font-bold">₹{p.deduction_amount.toLocaleString()}</span> ({p.deduction_reason})</span>
+                                                                {p.is_final_settlement && <Badge variant="outline" className="h-4 text-[9px] bg-orange-100 border-orange-200 text-orange-800">Final Settlement</Badge>}
+                                                            </div>
+                                                        )}
+                                                        {p.admin_remarks && (
+                                                            <p className="mt-2 text-[11px] text-muted-foreground italic border-l-2 pl-2">
+                                                                Admin: {p.admin_remarks}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {isQuotation && (
+                                        <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded border border-orange-100 mt-2">
+                                            * Valid for 30 days. This is not a tax invoice.
+                                        </div>
+                                    )}
+
+                                    <Separator className="my-4" />
+
+                                    {companyProfile?.bank_name ? (
+                                        <div className="text-xs space-y-1 bg-muted/50 p-2 rounded">
+                                            <div className="font-semibold text-muted-foreground mb-1">Bank Account</div>
+                                            <div className="flex justify-between"><span>Bank:</span> <span>{companyProfile.bank_name}</span></div>
+                                            <div className="flex justify-between"><span>Acct:</span> <span>{companyProfile.acc_number}</span></div>
+                                            <div className="flex justify-between"><span>IFSC:</span> <span>{companyProfile.ifsc}</span></div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground italic">
+                                            No bank details configured. Go to Settings.
+                                        </div>
+                                    )}
                                 </CardHeader>
                                 <CardContent className="space-y-4 text-sm">
                                     <div className="flex justify-between border-b pb-2">

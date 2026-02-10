@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
 import {
   LogOut, Users, Shield, Plus, Search, ClipboardList,
   Trash2, Eye, ArrowLeft, Calendar, FileText, Wrench, IndianRupee,
@@ -170,6 +170,8 @@ export default function AdminWorkOrders() {
   const [searchTerm, setSearchTerm] = useState("");
   const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'overdue' | 'today' | 'week' | 'none' | 'completed'>('all');
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [searchParams] = useSearchParams();
+  const urlFilter = searchParams.get('filter');
 
   // Stats
   const [stats, setStats] = useState({
@@ -315,6 +317,25 @@ export default function AdminWorkOrders() {
       o.customer?.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.id.includes(searchTerm)
     );
+
+    // Then filter by URL status categories (Dashboard navigation)
+    if (urlFilter) {
+      filtered = filtered.filter((o) => {
+        const s = o.status.toLowerCase();
+        switch (urlFilter) {
+          case 'new':
+            return ['pending', 'new'].includes(s);
+          case 'ongoing':
+            return ['in progress', 'accepted', 'under qc', 'inspection', 'repair', 'review', 'quality check', 'pending approval'].includes(s);
+          case 'ready':
+            return ['ready', 'ready for delivery'].includes(s);
+          case 'completed':
+            return ['completed', 'delivered', 'approved'].includes(s);
+          default:
+            return true;
+        }
+      });
+    }
 
     // Then filter by delivery date
     if (deliveryFilter !== 'all') {
@@ -526,8 +547,18 @@ export default function AdminWorkOrders() {
           </div>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Work Orders ({filteredOrders.length})</CardTitle>
+              {urlFilter && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-primary"
+                  onClick={() => navigate('/admin/work-orders')}
+                >
+                  <XCircle className="h-4 w-4 mr-1" /> Clear Filter: {urlFilter}
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               {loading ? (

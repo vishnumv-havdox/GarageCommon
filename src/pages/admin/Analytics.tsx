@@ -93,12 +93,12 @@ export default function AdminAnalytics() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                            <CardTitle className="text-sm font-medium">Collected Revenue</CardTitle>
                             <IndianRupee className="h-4 w-4 text-green-600" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">₹{finData?.total_revenue?.toLocaleString()}</div>
-                            <p className="text-xs text-muted-foreground">+12.5% from last month</p>
+                            <div className="text-2xl font-bold">₹{finData?.collected_payments?.toLocaleString()}</div>
+                            <p className="text-xs text-muted-foreground">Total Billed: ₹{finData?.total_revenue?.toLocaleString()}</p>
                         </CardContent>
                     </Card>
                     <Card>
@@ -128,7 +128,7 @@ export default function AdminAnalytics() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{finData?.realization_rate?.toFixed(1) || '100'}%</div>
-                            <p className="text-xs text-muted-foreground">₹{finData?.total_deductions?.toLocaleString()} in deductions</p>
+                            <p className="text-xs text-muted-foreground">₹{finData?.total_deductions?.toLocaleString()} total deductions</p>
                         </CardContent>
                     </Card>
                 </div>

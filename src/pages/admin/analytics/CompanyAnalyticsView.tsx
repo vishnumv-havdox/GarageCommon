@@ -29,7 +29,9 @@ interface AnalyticsData {
         totalVehicles: number;
         inService: number;
         completed: number;
-        totalRevenue: number;
+        totalBilled: number;
+        totalCollected: number;
+        totalDeductions: number;
         overdueInvoices: number;
         overdueAmount: number;
     };
@@ -59,8 +61,18 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
                 // The original line 53 was: .eq('vehicle:vehicles.customer_id', companyId). 
                 // Let's fix the explicit FK in line 67 specifically.
                 // History of Invoices
-                supabase.from('invoices').select('id, status, total, created_at').eq('customer_id', companyId)
+                supabase.from('invoices').select('id, status, total, total_deductions, created_at').eq('customer_id', companyId),
+                // Payment Links (to calculate collected amount)
+                supabase.from('payment_links').select('*, payment:payments(*)').eq('invoice:invoices.customer_id', companyId)
             ]);
+
+            // Fix for payment links query if the nested join fails
+            const { data: pLinks } = await supabase
+                .from('payment_links')
+                .select('*, payment:payments(*), invoice:invoices(customer_id)')
+                .eq('invoice.customer_id', companyId);
+
+            const effectiveLinks = (pLinks || []) as any[];
 
             // Refetch work orders properly if the deep filter fails (Supabase sometimes needs explicit filter on joined table)
             // Safer approach: Get vehicle IDs first
@@ -84,7 +96,12 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
             const inService = woss.filter(wo => !['Delivered', 'Completed', 'Approved', 'Cancelled'].includes(wo.status)).length;
             const completed = allWorkOrders.filter(wo => ['Delivered', 'Completed', 'Approved'].includes(wo.status)).length;
 
-            const totalRevenue = (invoices || []).reduce((sum, inv) => sum + (inv.total || 0), 0);
+            const totalBilled = (invoices || []).reduce((sum, inv) => sum + (inv.total || 0), 0);
+            const totalDeductions = (invoices || []).reduce((sum, inv) => sum + (inv.total_deductions || 0), 0);
+            const totalCollected = effectiveLinks
+                .filter(l => l.payment?.status?.toLowerCase() === 'approved')
+                .reduce((sum, l) => sum + (l.amount_applied || l.amount || 0), 0);
+
             const overdueInvoices = (invoices || []).filter(inv => inv.status === 'Overdue' || inv.status === 'Unpaid').length;
             const overdueAmount = (invoices || [])
                 .filter(inv => inv.status === 'Overdue' || inv.status === 'Unpaid')
@@ -120,7 +137,9 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
                     totalVehicles,
                     inService,
                     completed,
-                    totalRevenue,
+                    totalBilled,
+                    totalCollected,
+                    totalDeductions,
                     overdueInvoices,
                     overdueAmount
                 }
@@ -172,12 +191,12 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                        <CardTitle className="text-sm font-medium">Collected Revenue</CardTitle>
                         <IndianRupee className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">₹{stats.stats.totalRevenue.toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">Lifetime Value</p>
+                        <div className="text-2xl font-bold">₹{stats.stats.totalCollected.toLocaleString()}</div>
+                        <p className="text-xs text-muted-foreground">₹{stats.stats.totalDeductions.toLocaleString()} total deductions</p>
                     </CardContent>
                 </Card>
                 <Card>

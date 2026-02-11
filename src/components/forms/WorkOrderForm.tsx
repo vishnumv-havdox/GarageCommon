@@ -1432,6 +1432,8 @@ export function WorkOrderForm({
         orderPayload.review_status = 'pending';
         orderPayload.quality_check_status = 'pending';
         orderPayload.repair_status = 'in_progress';
+        orderPayload.current_stage = 'Repair';
+        orderPayload.customer_notified = false;
       }
 
       let workOrderId = initialWorkOrderId;
@@ -1444,6 +1446,15 @@ export function WorkOrderForm({
           .eq('id', initialWorkOrderId);
 
         if (updateError) throw updateError;
+
+        if (isReopening) {
+          // Reset stages in work_order_stages table
+          await supabase
+            .from('work_order_stages')
+            .update({ status: 'pending', completed_at: null })
+            .in('stage', ['Quality Check', 'Review', 'Delivery'])
+            .eq('work_order_id', initialWorkOrderId);
+        }
       } else {
         // CREATE
         const { data: workOrder, error } = await supabase

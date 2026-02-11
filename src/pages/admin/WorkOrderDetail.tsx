@@ -542,9 +542,9 @@ export default function WorkOrderDetail() {
         try {
             // @ts-ignore
             await supabase.rpc('approve_work', {
-                _work_order_id: id,
-                _approver_id: user?.id,
-                _notes: approvalNotes
+                p_work_order_id: id,
+                p_approver_id: user?.id,
+                p_notes: approvalNotes
             });
 
             toast({
@@ -1595,9 +1595,24 @@ export default function WorkOrderDetail() {
                                                 onCheckedChange={async (checked) => {
                                                     try {
                                                         // Update work_orders table
-                                                        const { error: woError } = await supabase.from("work_orders").update({
+                                                        const updates: any = {
                                                             repair_status: checked ? 'approved' : 'in_progress'
-                                                        } as any).eq("id", id);
+                                                        };
+
+                                                        if (checked) {
+                                                            updates.status = 'In Progress'; // Remove from Pending Approval (Inbox)
+                                                            updates.current_stage = 'Review'; // Advance to next stage
+                                                        }
+
+                                                        const { error: woError } = await supabase.from("work_orders").update(updates).eq("id", id);
+
+                                                        if (checked) {
+                                                            // Also approve all services to clear "Section Status: Pending Approval"
+                                                            await supabase.from("work_order_services").update({
+                                                                status: 'Approved',
+                                                                approved_at: new Date().toISOString()
+                                                            }).eq("work_order_id", id);
+                                                        }
 
                                                         if (woError) throw woError;
 
@@ -1680,9 +1695,17 @@ export default function WorkOrderDetail() {
                                             onCheckedChange={async (checked) => {
                                                 try {
                                                     // Update work_orders table
-                                                    const { error: woError } = await supabase.from("work_orders").update({
+                                                    const updates: any = {
                                                         review_status: checked ? 'approved' : 'pending'
-                                                    } as any).eq("id", id);
+                                                    };
+
+                                                    if (checked) {
+                                                        updates.current_stage = 'Quality Check'; // Move to QC stage
+                                                    } else {
+                                                        updates.current_stage = 'Review'; // Revert
+                                                    }
+
+                                                    const { error: woError } = await supabase.from("work_orders").update(updates).eq("id", id);
 
                                                     if (woError) throw woError;
 
@@ -1735,9 +1758,17 @@ export default function WorkOrderDetail() {
                                             onCheckedChange={async (checked) => {
                                                 try {
                                                     // Update work_orders table
-                                                    const { error: woError } = await supabase.from("work_orders").update({
+                                                    const updates: any = {
                                                         quality_check_status: checked ? 'completed' : 'pending'
-                                                    } as any).eq("id", id);
+                                                    };
+
+                                                    if (checked) {
+                                                        updates.current_stage = 'Delivery'; // Move to Delivery stage after QC
+                                                    } else {
+                                                        updates.current_stage = 'Quality Check'; // Revert if unchecked
+                                                    }
+
+                                                    const { error: woError } = await supabase.from("work_orders").update(updates).eq("id", id);
 
                                                     if (woError) throw woError;
 
@@ -1797,6 +1828,7 @@ export default function WorkOrderDetail() {
 
                                                     if (checked) {
                                                         updates.customer_visible = true; // Ensure customer can see it
+                                                        updates.current_stage = 'Delivery'; // confirm Delivery stage
                                                     }
 
                                                     const { error: woError } = await supabase.from("work_orders").update(updates).eq("id", id);

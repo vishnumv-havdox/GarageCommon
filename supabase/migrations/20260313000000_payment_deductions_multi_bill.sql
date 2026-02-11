@@ -26,11 +26,12 @@ CREATE TABLE IF NOT EXISTS public.payment_links (
 ALTER TABLE public.payment_links ENABLE ROW LEVEL SECURITY;
 
 -- 6. Policies for payment_links
+DROP POLICY IF EXISTS "Admins and Staff can view all payment_links" ON public.payment_links;
 CREATE POLICY "Admins and Staff can view all payment_links" ON public.payment_links
     FOR SELECT
     USING (
         EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'manager', 'staff'))
-    );
+    );;
 
 CREATE POLICY "Customers can view their own payment_links" ON public.payment_links
     FOR SELECT

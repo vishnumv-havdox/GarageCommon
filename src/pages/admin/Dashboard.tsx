@@ -25,7 +25,8 @@ import {
   Wrench,
   Activity,
   History as HistoryIcon,
-  AlertCircle
+  AlertCircle,
+  Receipt
 } from "lucide-react";
 import { GarageClock } from "@/components/dashboard/GarageClock";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -55,6 +56,7 @@ export default function AdminDashboard() {
   const [lowStock, setLowStock] = useState<any[]>([]);
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
   const [recentWOs, setRecentWOs] = useState<any[]>([]);
+  const [pendingBillCount, setPendingBillCount] = useState(0);
 
   useEffect(() => {
     fetchDashboardData();
@@ -66,7 +68,7 @@ export default function AdminDashboard() {
       const startDate = startOfMonth(new Date()).toISOString();
       const endDate = endOfMonth(new Date()).toISOString();
 
-      const [finRes, opRes, inventoryRes, paymentsRes, woRes]: any[] = await Promise.all([
+      const [finRes, opRes, inventoryRes, paymentsRes, woRes, billsRes]: any[] = await Promise.all([
         // 1. Financial Analytics
         (supabase.rpc as any)('get_financial_analytics_v2', {
           p_start_date: startDate,
@@ -83,14 +85,20 @@ export default function AdminDashboard() {
           .limit(100),
         // 4. Pending Payments
         supabase.from('payments')
-          .select('*, customers(name)')
+          .select('*, invoices(customer:customers(name))')
           .eq('status', 'pending')
           .limit(5),
-        // 5. Recent Work Orders
+        // 5. Active Work Orders
         supabase.from('work_orders')
-          .select('*, vehicles(vehicle_number)')
+          .select('*, vehicles(vehicle_number, customer:customers(name, company_name))')
+          .not('status', 'in', '("Completed","Delivered","Cancelled","Rejected")')
           .order('created_at', { ascending: false })
-          .limit(5)
+          .limit(5),
+        // 6. Pending Bills (Drafts + Generated/Unpaid)
+        supabase
+          .from('invoices')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['Draft', 'Generated'])
       ]);
 
       if (finRes.data) setFinData(finRes.data);
@@ -102,8 +110,12 @@ export default function AdminDashboard() {
         .slice(0, 5);
       setLowStock(lowStockItems);
 
-      setPendingPayments(paymentsRes.data || []);
+      setPendingPayments((paymentsRes.data || []).map((p: any) => ({
+        ...p,
+        customers: p.invoices?.customer
+      })));
       setRecentWOs(woRes.data || []);
+      setPendingBillCount(billsRes.count || 0);
 
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -120,9 +132,6 @@ export default function AdminDashboard() {
     'Delivered': '#059669',
     'Cancelled': '#ef4444'
   };
-
-  const pipelineData = opData?.status_counts ?
-    Object.entries(opData.status_counts).map(([name, value]) => ({ name, value })) : [];
 
   const counts: any = {};
   if (opData?.status_counts) {
@@ -326,28 +335,25 @@ export default function AdminDashboard() {
                 </Card>
               </div>
 
-              {/* Minimized Pipeline Chart for reference */}
-              <Card className="shadow-sm border-none bg-white/50 backdrop-blur-sm">
-                <CardHeader className="py-3">
-                  <CardTitle className="text-sm font-bold flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-primary" /> Detailed Status Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <div className="h-[150px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={pipelineData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                        <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
-                        <YAxis fontSize={10} axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={30}>
-                          {pipelineData.map((entry: any, index: number) => (
-                            <Cell key={`cell-${index}`} fill={statusColors[entry.name] || '#cbd5e1'} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+              {/* Pending Billing Card - Replaces Detailed Status Breakdown */}
+              <Card
+                className="relative overflow-hidden group border-none shadow-lg cursor-pointer transform hover:scale-[1.01] transition-all"
+                onClick={() => navigate('/admin/invoices')}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 opacity-90 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20" />
+
+                <CardContent className="relative p-6 text-white flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-violet-100 text-xs font-bold uppercase tracking-widest">Pending Bill</p>
+                    <h3 className="text-5xl font-black tracking-tighter">{pendingBillCount}</h3>
+                    <p className="text-xs text-violet-100 font-medium flex items-center gap-2 opacity-80 mt-1">
+                      <FileText className="h-3.5 w-3.5" />
+                      Includes has to bill, drafts, etc.
+                    </p>
+                  </div>
+                  <div className="h-20 w-20 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10 shadow-inner">
+                    <Receipt className="h-10 w-10 text-white" />
                   </div>
                 </CardContent>
               </Card>
@@ -401,7 +407,14 @@ export default function AdminDashboard() {
                       onClick={() => navigate(`/admin/work-orders/${wo.id}`)}
                     >
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-bold">{wo.vehicles?.vehicle_number}</span>
+                        <div>
+                          <span className="text-xs font-bold block">{wo.vehicles?.vehicle_number}</span>
+                          {wo.vehicles?.customer?.company_name && (
+                            <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block mt-0.5">
+                              {wo.vehicles.customer.company_name}
+                            </span>
+                          )}
+                        </div>
                         <Badge variant="outline" className="h-4 text-[9px] uppercase tracking-tighter" style={{ borderColor: statusColors[wo.status], color: statusColors[wo.status] }}>
                           {wo.status}
                         </Badge>

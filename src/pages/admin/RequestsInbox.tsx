@@ -44,7 +44,8 @@ export default function RequestsInbox() {
             model, 
             vehicle_number,
             customer:customers(name)
-          )
+          ),
+          assigned_employee:employees!assigned_to(name)
         `)
                 .eq("status", "Pending Approval")
                 .order("created_at", { ascending: false });
@@ -117,9 +118,9 @@ export default function RequestsInbox() {
         try {
             // @ts-ignore
             const { error } = await supabase.rpc('approve_work', {
-                _work_order_id: workOrder.id,
-                _approver_id: user?.id,
-                _notes: "Approved via Inbox"
+                p_work_order_id: workOrder.id,
+                p_approver_id: user?.id,
+                p_notes: "Approved via Inbox"
             });
             if (error) throw error;
             toast({ title: "Work Order Approved", description: "The work order has been approved." });
@@ -128,7 +129,7 @@ export default function RequestsInbox() {
                 state: {
                     type: "Work Order",
                     id: workOrder.id,
-                    requester: workOrder.vehicle?.customer?.name || "Customer",
+                    requester: workOrder.assigned_employee?.name || workOrder.vehicle?.customer?.name || "Customer",
                     status: "APPROVED",
                     acceptedAt: new Date().toISOString()
                 }
@@ -147,10 +148,15 @@ export default function RequestsInbox() {
     const handleApprovePartRequest = async (request: any) => {
         setProcessingId(request.id);
         try {
+            // Resolve employee_id for issue_part_request
+            const { data: emp } = await supabase.from("employees").select("id").eq("user_id", user?.id).single();
+            if (!emp) throw new Error("Employee record not found for your account");
+
             // @ts-ignore
             const { error } = await supabase.rpc('issue_part_request', {
-                p_request_id: request.id,
-                p_approver_id: user?.id
+                _request_id: request.id,
+                _issued_qty: request.requested_qty,
+                _employee_id: emp.id
             });
             if (error) throw error;
             toast({ title: "Part Request Approved", description: "Inventory has been updated." });

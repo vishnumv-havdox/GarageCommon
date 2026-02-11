@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Zap } from "lucide-react";
+import { Calendar as CalendarIcon, Activity } from "lucide-react";
 import {
     Popover,
     PopoverContent,
@@ -8,82 +8,78 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export const GarageClock: React.FC = () => {
     const [time, setTime] = useState(new Date());
     const [gear, setGear] = useState(1);
-    const [shifterPos, setShifterPos] = useState({ x: -12, y: -12 });
+    const [shifterPos, setShifterPos] = useState({ x: -14, y: -14 });
     const [isShifting, setIsShifting] = useState(false);
-    const [rpmRotate, setRpmRotate] = useState(-90);
-    const [secondPercentage, setSecondPercentage] = useState(0);
-    const prevGearRef = useRef(1);
+
+    // For smooth needle animation
     const requestRef = useRef<number>();
+    const [smoothSeconds, setSmoothSeconds] = useState(0);
+    const prevGearRef = useRef(1);
 
-    // Gauge numbers 1 to 6
-    const gaugeNumbers = [1, 2, 3, 4, 5, 6];
-    const getAngleForNumber = (num: number) => ((num - 1) * (180 / 5)) - 90;
+    // Track "Reset" state for custom return animation
+    const [isResetting, setIsResetting] = useState(false);
 
-    // H-Pattern Coordinates for 1-6 gears
     const gearPositions: Record<number, { x: number, y: number }> = {
-        1: { x: -12, y: -12 },
-        2: { x: -12, y: 12 },
-        3: { x: 0, y: -12 },
-        4: { x: 0, y: 12 },
-        5: { x: 12, y: -12 },
-        6: { x: 12, y: 12 }
+        1: { x: -14, y: -14 },
+        2: { x: -14, y: 14 },
+        3: { x: 0, y: -14 },
+        4: { x: 0, y: 14 },
+        5: { x: 14, y: -14 },
+        6: { x: 14, y: 14 }
     };
 
     const animate = () => {
         const now = new Date();
-        const ms = now.getMilliseconds();
         const s = now.getSeconds();
+        const ms = now.getMilliseconds();
 
-        if (now.getSeconds() !== time.getSeconds()) {
+        const exactSeconds = s + ms / 1000;
+        setSmoothSeconds(exactSeconds);
+
+        if (s !== time.getSeconds()) {
             setTime(now);
         }
 
-        const gearDuration = 10;
-        const progressInSeconds = (s % gearDuration) + ms / 1000;
-        const progressFactor = progressInSeconds / gearDuration;
+        // --- GEAR LOGIC ---
+        const blockIndex = Math.floor(exactSeconds / 10);
+        const currentGear = Math.min(6, blockIndex + 1);
 
-        setRpmRotate(progressFactor * 180 - 90);
-
-        const currentGear = Math.floor(s / gearDuration) + 1;
+        // Detect Gear Change (Reset Point)
         if (currentGear !== prevGearRef.current) {
             handleGearShift(prevGearRef.current, currentGear);
+            setIsResetting(true);
+            setTimeout(() => setIsResetting(false), 300);
             prevGearRef.current = currentGear;
+        } else if (currentGear !== gear && !isShifting) {
+            setGear(currentGear);
         }
 
-        setSecondPercentage(((s + ms / 1000) / 60) * 100);
         requestRef.current = requestAnimationFrame(animate);
     };
 
     const handleGearShift = async (oldGear: number, newGear: number) => {
-        setGear(newGear);
         setIsShifting(true);
-
         const start = gearPositions[oldGear] || gearPositions[1];
         const end = gearPositions[newGear] || gearPositions[1];
 
-        // If gears are in different columns, move through neutral center
         if (start.x !== end.x) {
-            // 1. Move to Neutral of current column
             setShifterPos({ x: start.x, y: 0 });
-            await new Promise(r => setTimeout(r, 150));
-            // 2. Move along Neutral bar to new column
+            await new Promise(r => setTimeout(r, 80));
             setShifterPos({ x: end.x, y: 0 });
-            await new Promise(r => setTimeout(r, 150));
-            // 3. Move to target gear position
+            await new Promise(r => setTimeout(r, 80));
             setShifterPos({ x: end.x, y: end.y });
         } else {
-            // Straight vertical shift (1->2, 3->4, etc)
-            // Still pass through neutral for effect
             setShifterPos({ x: start.x, y: 0 });
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 50));
             setShifterPos({ x: end.x, y: end.y });
         }
-
-        setTimeout(() => setIsShifting(false), 400);
+        setGear(newGear);
+        setTimeout(() => setIsShifting(false), 200);
     };
 
     useEffect(() => {
@@ -91,160 +87,215 @@ export const GarageClock: React.FC = () => {
         return () => {
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
         };
-    }, []);
+    }, [gear, isShifting]);
 
-    const renderOdometerDigit = (digit: string, key: string) => (
-        <div key={key} className="relative h-6 w-4 bg-black overflow-hidden border-x border-white/5 rounded-sm shadow-inner flex flex-col items-center">
-            <div
-                className="transition-transform duration-500 ease-in-out flex flex-col"
-                style={{ transform: `translateY(-${parseInt(digit) * 10}%)` }}
-            >
-                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
-                    <div key={n} className="h-6 flex items-center justify-center text-sm font-black text-white font-mono leading-none">
-                        {n}
-                    </div>
-                ))}
+
+    // --- SVG GAUGE CONFIG ---
+    const startAngle = -120;
+    const endAngle = 120;
+    const totalSweep = endAngle - startAngle;
+    const radius = 42;
+
+    // Progress within block (0.0 to 1.0)
+    const blockProgress = (smoothSeconds % 10) / 10;
+    const currentAngle = startAngle + (blockProgress * totalSweep);
+    const visualTickIndex = Math.min(10, Math.round(blockProgress * 10));
+
+    // Labels
+    const gearStart = (gear - 1) * 10;
+    const labels = [];
+    for (let i = 0; i <= 10; i++) labels.push(gearStart + i);
+
+    // Shift Lights
+    const renderShiftLights = () => {
+        const leds = 8;
+        return (
+            <div className="flex gap-1 mb-1 justify-center absolute -top-3">
+                {Array.from({ length: leds }).map((_, i) => {
+                    const threshold = 0.5 + (i * 0.07);
+                    const isActive = blockProgress > threshold;
+                    let color = "bg-green-600";
+                    if (i > 4) color = "bg-yellow-500";
+                    if (i > 6) color = "bg-red-600";
+
+                    return (
+                        <div
+                            key={i}
+                            className={cn(
+                                "w-3 h-1.5 rounded-sm transition-all duration-75",
+                                isActive ? `${color} shadow-sm scale-110` : "bg-slate-300 opacity-60"
+                            )}
+                        />
+                    );
+                })}
             </div>
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/60 pointer-events-none" />
-        </div>
-    );
+        );
+    }
 
-    const hours = format(time, "hh");
-    const mins = format(time, "mm");
-    const secs = format(time, "ss");
+    // Helper to render Gear Number on H-Pattern
+    const renderGearNum = (num: number, x: number, y: number) => {
+        const isActive = gear === num;
+        return (
+            <div
+                className={cn(
+                    "absolute w-4 h-4 flex items-center justify-center text-[8px] font-black transition-all duration-200 z-10 rounded-full",
+                    isActive ? "text-white bg-slate-900 scale-125 shadow-md" : "text-slate-500 bg-transparent"
+                )}
+                style={{
+                    left: `calc(50% + ${x}px)`,
+                    top: `calc(50% + ${y}px)`,
+                    transform: 'translate(-50%, -50%)'
+                }}
+            >
+                {num}
+            </div>
+        );
+    }
 
     return (
-        <div className="flex flex-row items-center gap-3 p-1.5 px-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm select-none transition-all hover:shadow-md group">
+        <div className="relative p-1 rounded-3xl bg-white shadow-xl border border-slate-200 select-none group inline-block">
 
-            {/* FLUID RPM GAUGE PANEL */}
-            <div className="relative w-28 h-14 flex items-center justify-center bg-slate-950 rounded-xl overflow-hidden shadow-lg border border-white/10 px-2 mt-1">
-                <div className="absolute inset-0 pointer-events-none">
-                    {gaugeNumbers.map((num) => {
-                        const angle = getAngleForNumber(num);
-                        const distance = Math.abs(rpmRotate - angle);
-                        const scale = Math.max(1, 1.8 - (distance / 40));
-                        const opacity = Math.max(0.3, 1 - (distance / 60));
+            <div className="relative bg-white/50 backdrop-blur-md rounded-[1.3rem] p-3 flex items-center gap-4 overflow-hidden h-32 border border-slate-100">
 
-                        return (
-                            <div
-                                key={num}
-                                className="absolute transition-all duration-100 flex items-center justify-center"
-                                style={{
-                                    left: '50%',
-                                    bottom: '10%',
-                                    transform: `rotate(${angle}deg) translateY(-38px) rotate(${-angle}deg) scale(${scale})`,
-                                    opacity: opacity,
-                                    color: num > 4 ? '#ef4444' : num > 3 ? '#f59e0b' : '#10b981',
-                                    fontSize: '8px',
-                                    fontWeight: '900'
-                                }}
-                            >
-                                {num}
-                            </div>
-                        );
-                    })}
-                </div>
+                {/* Visual Shifter (Left) */}
+                <div className="flex flex-col items-center justify-center z-10 w-24 scale-100">
+                    <div className="relative w-20 h-20 bg-slate-50 rounded-lg border border-slate-200 shadow-inner flex items-center justify-center overflow-visible">
 
-                <div className="absolute inset-0 opacity-20">
-                    <svg viewBox="0 0 100 50" className="w-full h-full">
-                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#334155" strokeWidth="8" strokeDasharray="1,2" />
-                        <path
-                            d="M 10 50 A 40 40 0 0 1 90 50"
-                            fill="none"
-                            stroke="url(#rpmGradientFinal)"
-                            strokeWidth="8"
-                            strokeDasharray={(secondPercentage * 1.25) + ", 1000"}
-                            className="transition-all duration-300 ease-linear"
-                        />
-                        <defs>
-                            <linearGradient id="rpmGradientFinal" x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" stopColor="#10b981" />
-                                <stop offset="60%" stopColor="#f59e0b" />
-                                <stop offset="100%" stopColor="#ef4444" />
-                            </linearGradient>
-                        </defs>
-                    </svg>
-                </div>
+                        {/* Gear Numbers */}
+                        {renderGearNum(1, -16, -32)}
+                        {renderGearNum(2, -16, 32)}
+                        {renderGearNum(3, 0, -32)}
+                        {renderGearNum(4, 0, 32)}
+                        {renderGearNum(5, 16, -32)}
+                        {renderGearNum(6, 16, 32)}
 
-                <div
-                    className="absolute bottom-1 h-10 w-0.5 bg-red-500 origin-bottom shadow-[0_0_8px_rgba(239,68,68,0.8)] z-10"
-                    style={{
-                        transform: `rotate(${rpmRotate}deg)`,
-                        transition: rpmRotate < -80 ? 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'transform 16ms linear'
-                    }}
-                >
-                    <div className="absolute top-0 -left-0.5 w-1.5 h-1.5 rounded-full bg-red-400 blur-[1px]" />
-                </div>
-            </div>
-
-            {/* MANUAL GEAR SHIFTER & DISPLAY */}
-            <div className="flex flex-row items-center gap-2 p-1 rounded-xl border border-slate-200/50 dark:border-slate-800/50">
-                <div className="relative w-10 h-10 bg-slate-950 rounded-lg border border-white/5 overflow-hidden flex items-center justify-center p-1">
-                    <div className="absolute inset-0 opacity-20 flex flex-col justify-between p-1.5">
-                        <div className="flex justify-between text-[5px] font-bold text-white"><span>1</span><span>3</span><span>5</span></div>
-                        <div className="flex justify-between text-[5px] font-bold text-white"><span>2</span><span>4</span><span>6</span></div>
-                    </div>
-                    <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 40 40">
-                        <line x1="8" y1="8" x2="8" y2="32" stroke="white" strokeWidth="1" />
-                        <line x1="20" y1="8" x2="20" y2="32" stroke="white" strokeWidth="1" />
-                        <line x1="32" y1="8" x2="32" y2="32" stroke="white" strokeWidth="1" />
-                        <line x1="8" y1="20" x2="32" y2="20" stroke="white" strokeWidth="1" />
-                    </svg>
-                    <div
-                        className="absolute w-2.5 h-2.5 bg-primary rounded-full shadow-[0_0_12px_rgba(var(--primary-rgb),1)] border border-white/20 transition-all duration-200 ease-out z-10"
-                        style={{
-                            transform: `translate(${shifterPos.x}px, ${shifterPos.y}px)`
-                        }}
-                    >
-                        <div className="absolute inset-0 bg-white/20 rounded-full animate-ping" />
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent rounded-full" />
-                    </div>
-                </div>
-
-                <div className="flex flex-col items-center justify-center min-w-[35px]">
-                    <div className={`relative w-8 h-8 ${isShifting ? 'bg-red-500 scale-110 shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-primary'} rounded-lg flex items-center justify-center shadow-lg border border-white/20 transition-all duration-150`}>
-                        <span className="relative text-lg font-black text-white italic drop-shadow-md">{gear}</span>
-                    </div>
-                    <div className="text-[5px] font-black text-slate-500 uppercase tracking-tighter text-center mt-0.5">GEAR</div>
-                </div>
-            </div>
-
-            {/* DARK ODOMETER CLOCK PANEL */}
-            <div className="flex items-center gap-1 p-1 bg-black rounded-xl border border-white/10 shadow-xl ml-1">
-                <div className="flex gap-px">
-                    {renderOdometerDigit(hours[0], "h1")}
-                    {renderOdometerDigit(hours[1], "h2")}
-                </div>
-                <span className="text-primary font-bold text-xs animate-pulse mx-0.5">:</span>
-                <div className="flex gap-px">
-                    {renderOdometerDigit(mins[0], "m1")}
-                    {renderOdometerDigit(mins[1], "m2")}
-                </div>
-                <span className="text-red-500/80 font-bold text-[8px] mx-0.5 animate-pulse">:</span>
-                <div className="flex gap-px">
-                    {renderOdometerDigit(secs[0], "s1")}
-                    {renderOdometerDigit(secs[1], "s2")}
-                </div>
-            </div>
-
-            {/* INTEGRATED CALENDAR */}
-            <div className="border-l border-slate-200 dark:border-slate-800 pl-3 flex items-center gap-3 h-10">
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end leading-none group/cal">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase mb-0.5">{format(time, "EEE")}</span>
-                            <span className="text-sm font-black text-slate-800 dark:text-slate-100 group-hover/cal:text-primary transition-colors">{format(time, "dd MMM")}</span>
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 border-none shadow-2xl rounded-2xl overflow-hidden z-[200]" align="end">
-                        <div className="bg-primary p-3 text-white">
-                            <h4 className="font-bold flex items-center gap-2 text-xs uppercase tracking-widest">
-                                <CalendarIcon className="h-3 w-3" /> Workshop Hub
-                            </h4>
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            {/* Darker H-Pattern Lines for contrast */}
+                            <div className="absolute h-12 w-px bg-slate-400 left-[calc(50%-16px)]" />
+                            <div className="absolute h-12 w-px bg-slate-400 left-1/2" />
+                            <div className="absolute h-12 w-px bg-slate-400 left-[calc(50%+16px)]" />
+                            <div className="absolute w-[32px] h-px bg-slate-400 top-1/2" />
                         </div>
-                        <Calendar mode="single" selected={time} className="rounded-b-2xl border-none" />
-                    </PopoverContent>
-                </Popover>
+                        <div
+                            className="absolute w-4 h-4 bg-slate-800 rounded-full shadow-lg border border-slate-500 transition-all duration-100 ease-out z-20"
+                            style={{
+                                transform: `translate(${shifterPos.x * 1.15}px, ${shifterPos.y * 1.15}px)`
+                            }}
+                        />
+                    </div>
+                </div>
+
+                {/* Main Gauge (Center) - SVG Based */}
+                <div className="flex flex-col items-center z-20 relative pt-2">
+                    {renderShiftLights()}
+
+                    <div className="relative w-28 h-28 flex items-center justify-center">
+                        <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100">
+                            {/* Gauge Ring Background - Darker stroke for definition */}
+                            <circle cx="50" cy="50" r={radius} fill="none" stroke="#cbd5e1" strokeWidth="1" />
+
+                            {/* Major Ticks & Numbers */}
+                            {Array.from({ length: 11 }).map((_, i) => {
+                                const tickAngle = startAngle + (i * (totalSweep / 10));
+                                const isClose = i === visualTickIndex;
+                                const num = labels[i];
+
+                                const rad = (tickAngle - 90) * (Math.PI / 180);
+                                const textR = radius - 8;
+                                const tx = 50 + textR * Math.cos(rad);
+                                const ty = 50 + textR * Math.sin(rad);
+
+                                return (
+                                    <g key={`major-${i}`}>
+                                        {/* Major Tick */}
+                                        <line
+                                            x1="50" y1={50 - radius}
+                                            x2="50" y2={50 - radius + 4}
+                                            stroke={i === visualTickIndex ? "#0891b2" : "#64748b"}
+                                            strokeWidth={i === visualTickIndex ? 2 : 1.5}
+                                            transform={`rotate(${tickAngle} 50 50)`}
+                                        />
+                                        {/* Text Label */}
+                                        <text
+                                            x={tx} y={ty}
+                                            fill={isClose ? "#0891b2" : "#475569"}
+                                            fontSize={isClose ? "9" : "7"}
+                                            fontWeight="bold"
+                                            textAnchor="middle"
+                                            dominantBaseline="middle"
+                                            className="font-mono transition-all duration-100"
+                                            style={{
+                                                filter: isClose ? "drop-shadow(0 0 1px rgba(8,145,178,0.3))" : "none"
+                                            }}
+                                        >
+                                            {num}
+                                        </text>
+                                    </g>
+                                );
+                            })}
+                        </svg>
+
+                        {/* Animated Needle */}
+                        <div
+                            className="absolute inset-0 flex items-center justify-center will-change-transform"
+                            style={{
+                                transform: `rotate(${currentAngle}deg)`,
+                                transition: isResetting ? 'transform 300ms cubic-bezier(0.2, 0, 0, 1)' : 'transform 75ms linear'
+                            }}
+                        >
+                            <div className="w-0.5 h-[46%] bg-red-600 mb-[46%] rounded-full shadow-sm origin-bottom" style={{ height: '42%', marginBottom: '42%' }} />
+                        </div>
+
+                        {/* Center Cap & Gear - VISIBILITY FIX */}
+                        {/* Changed bg-white to bg-slate-100 + stronger border/shadow */}
+                        <div className="absolute w-16 h-16 bg-slate-100 rounded-full border border-slate-300 flex items-center justify-center shadow-md z-20">
+                            <div className="flex flex-col items-center">
+                                <div className="text-[6px] text-slate-500 font-bold uppercase tracking-widest -mb-0.5">Gear</div>
+                                <div className={cn(
+                                    "text-4xl font-black italic tabular-nums leading-none tracking-tighter transition-all duration-75",
+                                    isShifting ? "scale-90 text-red-500 blur-[0.5px]" : "text-slate-900"
+                                )}>
+                                    {gear}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right: Clock */}
+                <div className="flex flex-col items-end justify-center z-10 w-20 gap-2">
+                    <div className="flex flex-col items-end">
+                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Time</div>
+                        <div className="text-3xl font-mono font-black text-slate-900 tabular-nums leading-none tracking-tighter">
+                            {format(time, "hh:mm")}
+                        </div>
+                        <div className="text-xs font-mono font-bold text-slate-500">
+                            {format(time, "ss")}s <span className="text-[10px] ml-1 text-slate-400">{format(time, "a")}</span>
+                        </div>
+                    </div>
+
+                    <div className="w-12 h-px bg-slate-300" />
+
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end group/cal">
+                                <span className="text-lg font-bold text-slate-900 transition-colors uppercase leading-none">
+                                    {format(time, "MMM dd")}
+                                </span>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 border-none shadow-xl rounded-2xl overflow-hidden mr-10" align="center" side="left">
+                            <div className="bg-white border border-slate-100 p-4">
+                                <Calendar
+                                    mode="single"
+                                    selected={time}
+                                    className="rounded-xl border border-slate-100 bg-white text-slate-900"
+                                />
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+
             </div>
         </div>
     );

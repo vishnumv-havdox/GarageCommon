@@ -58,6 +58,16 @@ export function ProgressTracker({
   const currentStageIndex = stages.findIndex(s => s.name === currentStage) || 0
 
   const getStageStatus = (stageName: string): 'completed' | 'in_progress' | 'pending' => {
+    // If we have a currentStage, use strict sequential logic based on index
+    if (currentStage) {
+      const stageIndex = stages.findIndex(s => s.name === stageName)
+
+      if (stageIndex < currentStageIndex) return 'completed'
+      if (stageIndex === currentStageIndex) return 'in_progress'
+      return 'pending'
+    }
+
+    // Fallback if no currentStage is provided (shouldn't happen in main flows)
     if (!stagesData) {
       const index = stages.findIndex(s => s.name === stageName)
       if (index < currentStageIndex) return 'completed'
@@ -67,7 +77,7 @@ export function ProgressTracker({
 
     const stage = stagesData.find(s => s.stage === stageName)
     if (stage?.status === 'completed') return 'completed'
-    if (stage?.status === 'in_progress' || stage?.stage === currentStage) return 'in_progress'
+    if (stage?.status === 'in_progress') return 'in_progress'
     return 'pending'
   }
 

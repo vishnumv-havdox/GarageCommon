@@ -139,6 +139,7 @@ interface WorkOrderProgress {
   };
   customer?: { name: string; phone?: string };
   stages: WorkOrderStage[];
+  customer_notified?: boolean;
   tasks: RepairTask[];
   services: any[];
 }
@@ -159,6 +160,8 @@ export default function CustomerPortal() {
   const [viewVehicleHistory, setViewVehicleHistory] = useState<any | null>(null);
   const [historySearchTerm, setHistorySearchTerm] = useState("");
   const [historySortBy, setHistorySortBy] = useState<"date" | "vehicle" | "status">("date");
+  const [activeTab, setActiveTab] = useState("vehicles");
+  const [hasSetInitialTab, setHasSetInitialTab] = useState(false);
 
   // Service History State
   const [serviceHistory, setServiceHistory] = useState<ServiceHistory[]>([]);
@@ -459,7 +462,7 @@ export default function CustomerPortal() {
               }));
 
             const woRepairTasks = (tasksQuery.data || [])
-              .filter((rt: any) => rt.work_order_id === wo.id && rt.task_type === 'repair')
+              .filter((rt: any) => rt.work_order_id === wo.id && rt.task_type !== 'inspection')
               .map((rt: any) => ({
                 id: rt.id,
                 task_name: rt.task_name,
@@ -578,7 +581,7 @@ export default function CustomerPortal() {
     const status = wo.status?.toLowerCase() || "";
     // Only show truly active work orders (not delivered, completed, approved, or cancelled)
     // Delivered/completed/approved orders should go to Work History
-    const finalStatuses = ["delivered", "completed", "cancelled", "approved"];
+    const finalStatuses = ["delivered", "completed", "cancelled"];
     return !finalStatuses.includes(status) && wo.customer_visible;
   });
 
@@ -588,6 +591,7 @@ export default function CustomerPortal() {
     const finalStatuses = ["delivered", "completed", "approved"];
     return finalStatuses.includes(status) && wo.customer_visible;
   });
+
 
   const toggleOrderExpanded = (orderId: string) => {
     const newExpanded = new Set(expandedOrders);
@@ -599,10 +603,54 @@ export default function CustomerPortal() {
     setExpandedOrders(newExpanded);
   };
 
+  // Automatically switch tab based on active orders
+  useEffect(() => {
+    if (!loading && !hasSetInitialTab) {
+      if (activeWorkOrders.length > 0) {
+        setActiveTab("workorders");
+      } else {
+        setActiveTab("vehicles");
+      }
+      setHasSetInitialTab(true);
+    }
+  }, [loading, activeWorkOrders.length, hasSetInitialTab]);
+
+
   const getStageProgress = (stages: WorkOrderStage[]) => {
-    if (!stages || stages.length === 0) return 0;
-    const completed = stages.filter(s => s.status === 'completed').length;
-    return (completed / stages.length) * 100;
+    // Determine the furthest stage reached
+    // We can't rely just on stages array length because stages might be missing or out of order
+    // Instead, we look at the 'current_stage' of the work order, but here we only have the stages array passed in.
+    // Let's change the function signature to accept currentStage name, or assume the last stage in the list is current.
+
+    // Better approach: The parent activeWorkOrders.map passes `order.stages`. 
+    // But `order` object has `current_stage` property which is more reliable for "current status".
+    // Let's use the order's current_stage if possible. 
+    // However, this function currently only takes `stages`. 
+    // Let's find where it's used: line 1152: const progress = getStageProgress(order.stages || []);
+
+    // We should change the usage to pass the stage name.
+    return 0; // Placeholder, will be replaced by the next chunk changing usage
+  }
+
+  const getProgressFromStageName = (stageName: string | null) => {
+    if (!stageName) return 0;
+    const index = STAGES.indexOf(stageName);
+    if (index === -1) {
+      if (stageName === 'Completed') return 100;
+      return 0;
+    }
+    // 0 = Inspection (0%), 4 = Delivery (100%?) 
+    // Actually, "Inspection" means we are AT inspection. 
+    // Completion of Inspection means we move to Repair.
+    // Let's stick to a simple mapping:
+    // Inspection: 10%
+    // Repair: 30%
+    // Review: 70%
+    // Quality Check: 90%
+    // Delivery: 100%
+
+    // Or just simple index based:
+    return ((index + 1) / STAGES.length) * 100;
   };
 
 
@@ -875,7 +923,7 @@ export default function CustomerPortal() {
           (wo: any) => wo.vehicle_id === vId
         );
         return vehicleWorkOrders.filter(
-          (wo: any) => !["delivered", "completed", "cancelled", "approved"].includes(
+          (wo: any) => !["delivered", "completed", "cancelled"].includes(
             (wo.status || "").toLowerCase()
           )
         ).length;
@@ -1068,22 +1116,42 @@ export default function CustomerPortal() {
               ) : (
                 sortedVehicles.map((vehicle) => {
                   const vehicleWorkOrders = Object.values(workOrdersById).filter(wo => wo.vehicle_id === vehicle.id);
-                  const activeCount = vehicleWorkOrders.filter(wo => !["delivered", "completed", "cancelled", "approved"].includes((wo.status || "").toLowerCase())).length;
+                  const activeCount = vehicleWorkOrders.filter(wo => !["delivered", "completed", "cancelled"].includes((wo.status || "").toLowerCase())).length;
                   const completedCount = vehicleWorkOrders.filter(wo => ["delivered", "completed", "approved"].includes((wo.status || "").toLowerCase())).length;
 
                   return (
-                    <Card key={vehicle.id} className="bg-background/40 border-border backdrop-blur-md hover:border-primary/30 transition-all group overflow-hidden rounded-3xl">
+                    <Card key={vehicle.id} className={cn(
+                      "backdrop-blur-md transition-all group overflow-hidden rounded-3xl border",
+                      activeCount > 0
+                        ? "bg-primary/5 border-primary shadow-[0_0_20px_rgba(var(--primary),0.15)] hover:shadow-[0_0_30px_rgba(var(--primary),0.25)]"
+                        : "bg-background/40 border-border hover:border-primary/30"
+                    )}>
                       <div className="p-6">
                         <div className="flex justify-between items-start mb-6">
                           <div>
-                            <span className="text-[10px] font-bold text-primary uppercase tracking-tight mb-1 block">Vehicle Details</span>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[10px] font-bold text-primary uppercase tracking-tight block">Vehicle Details</span>
+                              {activeCount > 0 && (
+                                <Badge className="bg-primary text-primary-foreground border-0 text-[9px] font-bold uppercase animate-pulse shadow-sm">
+                                  In Service
+                                </Badge>
+                              )}
+                            </div>
                             <h3 className="text-2xl font-bold text-foreground tracking-tight">{vehicle.vehicle_number}</h3>
                             <p className="text-sm text-muted-foreground font-medium">{vehicle.model}</p>
                           </div>
-                          <div className="h-10 w-10 rounded-xl bg-background border border-border shadow-sm shadow-primary/20 flex items-center justify-center p-2 group-hover:scale-110 transition-transform">
+                          <div className={cn(
+                            "h-10 w-10 rounded-xl flex items-center justify-center p-2 transition-transform group-hover:scale-110",
+                            activeCount > 0
+                              ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30"
+                              : "bg-background border border-border shadow-sm shadow-primary/20"
+                          )}>
                             <img
                               src={profile?.logo_url || logo}
-                              className="h-full w-full object-contain grayscale brightness-0 invert opacity-40 group-hover:opacity-100 transition-opacity"
+                              className={cn(
+                                "h-full w-full object-contain transition-opacity",
+                                activeCount > 0 ? "brightness-0 invert" : "grayscale brightness-0 invert opacity-40 group-hover:opacity-100"
+                              )}
                               alt="Logo"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
@@ -1094,9 +1162,12 @@ export default function CustomerPortal() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 mb-6">
-                          <div className="bg-background/50 p-3 rounded-2xl border border-border">
+                          <div className={cn(
+                            "p-3 rounded-2xl border transition-colors",
+                            activeCount > 0 ? "bg-primary/10 border-primary/20" : "bg-background/50 border-border"
+                          )}>
                             <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Active Services</p>
-                            <p className="text-xl font-bold text-foreground">{activeCount}</p>
+                            <p className={cn("text-xl font-bold", activeCount > 0 ? "text-primary" : "text-foreground")}>{activeCount}</p>
                           </div>
                           <div className="bg-background/50 p-3 rounded-2xl border border-border">
                             <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">History</p>
@@ -1107,7 +1178,10 @@ export default function CustomerPortal() {
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
-                            className="flex-1 bg-secondary/50 border-border hover:bg-secondary text-foreground rounded-xl h-12 font-bold transition-all"
+                            className={cn(
+                              "flex-1 border-border hover:bg-secondary text-foreground rounded-xl h-12 font-bold transition-all",
+                              activeCount > 0 ? "bg-background/80 hover:bg-primary/10 hover:border-primary/30 hover:text-primary" : "bg-secondary/50"
+                            )}
                             onClick={() => {
                               const vehicleHistory = serviceHistory.filter(h => h.vehicle_id === vehicle.id);
                               setViewingVehicleHistory({
@@ -1117,7 +1191,7 @@ export default function CustomerPortal() {
                               });
                             }}
                           >
-                            <History className="h-4 w-4 mr-2 text-primary" /> Service Logs
+                            <History className="h-4 w-4 mr-2" /> Service Logs
                           </Button>
                         </div>
                       </div>
@@ -1149,7 +1223,7 @@ export default function CustomerPortal() {
             ) : (
               <div className="grid grid-cols-1 gap-6">
                 {activeWorkOrders.map((order) => {
-                  const progress = getStageProgress(order.stages || []);
+                  const progress = getProgressFromStageName(order.current_stage);
                   return (
                     <Card key={order.id} className="bg-background/40 border-border backdrop-blur-md hover:border-primary/30 transition-all overflow-hidden rounded-3xl border-l-4 border-l-primary">
                       <CardContent className="p-0">
@@ -1178,26 +1252,66 @@ export default function CustomerPortal() {
                               </div>
                             </div>
 
+
                             <div className="flex flex-col items-center md:items-end justify-center min-w-[200px]">
-                              <div className="relative h-24 w-24 mb-2">
-                                <svg className="h-24 w-24 -rotate-90">
-                                  <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-muted/20" />
-                                  <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent"
-                                    strokeDasharray={251.2}
-                                    strokeDashoffset={251.2 - (251.2 * progress) / 100}
-                                    className="text-primary transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
-                                  />
-                                </svg>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                  <span className="text-xl font-bold text-foreground leading-none">{Math.round(progress)}%</span>
-                                  <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-wider">Complete</span>
+                              {order.current_stage === 'Delivery' && order.customer_notified ? (
+                                <div className="text-center group relative cursor-default">
+                                  <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full animate-pulse" />
+                                  <div className="relative bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-6 rounded-2xl shadow-[0_10px_30px_rgba(16,185,129,0.4)] border border-emerald-400/50 flex flex-col items-center gap-3 transform transition-all hover:scale-105">
+                                    <div className="h-12 w-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm shadow-inner">
+                                      <CheckCircle2 className="h-7 w-7 text-white drop-shadow-md" />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <h4 className="text-lg font-black uppercase tracking-tight leading-none filter drop-shadow-sm">Vehicle Ready</h4>
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-100 opacity-90">For Delivery</p>
+                                    </div>
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10" />
+                                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-black/10 rounded-full blur-xl -ml-8 -mb-8" />
+                                  </div>
                                 </div>
-                              </div>
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{order.current_stage || "Initializing"}</p>
+                              ) : (
+                                <>
+                                  <div className="relative h-24 w-24 mb-2">
+                                    <svg className="h-24 w-24 -rotate-90">
+                                      <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-muted/20" />
+                                      <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent"
+                                        strokeDasharray={251.2}
+                                        strokeDashoffset={251.2 - (251.2 * progress) / 100}
+                                        className="text-primary transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
+                                      />
+                                    </svg>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                      <span className="text-xl font-bold text-foreground leading-none">{Math.round(progress)}%</span>
+                                      <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-wider">Complete</span>
+                                    </div>
+                                  </div>
+                                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{order.current_stage || "Initializing"}</p>
+                                </>
+                              )}
                             </div>
                           </div>
 
                           <div className="bg-background/50 rounded-2xl border border-border p-6 backdrop-blur-sm">
+                            {/* Current Activity Section */}
+                            <div className="mb-8 p-4 bg-primary/5 rounded-xl border border-primary/10">
+                              <h4 className="text-[10px] font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-2">
+                                <Activity className="h-3 w-3" /> Current Activity
+                              </h4>
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <p className="text-lg font-bold text-foreground">
+                                    {order.current_stage || "Initializing"}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {order.updated_at ? `Updated ${formatDateTime(order.updated_at)}` : "Just now"}
+                                  </p>
+                                </div>
+                                <Badge variant={order.status === 'in_progress' ? 'default' : 'secondary'} className="uppercase text-[10px]">
+                                  {order.status.replace('_', ' ')}
+                                </Badge>
+                              </div>
+                            </div>
+
                             <div className="flex items-center gap-2 mb-6">
                               <Gauge className="h-4 w-4 text-primary" />
                               <span className="text-xs font-bold text-foreground uppercase tracking-wider">Progress Timeline</span>
@@ -1992,21 +2106,57 @@ export default function CustomerPortal() {
                 <div className="space-y-0 relative pl-4 border-l-2 border-muted">
                   {STAGES.map((stage, index) => {
                     const stageData = viewDetailOrder.stages.find(s => s.stage === stage);
-                    const stageStatus = stageData?.status || 'pending';
-                    const isCompleted = stageStatus === 'completed';
+
+                    // Enforce sequential status based on current_stage
+                    // This fixes issues where DB might have inconsistent states (e.g. multiple in_progress)
+                    let displayStatus = 'pending';
+                    const currentStageIndex = STAGES.indexOf(viewDetailOrder.current_stage || 'Inspection');
+
+                    if (index < currentStageIndex) {
+                      displayStatus = 'completed';
+                    } else if (index === currentStageIndex) {
+                      displayStatus = 'in_progress';
+                    } else {
+                      displayStatus = 'pending';
+                    }
+
+                    // Override if DB explicitly says completed (for past stages)
+                    if (stageData?.status === 'completed' && index <= currentStageIndex) {
+                      displayStatus = 'completed';
+                    }
+
+                    const isCompleted = displayStatus === 'completed';
+                    const isCurrent = displayStatus === 'in_progress';
 
                     return (
                       <div key={stage} className="relative pb-6 last:pb-0 pl-6">
-                        <div className={`absolute -left-[21px] top-0 h-8 w-8 rounded-full border-4 border-background flex items-center justify-center shadow-sm z-10 ${isCompleted ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
-                          }`}>
-                          {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs font-bold">{index + 1}</span>}
+                        <div className={cn(
+                          "absolute -left-[21px] top-0 h-8 w-8 rounded-full border-4 border-background flex items-center justify-center shadow-sm z-10 transition-colors duration-300",
+                          isCompleted ? "bg-green-500 text-white" :
+                            isCurrent ? "bg-primary text-primary-foreground ring-4 ring-primary/20" :
+                              "bg-muted text-muted-foreground"
+                        )}>
+                          {isCompleted ? <CheckCircle2 className="h-4 w-4" /> :
+                            isCurrent ? <Clock className="h-4 w-4 animate-pulse" /> :
+                              <span className="text-xs font-bold">{index + 1}</span>}
                         </div>
                         <div className="flex items-center justify-between">
-                          <h5 className={cn("font-medium", isCompleted ? "text-green-600 dark:text-green-400" : "text-foreground")}>
-                            {stage}
-                          </h5>
-                          <Badge variant={isCompleted ? "default" : "outline"} className={isCompleted ? "bg-green-600" : ""}>
-                            {isCompleted ? "Completed" : stageStatus.replace('_', ' ')}
+                          <div>
+                            <h5 className={cn("font-medium", isCompleted ? "text-green-600" : isCurrent ? "text-primary font-bold" : "text-muted-foreground")}>
+                              {stage}
+                            </h5>
+                            {/* Add descriptions if available from ProgressTracker.tsx patterns */}
+                            {stage === 'Inspection' && <p className="text-[10px] text-muted-foreground hidden md:block">Initial vehicle inspection and diagnosis</p>}
+                            {stage === 'Repair' && <p className="text-[10px] text-muted-foreground hidden md:block">Main repair and maintenance work</p>}
+                            {stage === 'Review' && <p className="text-[10px] text-muted-foreground hidden md:block">Internal review of completed work</p>}
+                            {stage === 'Quality Check' && <p className="text-[10px] text-muted-foreground hidden md:block">Quality assurance verification</p>}
+                            {stage === 'Delivery' && <p className="text-[10px] text-muted-foreground hidden md:block">Final delivery preparation</p>}
+                          </div>
+                          <Badge variant={isCompleted ? "default" : isCurrent ? "secondary" : "outline"} className={cn(
+                            "uppercase text-[10px]",
+                            isCompleted ? "bg-green-600" : isCurrent ? "bg-primary/20 text-primary border-primary/20" : ""
+                          )}>
+                            {displayStatus.replace('_', ' ')}
                           </Badge>
                         </div>
                         {stageData?.completed_at && (

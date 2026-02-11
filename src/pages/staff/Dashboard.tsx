@@ -871,7 +871,7 @@ export default function StaffDashboard() {
                     const status = (work.status || "").toLowerCase()
                     const isAssigned = status === "assigned"
                     const isReleased = status === "pending_acceptance"
-                    const hasAccepted = status === "accepted" || status === "in_progress"
+                    const hasAccepted = status === "accepted" || status === "in_progress" || status === "approved"
 
                     const canComplete = hasAccepted
 
@@ -1266,7 +1266,7 @@ export default function StaffDashboard() {
                               })()}
 
                               {/* Action Terminal Bottom */}
-                              {allRepairsCompleted && !isFinished && (
+                              {allRepairsCompleted && !isFinished && !repairsApproved && (
                                 <div className="space-y-3 pt-2">
                                   <Button
                                     className={cn(
@@ -1307,6 +1307,26 @@ export default function StaffDashboard() {
                                   <div className="text-center">
                                     <h5 className="text-[10px] font-bold text-purple-400 uppercase tracking-wider leading-none mb-1.5">Waiting for Approval</h5>
                                     <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Manager is reviewing work.</p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Post-Repair States (Review, Quality Check, Delivery) */}
+                              {repairsApproved && !isFinished && (
+                                <div className="space-y-3 pt-2">
+                                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-4">
+                                    <div className="h-10 w-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500 shrink-0">
+                                      <CheckCircle2 className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                      <h5 className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider leading-none mb-1">Repairs Approved</h5>
+                                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-1">
+                                        Your work on this vehicle is complete.
+                                        {work.current_stage === 'Review' ? " Currently in Review." :
+                                          work.current_stage === 'Quality Check' ? " Waiting for Quality Check." :
+                                            work.current_stage === 'Delivery' ? " Ready for Delivery." : ""}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
                               )}

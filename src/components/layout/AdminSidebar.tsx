@@ -121,7 +121,7 @@ export function AdminSidebar() {
   return (
     <>
       {/* Mobile Header */}
-      <div className="lg:hidden flex items-center justify-between p-4 border-b bg-card w-full">
+      <div className="lg:hidden flex items-center justify-between p-4 border-b bg-card w-full sticky top-0 z-40 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/10 rounded-lg">
             {company?.logo_url ? (
@@ -140,16 +140,18 @@ export function AdminSidebar() {
               <Menu className="h-6 w-6" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72">
+          <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px]">
             <SidebarContent />
           </SheetContent>
         </Sheet>
       </div>
 
       {/* Desktop Sidebar - Fixed Width */}
-      <aside className="hidden lg:flex w-64 min-h-screen border-r flex-col sticky top-0 h-screen overflow-y-auto">
+      <aside className="hidden lg:flex w-64 min-h-screen border-r flex-col fixed top-0 h-screen overflow-y-auto bg-card z-30">
         <SidebarContent />
       </aside>
+      {/* Spacer for fixed sidebar */}
+      <div className="hidden lg:block w-64 shrink-0 transition-all duration-300" />
     </>
   );
 }

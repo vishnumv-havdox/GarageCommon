@@ -497,137 +497,139 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                 </div>
             </CardHeader>
             <CardContent className="p-0">
-                <Table>
-                    <TableHeader className="bg-muted/20">
-                        <TableRow>
-                            <TableHead>Part Info</TableHead>
-                            <TableHead>Qty (Req/App/Iss/Ret/Used)</TableHead>
-                            <TableHead>Requested By</TableHead>
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader className="bg-muted/20">
+                            <TableRow>
+                                <TableHead>Part Info</TableHead>
+                                <TableHead>Qty (Req/App/Iss/Ret/Used)</TableHead>
+                                <TableHead>Requested By</TableHead>
 
-                            <TableHead>Status</TableHead>
-                            {!isReadOnly && <TableHead className="text-right">Action</TableHead>}
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8">Loading...</TableCell></TableRow>
-                        ) : requests.length === 0 ? (
-                            <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8 text-muted-foreground">No parts requested yet.</TableCell></TableRow>
-                        ) : (
-                            requests.map((req) => (
-                                <TableRow key={req.id}>
-                                    <TableCell>
-                                        <div className="font-medium">{req.inventory?.item_name || 'Deleted Item'}</div>
-                                        <div className="text-xs text-muted-foreground">{req.inventory?.sku || 'N/A'}</div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-1.5 font-medium whitespace-nowrap">
-                                            <span title="Requested" className="w-6 text-center">{req.requested_qty}</span>
-                                            <span className="text-muted-foreground/30">/</span>
-                                            <span title="Approved" className="w-6 text-center text-blue-600">{req.approved_qty}</span>
-                                            <span className="text-muted-foreground/30">/</span>
-                                            <span title="Issued" className="w-6 text-center text-green-600 font-bold">{req.issued_qty}</span>
-                                            <span className="text-muted-foreground/30">/</span>
-                                            <span title="Returned" className="w-6 text-center text-orange-600 font-bold">{req.returned_qty || 0}</span>
-                                            <span className="text-muted-foreground/30">/</span>
-                                            <span title="Final Used" className="w-8 text-center bg-primary/10 rounded px-1 text-primary font-black">
-                                                {req.issued_qty - (req.returned_qty || 0)}
-                                            </span>
-                                        </div>
-                                    </TableCell>
-
-                                    <TableCell>
-                                        <div className="text-sm">{req.employee?.name || 'N/A'}</div>
-                                        <div className="text-[10px] text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</div>
-                                    </TableCell>
-                                    <TableCell>{getStatusBadge(req.status)}</TableCell>
-                                    {!isReadOnly && (
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                {isAdmin && req.status === 'pending' && (
-                                                    <>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="secondary"
-                                                            onClick={() => handleApprove(req.id, req.requested_qty)}
-                                                        >
-                                                            Approve
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            className="text-destructive hover:text-destructive hover:bg-destructive/5"
-                                                            onClick={() => handleReject(req.id)}
-                                                        >
-                                                            Reject
-                                                        </Button>
-                                                    </>
-                                                )}
-                                                {isAdmin && req.status === 'approved' && (
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="text-xs italic text-muted-foreground">Awaiting Scan</div>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 h-7 px-2"
-                                                            title="Unreserve Part"
-                                                            onClick={() => handleReject(req.id)}
-                                                        >
-                                                            Cancel
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                                {req.status === 'issued' && (
-                                                    <div className="flex items-center gap-2">
-                                                        {isAdmin && req.approved_qty > req.issued_qty && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="text-orange-600 border-orange-200 hover:bg-orange-50 h-7 px-2"
-                                                                onClick={() => handleReleaseRemainder(req.id)}
-                                                                title="Release unused reservation back to stock"
-                                                            >
-                                                                Release Remainder ({req.approved_qty - req.issued_qty})
-                                                            </Button>
-                                                        )}
-                                                        {req.issued_qty > 0 && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="flex items-center gap-1 border-primary/20 hover:bg-primary/5 text-primary"
-                                                                onClick={() => {
-                                                                    setSelectedReqForReturn(req);
-                                                                    setReturnQty(req.issued_qty);
-                                                                    if (isAdmin && req.requested_by) {
-                                                                        setSelectedEmployeeId(req.requested_by);
-                                                                    }
-                                                                    setIsReturnDialogOpen(true);
-                                                                }}
-                                                            >
-                                                                <ArrowLeftRight className="h-3 w-3" /> Stop Using / Return
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                {/* Allow Stop Using for Approved but not issued parts (Cancel) */}
-                                                {(req.status === 'approved' && req.issued_qty === 0) && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="text-destructive hover:bg-destructive/10"
-                                                        onClick={() => handleReject(req.id)}
-                                                    >
-                                                        Stop Using / Cancel
-                                                    </Button>
-                                                )}
+                                <TableHead>Status</TableHead>
+                                {!isReadOnly && <TableHead className="text-right">Action</TableHead>}
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8">Loading...</TableCell></TableRow>
+                            ) : requests.length === 0 ? (
+                                <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8 text-muted-foreground">No parts requested yet.</TableCell></TableRow>
+                            ) : (
+                                requests.map((req) => (
+                                    <TableRow key={req.id}>
+                                        <TableCell>
+                                            <div className="font-medium">{req.inventory?.item_name || 'Deleted Item'}</div>
+                                            <div className="text-xs text-muted-foreground">{req.inventory?.sku || 'N/A'}</div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-1.5 font-medium whitespace-nowrap">
+                                                <span title="Requested" className="w-6 text-center">{req.requested_qty}</span>
+                                                <span className="text-muted-foreground/30">/</span>
+                                                <span title="Approved" className="w-6 text-center text-blue-600">{req.approved_qty}</span>
+                                                <span className="text-muted-foreground/30">/</span>
+                                                <span title="Issued" className="w-6 text-center text-green-600 font-bold">{req.issued_qty}</span>
+                                                <span className="text-muted-foreground/30">/</span>
+                                                <span title="Returned" className="w-6 text-center text-orange-600 font-bold">{req.returned_qty || 0}</span>
+                                                <span className="text-muted-foreground/30">/</span>
+                                                <span title="Final Used" className="w-8 text-center bg-primary/10 rounded px-1 text-primary font-black">
+                                                    {req.issued_qty - (req.returned_qty || 0)}
+                                                </span>
                                             </div>
                                         </TableCell>
-                                    )}
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
+
+                                        <TableCell>
+                                            <div className="text-sm">{req.employee?.name || 'N/A'}</div>
+                                            <div className="text-[10px] text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</div>
+                                        </TableCell>
+                                        <TableCell>{getStatusBadge(req.status)}</TableCell>
+                                        {!isReadOnly && (
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    {isAdmin && req.status === 'pending' && (
+                                                        <>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="secondary"
+                                                                onClick={() => handleApprove(req.id, req.requested_qty)}
+                                                            >
+                                                                Approve
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="text-destructive hover:text-destructive hover:bg-destructive/5"
+                                                                onClick={() => handleReject(req.id)}
+                                                            >
+                                                                Reject
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                    {isAdmin && req.status === 'approved' && (
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="text-xs italic text-muted-foreground">Awaiting Scan</div>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 h-7 px-2"
+                                                                title="Unreserve Part"
+                                                                onClick={() => handleReject(req.id)}
+                                                            >
+                                                                Cancel
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                    {req.status === 'issued' && (
+                                                        <div className="flex items-center gap-2">
+                                                            {isAdmin && req.approved_qty > req.issued_qty && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="text-orange-600 border-orange-200 hover:bg-orange-50 h-7 px-2"
+                                                                    onClick={() => handleReleaseRemainder(req.id)}
+                                                                    title="Release unused reservation back to stock"
+                                                                >
+                                                                    Release Remainder ({req.approved_qty - req.issued_qty})
+                                                                </Button>
+                                                            )}
+                                                            {req.issued_qty > 0 && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="flex items-center gap-1 border-primary/20 hover:bg-primary/5 text-primary"
+                                                                    onClick={() => {
+                                                                        setSelectedReqForReturn(req);
+                                                                        setReturnQty(req.issued_qty);
+                                                                        if (isAdmin && req.requested_by) {
+                                                                            setSelectedEmployeeId(req.requested_by);
+                                                                        }
+                                                                        setIsReturnDialogOpen(true);
+                                                                    }}
+                                                                >
+                                                                    <ArrowLeftRight className="h-3 w-3" /> Stop Using / Return
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {/* Allow Stop Using for Approved but not issued parts (Cancel) */}
+                                                    {(req.status === 'approved' && req.issued_qty === 0) && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="text-destructive hover:bg-destructive/10"
+                                                            onClick={() => handleReject(req.id)}
+                                                        >
+                                                            Stop Using / Cancel
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        )}
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
 
                 {/* Return Request Dialog */}
                 <Dialog open={isReturnDialogOpen} onOpenChange={setIsReturnDialogOpen}>

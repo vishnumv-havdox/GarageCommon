@@ -181,7 +181,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Financial KPIs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="border-l-4 border-l-emerald-500 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-sm font-medium">Collected Revenue</CardTitle>
@@ -442,7 +442,7 @@ export default function AdminDashboard() {
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                   {pendingPayments.map((p) => (
                     <div key={p.id} className="border rounded-xl p-3 bg-white dark:bg-card hover:border-red-200 transition-all shadow-sm">
                       <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{format(new Date(p.created_at), "MMM d")}</p>
@@ -471,7 +471,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Quick Shortcuts */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {[
               { label: 'Inventory', icon: Package, path: '/admin/inventory', color: 'blue' },
               { label: 'Work Orders', icon: ClipboardList, path: '/admin/work-orders', color: 'purple' },

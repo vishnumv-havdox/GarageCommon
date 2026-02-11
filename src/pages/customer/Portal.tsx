@@ -1076,21 +1076,21 @@ export default function CustomerPortal() {
           </Card>
         </div>
 
-        <Tabs defaultValue="vehicles" className="space-y-6">
-          <TabsList className="flex p-1.5 rounded-2xl border-border bg-secondary/80 backdrop-blur-md shadow-2xl w-full max-w-2xl mx-auto mb-12">
-            <TabsTrigger value="vehicles" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 md:space-y-8">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto p-1.5 gap-2 rounded-2xl border-border bg-secondary/80 backdrop-blur-md shadow-2xl max-w-4xl mx-auto mb-12">
+            <TabsTrigger value="vehicles" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
               <Car className="h-3.5 w-3.5" /> Vehicles
             </TabsTrigger>
-            <TabsTrigger value="workorders" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+            <TabsTrigger value="workorders" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
               <Activity className="h-3.5 w-3.5" /> Active
             </TabsTrigger>
-            <TabsTrigger value="history" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+            <TabsTrigger value="history" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
               <History className="h-3.5 w-3.5" /> History
             </TabsTrigger>
-            <TabsTrigger value="invoices" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+            <TabsTrigger value="invoices" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
               <FileText className="h-3.5 w-3.5" /> Invoices
             </TabsTrigger>
-            <TabsTrigger value="quotations" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+            <TabsTrigger value="quotations" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider col-span-2 md:col-span-1">
               <Zap className="h-3.5 w-3.5" /> Estimates
             </TabsTrigger>
           </TabsList>
@@ -1227,9 +1227,9 @@ export default function CustomerPortal() {
                   return (
                     <Card key={order.id} className="bg-background/40 border-border backdrop-blur-md hover:border-primary/30 transition-all overflow-hidden rounded-3xl border-l-4 border-l-primary">
                       <CardContent className="p-0">
-                        <div className="p-6 md:p-8">
-                          <div className="flex flex-col md:flex-row justify-between gap-6 mb-8">
-                            <div className="flex-1">
+                        <div className="p-5 md:p-8">
+                          <div className="flex flex-col lg:flex-row justify-between gap-6 mb-8">
+                            <div className="flex-1 w-full">
                               <div className="flex items-center gap-3 mb-4">
                                 <Badge className="bg-primary/10 text-primary border-primary/20 uppercase text-[10px] font-bold tracking-wider px-3 py-1">
                                   {order.status.replace('_', ' ')}
@@ -1408,7 +1408,7 @@ export default function CustomerPortal() {
             ) : (
               <div className="relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-muted-foreground before:to-transparent">
                 {completedWorkOrders.map((order, idx) => (
-                  <div key={order.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active mb-12">
+                  <div key={order.id} className="relative flex flex-col md:flex-row items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active mb-12">
                     {/* Icon Circle */}
                     <div className="flex items-center justify-center w-10 h-10 rounded-full border border-border bg-background text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500 z-10 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
                       <CheckCircle2 className="h-5 w-5" />

@@ -983,13 +983,13 @@ export default function WorkOrderDetail() {
         <div className="min-h-screen bg-background">
             {/* Navigation Header */}
             <div className="border-b bg-card">
-                <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                <div className="container mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 w-full md:w-auto">
                         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
-                        <div>
-                            <h1 className="text-xl font-bold flex items-center gap-2">
+                        <div className="flex-1">
+                            <h1 className="text-xl font-bold flex flex-wrap items-center gap-2">
                                 Work Order #{workOrder.id.slice(0, 8)}
                                 {getStatusBadge(workOrder.status)}
                                 {billingInfo.status !== 'N/A' && (
@@ -1013,7 +1013,7 @@ export default function WorkOrderDetail() {
                             </p>
                         </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
                         <Button variant="outline" size="icon" onClick={() => fetchDetails()} title="Refresh Details">
                             <RefreshCw className="h-4 w-4" />
                         </Button>

@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Search, Package, Download, Edit, Trash2,
   AlertTriangle, Filter, ChevronRight, QrCode, ScanLine, Clock, ArrowLeftRight,
-  ExternalLink, RefreshCw, Eye
+  ExternalLink, RefreshCw, Eye, MoreHorizontal
 } from "lucide-react";
 
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -648,7 +648,8 @@ export default function AdminInventory() {
           </TabsList>
 
           <TabsContent value="inventory" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
@@ -704,7 +705,7 @@ export default function AdminInventory() {
                   suggestions={inventorySuggestions}
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {categories.map((cat) => (
                   <Button
                     key={cat}
@@ -724,7 +725,7 @@ export default function AdminInventory() {
                 <CardDescription>Stock status for all parts and supplies.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border overflow-hidden">
+                <div className="rounded-md border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -774,85 +775,42 @@ export default function AdminInventory() {
                               <Badge variant="secondary" className="font-mono">{item.location || 'Unset'}</Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    setEditingItem(item);
-                                    setIsFormOpen(true);
-                                  }}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
+                              <div className="flex justify-end">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={() => {
+                                      setEditingItem(item);
+                                      setIsFormOpen(true);
+                                    }}>
+                                      <Edit className="mr-2 h-4 w-4" /> Edit Item
+                                    </DropdownMenuItem>
 
-                                {/* Reserved Part Navigation */}
-                                {item.reserved_qty > 0 && item.reservations && (
-                                  (() => {
-                                    const activeReservations = item.reservations.filter(r =>
-                                      (r.status === 'approved' || r.status === 'issued') &&
-                                      r.approved_qty > r.issued_qty
-                                    );
+                                    {/* Reserved Part Navigation */}
+                                    {item.reserved_qty > 0 && item.reservations && (
+                                      <>
+                                        {item.reservations.filter((r: any) => (r.status === 'approved' || r.status === 'issued') && r.approved_qty > r.issued_qty).map((r: any) => (
+                                          <DropdownMenuItem key={r.work_order_id} onClick={() => navigate(`/admin/work-orders/${r.work_order_id}`)}>
+                                            <ExternalLink className="mr-2 h-4 w-4" /> Go to WO #{r.work_order_id.slice(0, 6)}
+                                          </DropdownMenuItem>
+                                        ))}
+                                      </>
+                                    )}
 
-                                    if (activeReservations.length === 1) {
-                                      return (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                          title="Go to Work Order"
-                                          onClick={() => navigate(`/admin/work-orders/${activeReservations[0].work_order_id}`)}
-                                        >
-                                          <ExternalLink className="h-4 w-4" />
-                                        </Button>
-                                      );
-                                    }
-
-                                    if (activeReservations.length > 1) {
-                                      return (
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                              title="View Reserved Work Orders"
-                                            >
-                                              <Clock className="h-4 w-4" />
-                                            </Button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end" className="w-56">
-                                            <DropdownMenuLabel>Reserved In:</DropdownMenuLabel>
-                                            <DropdownMenuSeparator />
-                                            {activeReservations.map((res: any) => (
-                                              <DropdownMenuItem
-                                                key={res.work_order_id}
-                                                onClick={() => navigate(`/admin/work-orders/${res.work_order_id}`)}
-                                              >
-                                                <ExternalLink className="mr-2 h-3 w-3" />
-                                                <div className="flex flex-col">
-                                                  <span className="text-xs font-bold">WO: {res.work_order_id.substring(0, 8)}</span>
-                                                  <span className="text-[10px] text-muted-foreground">{res.work_orders?.vehicle?.vehicle_number || 'Unknown'}</span>
-                                                </div>
-                                              </DropdownMenuItem>
-                                            ))}
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      );
-                                    }
-
-                                    return null;
-                                  })()
-                                )}
-
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => handleDelete(item.id)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={() => handleDelete(item.id)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" /> Delete Item
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             </TableCell>
                           </TableRow>

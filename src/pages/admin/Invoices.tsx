@@ -49,6 +49,7 @@ import {
   Eye,
   Download,
   Trash2,
+  MoreHorizontal,
   Edit,
   Loader2,
   Search,
@@ -58,6 +59,14 @@ import {
   IndianRupee,
   ExternalLink
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { Separator } from "@/components/ui/separator";
@@ -587,8 +596,8 @@ export default function AdminInvoices() {
               <TabsTrigger value="verification">Verification & Payments</TabsTrigger>
             </TabsList>
 
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="flex gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
                 <SearchInput
                   placeholder="Search invoices by customer, vehicle, bill #, etc..."
                   value={searchTerm}
@@ -651,7 +660,7 @@ export default function AdminInvoices() {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : pendingPayments.length > 0 ? (
-                <div className="rounded-md border">
+                <div className="rounded-md border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -994,46 +1003,49 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    {inv.is_virtual ? (
-                      <>
-                        <Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => navigate(`/admin/work-orders/${inv.work_order_id}`)}>
-                          <Eye className="h-3.5 w-3.5" /> View
+                  <div className="flex justify-end">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => onGenerate?.(inv.work_order_id)}>
-                          <Plus className="h-3.5 w-3.5" /> Generate
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        {/* Link to Editor - implementation pending */}
-                        <Button variant="ghost" size="icon" title="Edit/View" onClick={() => {
-                          const cleanPath = `/admin/invoices/${inv.id}`.trim();
-                          console.log("Navigating to:", cleanPath);
-                          navigate(cleanPath);
-                        }}>
-                          <Eye className="h-4 w-4 text-primary" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => generateInvoicePDF(inv.work_order_id)} title="Download PDF">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => navigate(`/admin/invoices/${inv.id}`)} title="Edit Invoice">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget(inv);
-                          }}
-                          title="Delete Invoice"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        {inv.is_virtual ? (
+                          <>
+                            <DropdownMenuItem onClick={() => navigate(`/admin/work-orders/${inv.work_order_id}`)}>
+                              <Eye className="mr-2 h-4 w-4" /> View Work Order
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onGenerate?.(inv.work_order_id)}>
+                              <Plus className="mr-2 h-4 w-4" /> Generate Invoice
+                            </DropdownMenuItem>
+                          </>
+                        ) : (
+                          <>
+                            <DropdownMenuItem onClick={() => {
+                              const cleanPath = `/admin/invoices/${inv.id}`.trim();
+                              navigate(cleanPath);
+                            }}>
+                              <Eye className="mr-2 h-4 w-4" /> View/Edit Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => generateInvoicePDF(inv.work_order_id)}>
+                              <Download className="mr-2 h-4 w-4" /> Download PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget(inv);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete Invoice
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </TableCell>
               </TableRow>

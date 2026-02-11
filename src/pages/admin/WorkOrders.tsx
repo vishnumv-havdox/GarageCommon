@@ -429,7 +429,7 @@ export default function AdminWorkOrders() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
@@ -584,8 +584,8 @@ export default function AdminWorkOrders() {
                         key={order.id}
                         className={`border p-4 rounded-lg hover:bg-muted/50 transition-colors ${bgClass}`}
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="cursor-pointer flex-1" onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
+                        <div className="flex flex-col sm:flex-row justify-between items-start">
+                          <div className="cursor-pointer flex-1 w-full" onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <h3 className="font-semibold text-lg">{order.service_type}</h3>
                               <Badge variant="outline" className="text-xs font-normal">#{order.id.slice(0, 6)}</Badge>
@@ -604,7 +604,7 @@ export default function AdminWorkOrders() {
                               )}
                             </div>
                             <p className="text-sm text-foreground mb-1">{order.description}</p>
-                            <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2">
+                            <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2 flex-wrap">
                               <span>
                                 <User className="h-3 w-3 inline mr-1" /> {order.customer?.name}
                                 {order.customer?.company_name && (
@@ -628,7 +628,7 @@ export default function AdminWorkOrders() {
                               />
                             </div>
                           </div>
-                          <div className="flex flex-col items-end gap-2 ml-4">
+                          <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 mt-4 sm:mt-0 w-full sm:w-auto ml-0 sm:ml-4 border-t sm:border-t-0 pt-3 sm:pt-0 flex-wrap sm:flex-nowrap">
                             <div className="flex items-center gap-2">
                               <Badge variant={order.priority === "Urgent" ? "destructive" : "secondary"}>{order.priority}</Badge>
                               <DropdownMenu>
@@ -659,7 +659,7 @@ export default function AdminWorkOrders() {
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
-                            <div className="flex gap-2 mt-2">
+                            <div className="flex gap-2 mt-0 sm:mt-2">
                               <Button size="sm" variant="outline" onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
                                 <Eye className="h-4 w-4 mr-1" /> View Details
                               </Button>
@@ -689,7 +689,7 @@ export default function AdminWorkOrders() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                className="w-full mt-1 bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200"
+                                className="w-full mt-0 sm:mt-1 bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200"
                                 onClick={() => {
                                   setReopenOrderId(order.id);
                                   setReopenDialogOpen(true);

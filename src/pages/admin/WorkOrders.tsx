@@ -262,9 +262,8 @@ export default function AdminWorkOrders() {
 
   const handleUpdateStatus = async (id: string, status: string) => {
     try {
-      const { error } = await supabase
-        .from("work_orders")
-        .update({ status } as any)
+      const { error } = await (supabase.from("work_orders") as any)
+        .update({ status: status as any })
         .eq("id", id);
       if (error) throw error;
       toast({ title: "Updated", description: `Status changed to ${status}` });

@@ -4,15 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequests } from "@/contexts/RequestsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
     CheckCircle2, XCircle, Clock, FileText, Package,
-    User, Calendar, AlertTriangle, ArrowRight
+    User, Calendar, ArrowRight, IndianRupee,
+    ChevronRight, Inbox, Zap, ShieldCheck
 } from "lucide-react";
 import { format } from "date-fns";
+import { AdminSidebar } from "@/components/layout/AdminSidebar";
 
 export default function RequestsInbox() {
     const { user } = useAuth();
@@ -30,7 +32,6 @@ export default function RequestsInbox() {
     const fetchRequests = async () => {
         setLoading(true);
         try {
-            // Fetch Work Orders Pending Approval
             const { data: woData, error: woError } = await supabase
                 .from("work_orders")
                 .select(`
@@ -51,7 +52,6 @@ export default function RequestsInbox() {
             if (woError) throw woError;
             setWorkApprovals(woData || []);
 
-            // Fetch Part Requests Pending
             const { data: prData, error: prError } = await supabase
                 .from("part_requests")
                 .select(`
@@ -69,7 +69,6 @@ export default function RequestsInbox() {
             if (prError) throw prError;
             setPartRequests(prData || []);
 
-            // Fetch Pending Payments
             const { data: payData, error: payError } = await supabase
                 .from("payments")
                 .select(`
@@ -116,24 +115,15 @@ export default function RequestsInbox() {
     const handleApproveWorkOrder = async (workOrder: any) => {
         setProcessingId(workOrder.id);
         try {
-            // Approve Work Order via RPC (if exists) or direct update
-            // Using direct update for now as per WorkOrderDetail logic roughly
-            // Ideally we should use the `approve_work` RPC if it handles everything
-            // Let's use `approve_work` RPC as seen in WorkOrderDetail.tsx
             // @ts-ignore
             const { error } = await supabase.rpc('approve_work', {
                 _work_order_id: workOrder.id,
                 _approver_id: user?.id,
                 _notes: "Approved via Inbox"
             });
-
             if (error) throw error;
-
             toast({ title: "Work Order Approved", description: "The work order has been approved." });
-
             await refreshCounts();
-
-            // Redirect to Confirmation Page
             navigate("/admin/requests/confirmation", {
                 state: {
                     type: "Work Order",
@@ -143,38 +133,28 @@ export default function RequestsInbox() {
                     acceptedAt: new Date().toISOString()
                 }
             });
-
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
             setProcessingId(null);
-            fetchRequests(); // Refresh list on error
+            fetchRequests();
         }
     };
 
     const handleRejectWorkOrder = async (workOrder: any) => {
-        // For rejection, ideally we want a reason. For Inbox quick reject, maybe just a prompt?
-        // For now, let's just reject with a default note or redirect to detail page.
-        // Redirecting to detail page is safer for rejection to provide context.
         navigate(`/admin/work-orders/${workOrder.id}`);
     };
 
     const handleApprovePartRequest = async (request: any) => {
         setProcessingId(request.id);
         try {
-            // Call RPC issue_part_request
             // @ts-ignore
             const { error } = await supabase.rpc('issue_part_request', {
                 p_request_id: request.id,
                 p_approver_id: user?.id
             });
-
             if (error) throw error;
-
             toast({ title: "Part Request Approved", description: "Inventory has been updated." });
-
             await refreshCounts();
-
-            // Redirect to Confirmation Page
             navigate("/admin/requests/confirmation", {
                 state: {
                     type: "Part Request",
@@ -184,7 +164,6 @@ export default function RequestsInbox() {
                     acceptedAt: new Date().toISOString()
                 }
             });
-
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
             setProcessingId(null);
@@ -196,13 +175,8 @@ export default function RequestsInbox() {
         setProcessingId(request.id);
         try {
             // @ts-ignore
-            const { error } = await (supabase
-                .from("part_requests") as any)
-                .update({ status: "rejected" })
-                .eq("id", request.id);
-
+            const { error } = await (supabase.from("part_requests") as any).update({ status: "rejected" }).eq("id", request.id);
             if (error) throw error;
-
             toast({ title: "Request Rejected", description: "The part request has been rejected." });
             await refreshCounts();
             fetchRequests();
@@ -216,68 +190,40 @@ export default function RequestsInbox() {
     const handleApprovePayment = async (payment: any) => {
         setProcessingId(payment.id);
         try {
-            // 1. Update Payment Status to 'approved'
-            const { error: payError } = await (supabase
-                .from("payments") as any)
-                .update({ status: 'approved' })
-                .eq("id", payment.id);
-
+            const { error: payError } = await (supabase.from("payments") as any).update({ status: 'approved' }).eq("id", payment.id);
             if (payError) throw payError;
 
-            // 2. Fetch all linked invoices via payment_links
-            const { data: links } = await supabase
-                .from("payment_links")
-                .select("*, invoice:invoices(*)")
-                .eq("payment_id", payment.id);
-
+            const { data: links } = await supabase.from("payment_links").select("*, invoice:invoices(*)").eq("payment_id", payment.id);
             const invoicesToUpdate = links || (payment.invoice ? [{
                 invoice_id: payment.invoice.id,
                 amount_applied: payment.amount,
                 invoice: payment.invoice
             }] : []);
 
-            // 3. Update each linked invoice
             for (const link of invoicesToUpdate as any[]) {
                 const inv = link.invoice || payment.invoice;
                 if (!inv) continue;
-
-                // Update total_deductions if this payment had a deduction linked to it
-                // Note: For simplicity, we apply full deduction_amount to the first invoice if multi-bill, 
-                // but usually deduction is per-payment.
                 let newDeductions = (inv.total_deductions || 0);
                 if (payment.deduction_amount > 0 && invoicesToUpdate.length === 1) {
                     newDeductions += payment.deduction_amount;
                 }
-
-                // Fetch ALL approved payments for this invoice to calculate NEW balance
-                const { data: allInvoiceLinks } = await supabase
-                    .from("payment_links")
-                    .select("*, payment:payments(status)")
-                    .eq("invoice_id", inv.id);
-
+                const { data: allInvoiceLinks } = await supabase.from("payment_links").select("*, payment:payments(status)").eq("invoice_id", inv.id);
                 const totalPaid = (allInvoiceLinks as any[])?.reduce((sum, l) => {
                     if (l.payment?.status === 'approved' || l.payment_id === payment.id) {
                         return sum + (l.amount_applied || 0);
                     }
                     return sum;
                 }, 0) || 0;
-
                 const remainingBalance = Math.max(0, (inv.total || 0) - totalPaid - newDeductions);
                 const newStatus = remainingBalance <= 0 ? 'Paid' : 'Partial';
-
-                await (supabase
-                    .from("invoices") as any)
-                    .update({
-                        status: newStatus,
-                        total_deductions: newDeductions
-                    } as any)
-                    .eq("id", inv.id);
+                await (supabase.from("invoices") as any).update({
+                    status: newStatus,
+                    total_deductions: newDeductions
+                } as any).eq("id", inv.id);
             }
 
             toast({ title: "Payment Verified", description: "Payment approved and invoices updated." });
             await refreshCounts();
-
-            // Redirect to Confirmation
             navigate("/admin/requests/confirmation", {
                 state: {
                     type: "Payment",
@@ -297,13 +243,8 @@ export default function RequestsInbox() {
     const handleRejectPayment = async (payment: any) => {
         setProcessingId(payment.id);
         try {
-            const { error } = await (supabase
-                .from("payments") as any)
-                .update({ status: 'rejected' })
-                .eq("id", payment.id);
-
+            const { error } = await (supabase.from("payments") as any).update({ status: 'rejected' }).eq("id", payment.id);
             if (error) throw error;
-
             toast({ title: "Payment Rejected", description: "Payment marked as rejected." });
             await refreshCounts();
             fetchRequests();
@@ -315,323 +256,301 @@ export default function RequestsInbox() {
     };
 
     return (
-        <div className="container mx-auto p-6 max-w-6xl space-y-8 animate-in fade-in duration-500">
-            {/* Header Section */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6">
-                <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="mr-2 h-8 w-8">
-                            <ArrowRight className="h-4 w-4 rotate-180" />
-                        </Button>
-                        <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                            Requests Inbox
-                        </h1>
-                    </div>
-                    <p className="text-muted-foreground ml-12">
-                        Manage pending approvals and incoming requests from your team.
-                    </p>
-                </div>
-                <Button
-                    variant="outline"
-                    onClick={fetchRequests}
-                    disabled={loading}
-                    className="ml-12 md:ml-0 shadow-sm hover:shadow-md transition-all"
-                >
-                    <Clock className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                    Refresh Data
-                </Button>
+        <div className="flex flex-col lg:flex-row min-h-screen bg-[#f8fafc] dark:bg-[#020617]">
+            <AdminSidebar />
+
+            <div className="flex-1 transition-all duration-300">
+                <main className="p-4 md:p-8 lg:p-10 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    {/* Glassmorphic Header */}
+                    <header className="relative p-6 rounded-3xl bg-white/70 dark:bg-slate-900/40 backdrop-blur-xl border border-white dark:border-slate-800 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
+                            <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                                        <Inbox className="w-6 h-6" />
+                                    </div>
+                                    <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white uppercase italic">
+                                        Inbox <span className="text-primary tracking-widest not-italic font-light opacity-50 ml-1">HUB</span>
+                                    </h1>
+                                </div>
+                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400 max-w-lg">
+                                    High-performance approval center. Manage work orders, inventory requests, and revenue verification.
+                                </p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                onClick={fetchRequests}
+                                disabled={loading}
+                                className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-md border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-all rounded-2xl h-12 px-6"
+                            >
+                                <Zap className={`mr-2 h-4 w-4 text-primary ${loading ? 'animate-spin' : ''}`} />
+                                <span className="font-bold tracking-wider text-xs">SYNCHRONIZE DATA</span>
+                            </Button>
+                        </div>
+                    </header>
+
+                    <Tabs defaultValue="work-approvals" value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+                        <TabsList className="flex items-center gap-2 bg-slate-200/50 dark:bg-slate-800/50 p-1.5 rounded-2xl w-fit border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-lg">
+                            <TabsTrigger
+                                value="work-approvals"
+                                className="px-6 py-2.5 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all"
+                            >
+                                Work Orders
+                                {workApprovals.length > 0 && (
+                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                        {workApprovals.length}
+                                    </Badge>
+                                )}
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="part-requests"
+                                className="px-6 py-2.5 rounded-xl data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all"
+                            >
+                                Part Requests
+                                {partRequests.length > 0 && (
+                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                        {partRequests.length}
+                                    </Badge>
+                                )}
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="payment-requests"
+                                className="px-6 py-2.5 rounded-xl data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all"
+                            >
+                                Payments
+                                {payments.length > 0 && (
+                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                        {payments.length}
+                                    </Badge>
+                                )}
+                            </TabsTrigger>
+                        </TabsList>
+
+                        <div className="relative min-h-[400px]">
+                            {/* Work Approvals Content */}
+                            <TabsContent value="work-approvals" className="animate-in fade-in slide-in-from-left-4 duration-500 mt-0">
+                                {workApprovals.length === 0 ? (
+                                    <EmptyState icon={<ShieldCheck className="w-10 h-10" />} title="Operational Green" description="No work orders are currently awaiting approval. System clear." />
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {workApprovals.map((wo) => (
+                                            <RequestCard
+                                                key={wo.id}
+                                                accent="orange"
+                                                id={wo.id}
+                                                title={wo.vehicle?.vehicle_number}
+                                                subtitle={`${wo.service_type} • ${wo.vehicle?.model}`}
+                                                description={wo.description}
+                                                meta={`Customer: ${wo.vehicle?.customer?.name || "Unknown"}`}
+                                                date={wo.created_at}
+                                                onApprove={() => handleApproveWorkOrder(wo)}
+                                                onReject={() => handleRejectWorkOrder(wo)}
+                                                onView={() => navigate(`/admin/work-orders/${wo.id}`)}
+                                                loading={processingId === wo.id}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            {/* Part Requests Content */}
+                            <TabsContent value="part-requests" className="animate-in fade-in slide-in-from-left-4 duration-500 mt-0">
+                                {partRequests.length === 0 ? (
+                                    <EmptyState icon={<Package className="w-10 h-10" />} title="Inventory Optimized" description="All part requests have been fulfilled or resolved." />
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {partRequests.map((req) => (
+                                            <RequestCard
+                                                key={req.id}
+                                                accent="blue"
+                                                id={req.id}
+                                                title={req.part?.item_name || "Unknown Part"}
+                                                subtitle={`SKU: ${req.part?.sku || "N/A"}`}
+                                                badge={`QTY: ${req.requested_qty}`}
+                                                meta={`Requester: ${req.employee?.name || "Unknown"}`}
+                                                subMeta={req.work_order ? `Vehicle: ${req.work_order.vehicle?.vehicle_number}` : undefined}
+                                                date={req.created_at}
+                                                onApprove={() => handleApprovePartRequest(req)}
+                                                onReject={() => handleRejectPartRequest(req)}
+                                                approveLabel="ISSUE"
+                                                loading={processingId === req.id}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            {/* Payments Content */}
+                            <TabsContent value="payment-requests" className="animate-in fade-in slide-in-from-left-4 duration-500 mt-0">
+                                {payments.length === 0 ? (
+                                    <EmptyState icon={<IndianRupee className="w-10 h-10" />} title="Treasury Balanced" description="No pending payment verifications found in the queue." />
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {payments.map((pay) => (
+                                            <RequestCard
+                                                key={pay.id}
+                                                accent="emerald"
+                                                id={pay.id}
+                                                title={`₹${pay.amount?.toLocaleString()}`}
+                                                subtitle={pay.payment_method}
+                                                meta={`Customer: ${pay.invoice?.customer?.name || "Unknown"}`}
+                                                subMeta={`Bill: ${pay.invoice?.bill_number || "N/A"}`}
+                                                extraInfo={pay.deduction_amount > 0 ? `Deduction: ₹${pay.deduction_amount.toLocaleString()}` : undefined}
+                                                proofUrl={pay.proof_url}
+                                                date={pay.created_at}
+                                                onApprove={() => handleApprovePayment(pay)}
+                                                onReject={() => handleRejectPayment(pay)}
+                                                approveLabel="VERIFY"
+                                                loading={processingId === pay.id}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+                        </div>
+                    </Tabs>
+                </main>
             </div>
-
-            <Tabs defaultValue="work-approvals" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-3 max-w-[600px] bg-muted/50 p-1">
-                    <TabsTrigger value="work-approvals" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        Work Approvals
-                        {workApprovals.length > 0 && (
-                            <Badge variant="destructive" className="ml-2 h-5 min-w-5 px-1.5 rounded-full text-[10px]">
-                                {workApprovals.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                    <TabsTrigger value="part-requests" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        Part Requests
-                        {partRequests.length > 0 && (
-                            <Badge variant="destructive" className="ml-2 h-5 min-w-5 px-1.5 rounded-full text-[10px]">
-                                {partRequests.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                    <TabsTrigger value="payment-requests" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        Payments
-                        {payments.length > 0 && (
-                            <Badge variant="destructive" className="ml-2 h-5 min-w-5 px-1.5 rounded-full text-[10px]">
-                                {payments.length}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                </TabsList>
-
-                {/* Work Approvals Tab */}
-                <TabsContent value="work-approvals" className="space-y-4">
-                    {workApprovals.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center p-16 text-center border-2 border-dashed rounded-xl bg-muted/20">
-                            <div className="h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
-                                <CheckCircle2 className="h-8 w-8" />
-                            </div>
-                            <h3 className="text-xl font-semibold mb-2">All Caught Up!</h3>
-                            <p className="text-muted-foreground max-w-sm">
-                                There are no work orders currently pending approval. Great job keeping the queue clear.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {workApprovals.map((wo) => (
-                                <Card key={wo.id} className="group overflow-hidden border-l-4 border-l-orange-500 hover:shadow-lg transition-all duration-300">
-                                    <div className="p-5 space-y-4">
-                                        <div className="flex justify-between items-start">
-                                            <div className="space-y-1">
-                                                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 mb-2">
-                                                    Pending Approval
-                                                </Badge>
-                                                <h3 className="font-semibold text-lg flex items-center gap-2">
-                                                    {wo.vehicle?.vehicle_number}
-                                                </h3>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {wo.service_type} • {wo.vehicle?.model}
-                                                </p>
-                                            </div>
-                                            <Button variant="ghost" size="icon" className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigate(`/admin/work-orders/${wo.id}`)}>
-                                                <ArrowRight className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-
-                                        <div className="bg-muted/30 p-3 rounded-lg text-sm border">
-                                            <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                                                <span>Customer: <span className="text-foreground font-medium">{wo.vehicle?.customer?.name || "Unknown"}</span></span>
-                                                <span className="flex items-center"><Calendar className="h-3 w-3 mr-1" /> {format(new Date(wo.created_at), "MMM d")}</span>
-                                            </div>
-                                            <p className="line-clamp-2 text-muted-foreground italic">
-                                                "{wo.description || "No description provided."}"
-                                            </p>
-                                        </div>
-
-                                        <div className="flex gap-3 pt-2">
-                                            <Button
-                                                variant="outline"
-                                                className="flex-1 border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
-                                                onClick={() => handleRejectWorkOrder(wo)}
-                                                disabled={!!processingId}
-                                            >
-                                                <XCircle className="mr-2 h-4 w-4" /> REJECT
-                                            </Button>
-                                            <Button
-                                                className="flex-1 bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg transition-all"
-                                                onClick={() => handleApproveWorkOrder(wo)}
-                                                disabled={processingId === wo.id}
-                                            >
-                                                {processingId === wo.id ? (
-                                                    <Clock className="mr-2 h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                                                )}
-                                                APPROVE
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </TabsContent>
-
-                {/* Part Requests Tab */}
-                <TabsContent value="part-requests" className="space-y-4">
-                    {partRequests.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center p-16 text-center border-2 border-dashed rounded-xl bg-muted/20">
-                            <div className="h-16 w-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
-                                <Package className="h-8 w-8" />
-                            </div>
-                            <h3 className="text-xl font-semibold mb-2">Storage Clear!</h3>
-                            <p className="text-muted-foreground max-w-sm">
-                                No pending part requests at the moment.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {partRequests.map((req) => (
-                                <Card key={req.id} className="group overflow-hidden border-t-4 border-t-blue-500 hover:shadow-lg transition-all duration-300 flex flex-col">
-                                    <div className="p-5 flex-1 space-y-4">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h4 className="font-semibold text-base line-clamp-1" title={req.part?.item_name}>
-                                                    {req.part?.item_name || "Unknown Part"}
-                                                </h4>
-                                                <p className="text-xs text-muted-foreground font-mono mt-1">
-                                                    SKU: {req.part?.sku || "N/A"}
-                                                </p>
-                                            </div>
-                                            <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-none px-2 py-0.5 text-xs font-bold">
-                                                x{req.requested_qty}
-                                            </Badge>
-                                        </div>
-
-                                        <div className="space-y-2 text-sm pt-2">
-                                            <div className="flex items-center justify-between p-2 bg-muted/40 rounded border">
-                                                <div className="flex items-center gap-2 text-muted-foreground">
-                                                    <User className="h-4 w-4" />
-                                                    <span className="text-foreground font-medium text-xs">{req.employee?.name || "Unknown"}</span>
-                                                </div>
-                                                <div className="text-[10px] text-muted-foreground flex items-center">
-                                                    <Clock className="h-3 w-3 mr-1" />
-                                                    {format(new Date(req.created_at), "h:mm a")}
-                                                </div>
-                                            </div>
-
-                                            {req.work_order && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="w-full justify-between h-auto py-2 text-xs font-normal text-muted-foreground hover:text-primary hover:bg-primary/5 border border-transparent hover:border-primary/20"
-                                                    onClick={() => navigate(`/admin/work-orders/${req.work_order.id}`)}
-                                                >
-                                                    <span>Vehicle <span className="font-mono text-foreground font-medium">{req.work_order.vehicle?.vehicle_number}</span></span>
-                                                    <ArrowRight className="h-3 w-3 opacity-50" />
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 border-t flex gap-2">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="flex-1 h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                            onClick={() => handleRejectPartRequest(req)}
-                                            disabled={processingId === req.id}
-                                        >
-                                            REJECT
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            className="flex-1 h-8 bg-blue-600 hover:bg-blue-700 shadow-sm"
-                                            onClick={() => handleApprovePartRequest(req)}
-                                            disabled={processingId === req.id}
-                                        >
-                                            {processingId === req.id ? (
-                                                <Clock className="mr-1 h-3 w-3 animate-spin" />
-                                            ) : (
-                                                <CheckCircle2 className="mr-1 h-3 w-3" />
-                                            )}
-                                            ISSUE
-                                        </Button>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </TabsContent>
-
-                {/* Payment Requests Tab */}
-                <TabsContent value="payment-requests" className="space-y-4">
-                    {payments.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center p-16 text-center border-2 border-dashed rounded-xl bg-muted/20">
-                            <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
-                                <IndianRupee className="h-8 w-8" />
-                            </div>
-                            <h3 className="text-xl font-semibold mb-2">All Payments Verified!</h3>
-                            <p className="text-muted-foreground max-w-sm">
-                                No pending payment confirmations. Revenue is flowing smoothly.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {payments.map((pay) => (
-                                <Card key={pay.id} className="group overflow-hidden border-t-4 border-t-emerald-500 hover:shadow-lg transition-all duration-300 flex flex-col">
-                                    <div className="p-5 flex-1 space-y-4">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h4 className="font-semibold text-lg text-emerald-700">
-                                                    ₹{pay.amount?.toLocaleString()}
-                                                </h4>
-                                                <p className="text-xs text-muted-foreground font-medium mt-1 uppercase tracking-wide">
-                                                    {pay.payment_method}
-                                                </p>
-                                            </div>
-                                            <Badge variant="outline" className="text-[10px] font-mono whitespace-nowrap">
-                                                {format(new Date(pay.created_at), "MMM d")}
-                                            </Badge>
-                                        </div>
-
-                                        <div className="space-y-2 text-sm bg-muted/30 p-3 rounded-lg border">
-                                            <div className="flex justify-between items-center text-xs">
-                                                <span className="text-muted-foreground">Customer:</span>
-                                                <span className="font-medium">{pay.invoice?.customer?.name || "Unknown"}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-xs">
-                                                <span className="text-muted-foreground">Bill #:</span>
-                                                <span className="font-mono">{pay.invoice?.bill_number || pay.invoice?.invoice_number || "N/A"}</span>
-                                            </div>
-                                            {pay.invoice?.work_order?.vehicle?.vehicle_number && (
-                                                <div className="flex justify-between items-center text-xs">
-                                                    <span className="text-muted-foreground">Vehicle:</span>
-                                                    <span className="font-bold">{pay.invoice.work_order.vehicle.vehicle_number}</span>
-                                                </div>
-                                            )}
-                                            {pay.deduction_amount > 0 && (
-                                                <div className="flex justify-between items-center text-xs text-orange-600 bg-orange-50 p-1 rounded">
-                                                    <span className="font-medium">Deduction:</span>
-                                                    <span className="font-bold">₹{pay.deduction_amount.toLocaleString()}</span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {pay.proof_url && (
-                                            <div className="mt-2">
-                                                <a
-                                                    href={pay.proof_url}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="text-xs text-emerald-600 hover:text-emerald-800 hover:underline flex items-center gap-1"
-                                                >
-                                                    <FileText className="h-3 w-3" /> View Payment Proof
-                                                </a>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 border-t flex gap-2">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="flex-1 h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                            onClick={() => handleRejectPayment(pay)}
-                                            disabled={processingId === pay.id}
-                                        >
-                                            REJECT
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            className="flex-1 h-8 bg-emerald-600 hover:bg-emerald-700 shadow-sm"
-                                            onClick={() => handleApprovePayment(pay)}
-                                            disabled={processingId === pay.id}
-                                        >
-                                            {processingId === pay.id ? (
-                                                <Clock className="mr-1 h-3 w-3 animate-spin" />
-                                            ) : (
-                                                <CheckCircle2 className="mr-1 h-3 w-3" />
-                                            )}
-                                            VERIFY
-                                        </Button>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </TabsContent>
-            </Tabs>
         </div>
     );
 }
 
-// Add missing icon import
-import { IndianRupee } from "lucide-react";
+// Reuseable Components for consistent UI
 
+function EmptyState({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
+    return (
+        <div className="flex flex-col items-center justify-center py-20 px-6 text-center rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-white/30 dark:bg-slate-900/10 backdrop-blur-sm">
+            <div className="p-5 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 dark:text-slate-600 mb-6 animate-pulse">
+                {icon}
+            </div>
+            <h3 className="text-xl font-black text-slate-800 dark:text-slate-200 uppercase italic tracking-wider mb-2">{title}</h3>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 max-w-xs">{description}</p>
+        </div>
+    );
+}
+
+function RequestCard({
+    accent, title, subtitle, description, meta, subMeta, badge, date,
+    onApprove, onReject, onView, approveLabel = "APPROVE", loading, proofUrl, extraInfo
+}: any) {
+    const accentColors: any = {
+        orange: "border-orange-500 bg-orange-500/5 text-orange-600",
+        blue: "border-blue-500 bg-blue-500/5 text-blue-600",
+        emerald: "border-emerald-500 bg-emerald-500/5 text-emerald-600"
+    };
+
+    const btnColors: any = {
+        orange: "bg-orange-600 hover:bg-orange-700 shadow-orange-500/20",
+        blue: "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20",
+        emerald: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20"
+    };
+
+    return (
+        <Card className={`group relative flex flex-col overflow-hidden border-2 border-slate-100 dark:border-white/5 bg-white dark:bg-slate-900/40 hover:border-transparent hover:shadow-[0_20px_40px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] transition-all duration-500`}>
+            {/* Animated Bottom Glow */}
+            <div className={`absolute -bottom-10 left-1/2 -translate-x-1/2 w-3/4 h-20 blur-[60px] opacity-0 group-hover:opacity-40 transition-opacity duration-700 ${accentColors[accent].split(' ')[1]}`} />
+
+            <div className="p-6 flex-1 space-y-5 relative z-10">
+                <div className="flex justify-between items-start gap-3">
+                    <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <div className={`w-2 h-2 rounded-full animate-pulse ${accentColors[accent].split(' ')[2]}`} />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Request ID: {Math.random().toString(36).substr(2, 6).toUpperCase()}</span>
+                        </div>
+                        <h4 className="font-bold text-lg text-slate-900 dark:text-white line-clamp-1 leading-tight group-hover:text-primary transition-colors">
+                            {title}
+                        </h4>
+                        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">
+                            {subtitle}
+                        </p>
+                    </div>
+                    {badge && (
+                        <Badge className={`${accentColors[accent]} border shadow-sm font-black text-[10px] rounded-lg px-2 py-1`}>
+                            {badge}
+                        </Badge>
+                    )}
+                </div>
+
+                {description && (
+                    <div className="p-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 italic text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
+                        "{description}"
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-2">
+                    <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        <User className="w-3.5 h-3.5 opacity-60" />
+                        <span>{meta}</span>
+                    </div>
+                    {subMeta && (
+                        <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            <Calendar className="w-3.5 h-3.5 opacity-60" />
+                            <span>{subMeta}</span>
+                        </div>
+                    )}
+                    {extraInfo && (
+                        <div className="flex items-center gap-2 text-[10px] font-black text-orange-500 uppercase tracking-widest bg-orange-500/10 w-fit px-2 py-0.5 rounded-md">
+                            <Zap className="w-3 h-3" />
+                            {extraInfo}
+                        </div>
+                    )}
+                </div>
+
+                {proofUrl && (
+                    <a
+                        href={proofUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 text-xs font-bold text-primary hover:text-primary/80 transition-colors py-1 group/link"
+                    >
+                        <FileText className="w-3.5 h-3.5" />
+                        VIEW PAYMENT PROOF
+                        <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                    </a>
+                )}
+            </div>
+
+            <div className="p-4 pt-2 flex items-center gap-3 relative z-10">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 h-11 font-black text-[10px] tracking-[0.2em] rounded-xl text-slate-400 hover:text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive/20 transition-all uppercase"
+                    onClick={onReject}
+                    disabled={loading}
+                >
+                    <XCircle className="w-4 h-4" />
+                </Button>
+
+                <Button
+                    size="sm"
+                    className={`flex-[3] h-11 font-black text-[10px] tracking-[0.2em] rounded-xl text-white shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3 uppercase ${btnColors[accent]}`}
+                    onClick={onApprove}
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <Clock className="w-4 h-4 animate-spin" />
+                    ) : (
+                        <CheckCircle2 className="w-4 h-4" />
+                    )}
+                    {approveLabel}
+                </Button>
+
+                {onView && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-primary hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-white/10"
+                        onClick={onView}
+                    >
+                        <ArrowRight className="w-4 h-4" />
+                    </Button>
+                )}
+            </div>
+
+            <div className="absolute top-2 right-4 text-[10px] font-mono text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                {format(new Date(date), "HH:mm")}
+            </div>
+        </Card>
+    );
+}

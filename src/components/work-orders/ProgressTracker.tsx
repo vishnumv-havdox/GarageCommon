@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-export type WorkOrderStage = 
+export type WorkOrderStage =
   | 'Inspection'
   | 'Repair'
   | 'Review'
@@ -54,9 +54,9 @@ export function ProgressTracker({
   isAdmin = false
 }: ProgressTrackerProps) {
   const [expanded, setExpanded] = useState(false)
-  
+
   const currentStageIndex = stages.findIndex(s => s.name === currentStage) || 0
-  
+
   const getStageStatus = (stageName: string): 'completed' | 'in_progress' | 'pending' => {
     if (!stagesData) {
       const index = stages.findIndex(s => s.name === stageName)
@@ -64,7 +64,7 @@ export function ProgressTracker({
       if (index === currentStageIndex) return 'in_progress'
       return 'pending'
     }
-    
+
     const stage = stagesData.find(s => s.stage === stageName)
     if (stage?.status === 'completed') return 'completed'
     if (stage?.status === 'in_progress' || stage?.stage === currentStage) return 'in_progress'
@@ -137,26 +137,26 @@ export function ProgressTracker({
         {/* Progress Bar */}
         <div className="relative mb-6">
           <div className="absolute top-4 left-4 right-4 h-1 bg-muted rounded" />
-          <div 
+          <div
             className="absolute top-4 left-4 h-1 bg-primary rounded transition-all duration-500"
             style={{ width: `${(currentStageIndex / (stages.length - 1)) * 100}%` }}
           />
-          
+
           <div className="relative flex justify-between">
             {stages.map((stage, index) => {
               const status = getStageStatus(stage.name)
               const isCompleted = status === 'completed'
               const isCurrent = status === 'in_progress'
               const timestamp = getStageTimestamp(stage.name)
-              
+
               return (
                 <div key={stage.name} className="flex flex-col items-center">
-                  <div 
+                  <div
                     className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
                       isCompleted ? "bg-primary text-primary-foreground" :
-                      isCurrent ? "bg-primary text-primary-foreground ring-4 ring-primary/20" :
-                      "bg-muted text-muted-foreground"
+                        isCurrent ? "bg-primary text-primary-foreground ring-4 ring-primary/20" :
+                          "bg-muted text-muted-foreground"
                     )}
                   >
                     {isCompleted ? (
@@ -188,9 +188,9 @@ export function ProgressTracker({
             {stages.map((stage) => {
               const status = getStageStatus(stage.name)
               const stageData = stagesData?.find(s => s.stage === stage.name)
-              
+
               return (
-                <div 
+                <div
                   key={stage.name}
                   className={cn(
                     "flex items-start gap-3 p-3 rounded-lg transition-colors",
@@ -200,8 +200,8 @@ export function ProgressTracker({
                   <div className={cn(
                     "w-6 h-6 rounded-full flex items-center justify-center mt-0.5",
                     status === 'completed' ? "bg-primary text-primary-foreground" :
-                    status === 'in_progress' ? "bg-primary text-primary-foreground" :
-                    "bg-muted text-muted-foreground"
+                      status === 'in_progress' ? "bg-primary text-primary-foreground" :
+                        "bg-muted text-muted-foreground"
                   )}>
                     {status === 'completed' ? (
                       <CheckCircle2 className="h-4 w-4" />
@@ -261,15 +261,15 @@ export function CompactProgressTracker({ currentStage, status, className }: Comp
   const currentStageIndex = stages.findIndex(s => s.name === currentStage) || 0
   const isCompleted = status === 'Completed'
   const progress = isCompleted ? 100 : (currentStageIndex / (stages.length - 1)) * 100
-  
+
   return (
     <div className={cn("space-y-1", className)}>
       <div className="flex justify-between text-xs text-muted-foreground">
         <span>{stages[0]?.label}</span>
         <span>{stages[stages.length - 1]?.label}</span>
       </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div 
+      <div className="h-2 bg-muted rounded-full overflow-hidden border border-border/10">
+        <div
           className={cn(
             "h-full rounded-full transition-all duration-500",
             isCompleted ? "bg-green-500" : "bg-primary"

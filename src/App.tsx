@@ -37,6 +37,7 @@ import RequestsInbox from "./pages/admin/RequestsInbox";
 import RequestConfirmation from "./pages/admin/RequestConfirmation";
 import { accessControlConfig } from "@/config/accessControl";
 import { RequestsProvider } from "@/contexts/RequestsContext";
+import { GlobalHUD } from "@/components/dashboard/GlobalHUD";
 
 const queryClient = new QueryClient();
 
@@ -94,7 +95,9 @@ const App = () => (
                   path={rule.path}
                   element={
                     <ProtectedRoute allowedRoles={rule.allowedRoles}>
-                      {React.createElement(routeComponents[rule.path])}
+                      <GlobalHUD>
+                        {React.createElement(routeComponents[rule.path])}
+                      </GlobalHUD>
                     </ProtectedRoute>
                   }
                 />

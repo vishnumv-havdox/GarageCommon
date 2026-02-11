@@ -270,16 +270,16 @@ export default function InventoryRoom() {
 
     if (!selectedWO) {
         return (
-            <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+            <div className="min-h-screen bg-background p-4 md:p-8">
                 <div className="max-w-4xl mx-auto space-y-8">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-primary rounded-xl text-white">
+                            <div className="p-3 bg-primary rounded-xl text-primary-foreground">
                                 <Package className="h-6 w-6" />
                             </div>
                             <div>
                                 <h1 className="text-2xl font-bold">Inventory Room</h1>
-                                <p className="text-slate-500 text-sm">Select a Work Order to begin scanning parts</p>
+                                <p className="text-muted-foreground text-sm">Select a Work Order to begin scanning parts</p>
                             </div>
                         </div>
 
@@ -296,12 +296,12 @@ export default function InventoryRoom() {
 
 
                     <Card className="border-none shadow-lg">
-                        <CardHeader className="bg-white rounded-t-lg pb-4">
+                        <CardHeader className="bg-card rounded-t-lg pb-4">
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     placeholder="Search Vehicle or Service..."
-                                    className="pl-10 h-11 bg-slate-50 border-none"
+                                    className="pl-10 h-11 bg-secondary border-none"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
@@ -312,37 +312,37 @@ export default function InventoryRoom() {
                                 {loading ? (
                                     <div className="p-12 text-center flex flex-col items-center gap-3">
                                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                                        <p className="text-slate-500">Loading work orders...</p>
+                                        <p className="text-muted-foreground">Loading work orders...</p>
                                     </div>
                                 ) : workOrders.filter(wo =>
                                     wo.vehicle?.vehicle_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     wo.service_type.toLowerCase().includes(searchTerm.toLowerCase())
                                 ).length === 0 ? (
-                                    <div className="p-12 text-center bg-white rounded-b-lg">
-                                        <ClipboardList className="h-12 w-12 text-slate-200 mx-auto mb-4" />
-                                        <p className="text-slate-400">No active work orders with approved parts found.</p>
+                                    <div className="p-12 text-center bg-card rounded-b-lg">
+                                        <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                                        <p className="text-muted-foreground">No active work orders with approved parts found.</p>
                                     </div>
                                 ) : (
                                     workOrders.map((wo) => (
                                         <button
                                             key={wo.id}
                                             onClick={() => selectWorkOrder(wo)}
-                                            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-left bg-white"
+                                            className="w-full p-4 flex items-center justify-between hover:bg-secondary transition-colors text-left bg-card"
                                         >
                                             <div className="flex items-center gap-4">
                                                 <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold">
                                                     {wo.vehicle?.vehicle_number.substring(0, 2)}
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-slate-900">{wo.vehicle?.vehicle_number}</p>
-                                                    <p className="text-xs text-slate-500 uppercase tracking-wide">{wo.service_type}</p>
+                                                    <p className="font-bold text-foreground">{wo.vehicle?.vehicle_number}</p>
+                                                    <p className="text-xs text-muted-foreground uppercase tracking-wide">{wo.service_type}</p>
                                                 </div>
                                             </div>
                                             <div className="flex flex-col items-end gap-2 text-right">
                                                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                                                     {wo.part_requests.filter((p: any) => p.status === 'approved').length} Parts Approved
                                                 </Badge>
-                                                <ChevronRight className="h-4 w-4 text-slate-300" />
+                                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                             </div>
                                         </button>
                                     ))
@@ -356,11 +356,11 @@ export default function InventoryRoom() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-900 text-white p-4">
+        <div className="min-h-screen bg-background text-foreground p-4">
             <div className="max-w-md mx-auto space-y-6">
                 <Button
                     variant="ghost"
-                    className="text-slate-400 hover:text-white -ml-4"
+                    className="text-muted-foreground hover:text-foreground -ml-4"
                     onClick={() => {
                         stopScanner();
                         setSelectedWO(null);
@@ -374,12 +374,12 @@ export default function InventoryRoom() {
                         <QrCode className="h-6 w-6" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold">{selectedWO.vehicle?.vehicle_number}</h2>
-                        <p className="text-slate-400 text-sm">{selectedWO.service_type}</p>
+                        <h2 className="text-xl font-bold text-foreground">{selectedWO.vehicle?.vehicle_number}</h2>
+                        <p className="text-muted-foreground text-sm">{selectedWO.service_type}</p>
                     </div>
                 </div>
 
-                <Card className="bg-slate-800 border-slate-700">
+                <Card className="bg-card border-border">
                     <CardHeader>
                         <CardTitle className="text-white text-lg flex items-center gap-2">
                             <ClipboardList className="h-5 w-5 text-blue-400" />
@@ -387,21 +387,21 @@ export default function InventoryRoom() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <div className="divide-y divide-slate-700 px-4 pb-4">
+                        <div className="divide-y divide-border px-4 pb-4">
                             {approvedParts.length === 0 ? (
-                                <div className="py-8 text-center text-slate-500 italic">
+                                <div className="py-8 text-center text-muted-foreground italic">
                                     All approved parts have been issued.
                                 </div>
                             ) : (
                                 approvedParts.map((part) => (
                                     <div key={part.id} className="py-3 flex items-center justify-between">
                                         <div>
-                                            <p className="font-medium text-slate-200">{part.inventory?.item_name}</p>
-                                            <p className="text-xs text-slate-500 font-mono">SKU: {part.inventory?.sku}</p>
+                                            <p className="font-medium text-foreground">{part.inventory?.item_name}</p>
+                                            <p className="text-xs text-muted-foreground font-mono">SKU: {part.inventory?.sku}</p>
                                         </div>
                                         <div className="text-right">
-                                            <span className="text-xs text-slate-500 block mb-1">Approved Qty</span>
-                                            <Badge className="bg-slate-700 text-blue-400 border-slate-600">
+                                            <span className="text-xs text-muted-foreground block mb-1">Approved Qty</span>
+                                            <Badge className="bg-secondary text-primary border-border">
                                                 {part.approved_qty - part.issued_qty} Remaining
                                             </Badge>
                                         </div>
@@ -444,28 +444,28 @@ export default function InventoryRoom() {
 
                 {/* Session History Table */}
                 {scannedSessionItems.length > 0 && (
-                    <Card className="bg-slate-800 border-slate-700 mt-6">
+                    <Card className="bg-card border-border mt-6">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-white text-md flex items-center justify-between">
+                            <CardTitle className="text-foreground text-md flex items-center justify-between">
                                 <span className="flex items-center gap-2">
-                                    <CheckCircle2 className="h-4 w-4 text-green-400" />
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     Just Scanned
                                 </span>
-                                <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+                                <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                                     {scannedSessionItems.length} Items
                                 </Badge>
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
-                            <div className="max-h-[300px] overflow-y-auto divide-y divide-slate-700">
+                            <div className="max-h-[300px] overflow-y-auto divide-y divide-border">
                                 {scannedSessionItems.map((item) => (
                                     <div key={item.id} className="p-3 flex items-center justify-between animate-in slide-in-from-left duration-300">
                                         <div>
-                                            <p className="font-medium text-slate-200 text-sm">{item.item_name}</p>
-                                            <p className="text-[10px] text-slate-500 font-mono italic">{item.qr}</p>
+                                            <p className="font-medium text-foreground text-sm">{item.item_name}</p>
+                                            <p className="text-[10px] text-muted-foreground font-mono italic">{item.qr}</p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-[10px] text-slate-500">{item.time}</p>
+                                            <p className="text-[10px] text-muted-foreground">{item.time}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -476,9 +476,9 @@ export default function InventoryRoom() {
 
                 {loading && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-                        <div className="bg-slate-800 p-8 rounded-2xl flex flex-col items-center gap-4 border border-slate-700">
+                        <div className="bg-card p-8 rounded-2xl flex flex-col items-center gap-4 border border-border">
                             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                            <p className="font-bold">Loading Data...</p>
+                            <p className="font-bold text-foreground">Loading Data...</p>
                         </div>
                     </div>
                 )}

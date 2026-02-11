@@ -2,24 +2,59 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { createClient } from '@supabase/supabase-js';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import {
-  LogOut, Truck, FileText, Wrench, RefreshCw,
-  CheckCircle2, Clock, MapPin, ChevronDown, ChevronUp,
-  AlertCircle, ShieldCheck, Hourglass, Activity, Eye, Calendar, History, SortAsc, SortDesc, Search,
-  QrCode, CreditCard, Upload, Download
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import {
+  CheckCircle2,
+  XCircle,
+  Clock,
+  FileText,
+  Package,
+  User,
+  Calendar,
+  ArrowRight,
+  IndianRupee,
+  ChevronRight,
+  Inbox,
+  ShieldCheck,
+  Download,
+  Eye,
+  CreditCard,
+  Hourglass,
+  AlertCircle,
+  Upload,
+  History,
+  Truck,
+  Wrench,
+  Activity,
+  Car,
+  Search,
+  LayoutDashboard,
+  LogOut,
+  GripVertical,
+  Wallet,
+  Gauge,
+  QrCode,
+  Archive,
+  Zap
 } from "lucide-react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { generateInvoicePDF } from "@/utils/pdfGenerator";
+import logo from "@/assets/logo.png";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
+import { generateInvoicePDF } from "@/utils/pdfGenerator";
 
 // Import Table components
 import {
@@ -29,6 +64,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+
 
 // Import ProgressTracker component
 import { CompactProgressTracker } from "@/components/work-orders/ProgressTracker";
@@ -175,7 +212,7 @@ export default function CustomerPortal() {
         });
         const res = await adminClient
           .from('company_profiles')
-          .select('payment_qr_code_url, bank_details, company_name')
+          .select('payment_qr_code_url, bank_details, company_name, logo_url')
           .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -184,7 +221,7 @@ export default function CustomerPortal() {
       } else {
         const res = await supabase
           .from('company_profiles')
-          .select('payment_qr_code_url, bank_details, company_name')
+          .select('payment_qr_code_url, bank_details, company_name, logo_url')
           .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -218,7 +255,7 @@ export default function CustomerPortal() {
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
-    let debug = `User ID: ${user.id}\nEmail: ${user.email || 'N/A'}\n`;
+    let debug = `User ID: ${user.id} \nEmail: ${user.email || 'N/A'} \n`;
 
     try {
       // First, try to find customer by user_id
@@ -228,7 +265,7 @@ export default function CustomerPortal() {
         .eq("user_id", user.id)
         .single();
 
-      debug += `Customer Query - Found: ${!!customerQuery.data}\n`;
+      debug += `Customer Query - Found: ${!!customerQuery.data} \n`;
 
       let customerId = (customerQuery.data as any)?.id;
 
@@ -240,7 +277,7 @@ export default function CustomerPortal() {
           .eq("email", user.email)
           .single();
         customerId = (customerByEmailQuery.data as any)?.id;
-        debug += `Customer by Email - Found: ${!!customerByEmailQuery.data}\n`;
+        debug += `Customer by Email - Found: ${!!customerByEmailQuery.data} \n`;
       }
 
       if (!customerId) {
@@ -251,7 +288,7 @@ export default function CustomerPortal() {
         return;
       }
 
-      debug += `Customer ID: ${customerId}\n`;
+      debug += `Customer ID: ${customerId} \n`;
 
       // Fetch vehicles and invoices using admin client to bypass RLS
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -295,7 +332,6 @@ export default function CustomerPortal() {
           .reduce((sum, l) => sum + (l.amount_applied || 0), 0);
 
         // Direct payments (legacy/single invoice link)
-        // Some older payments might be linked directly via invoice_id on the payments table
         // But our new flow uses payment_links. For safety, we can check inv.payments too if they are approved.
         // Actually, the select("*, payments(status)") in invoicesRes already gives us some info.
 
@@ -311,16 +347,16 @@ export default function CustomerPortal() {
       // Set vehicles and invoices state
       setVehicles(vehiclesRes.data || []);
 
-      debug += `Vehicles found: ${vehiclesRes.data?.length || 0}\n`;
-      debug += `Invoices found: ${processedInvoices.length}\n`;
+      debug += `Vehicles found: ${vehiclesRes.data?.length || 0} \n`;
+      debug += `Invoices found: ${processedInvoices.length} \n`;
       setInvoices(processedInvoices);
 
       // Get customer's vehicle IDs
       const customerVehicleIds = (vehiclesRes.data || []).map((v: any) => v.id);
-      debug += `Customer Vehicle IDs: ${JSON.stringify(customerVehicleIds)}\n`;
+      debug += `Customer Vehicle IDs: ${JSON.stringify(customerVehicleIds)} \n`;
 
       // Fetch work orders using admin client to bypass RLS
-      debug += `\n--- Fetching Work Orders ---\n`;
+      debug += `\n-- - Fetching Work Orders-- -\n`;
 
       let allWorkOrders: any[] = [];
 
@@ -329,13 +365,13 @@ export default function CustomerPortal() {
         const workOrdersByVehicles = await supabase
           .from("work_orders")
           .select(`
-            *,
-            vehicle:vehicles(id, vehicle_number, model, customer_id)
+  *,
+  vehicle: vehicles(id, vehicle_number, model, customer_id)
           `)
           .in("vehicle_id", customerVehicleIds)
           .order("created_at", { ascending: false });
 
-        debug += `Work orders by customer vehicles: ${workOrdersByVehicles.data?.length || 0}\n`;
+        debug += `Work orders by customer vehicles: ${workOrdersByVehicles.data?.length || 0} \n`;
         allWorkOrders = workOrdersByVehicles.data || [];
       }
 
@@ -348,12 +384,12 @@ export default function CustomerPortal() {
         const allWorkOrdersQuery = await adminClient
           .from("work_orders")
           .select(`
-            *,
-            vehicle:vehicles(id, vehicle_number, model, customer_id)
+  *,
+  vehicle: vehicles(id, vehicle_number, model, customer_id)
           `)
           .order("created_at", { ascending: false });
 
-        debug += `Total work orders in system (admin): ${allWorkOrdersQuery.data?.length || 0}\n`;
+        debug += `Total work orders in system(admin): ${allWorkOrdersQuery.data?.length || 0} \n`;
 
         // Client-side filter: match by vehicle.customer_id OR by vehicle_id in our list
         const customerIdsSet = new Set([customerId]);
@@ -369,7 +405,7 @@ export default function CustomerPortal() {
           return false;
         });
 
-        debug += `Work orders after filtering: ${workOrdersFiltered.length}\n`;
+        debug += `Work orders after filtering: ${workOrdersFiltered.length} \n`;
 
         // Merge results, avoiding duplicates
         const workOrdersData = [...allWorkOrders];
@@ -379,7 +415,7 @@ export default function CustomerPortal() {
           }
         });
 
-        debug += `Total work orders after merge: ${workOrdersData.length}\n`;
+        debug += `Total work orders after merge: ${workOrdersData.length} \n`;
 
         if (workOrdersData.length > 0) {
           // Fetch stages for each work order using admin client
@@ -390,7 +426,7 @@ export default function CustomerPortal() {
             .in("work_order_id", workOrderIds)
             .order("created_at");
 
-          debug += `Stages found: ${stagesQuery.data?.length || 0}\n`;
+          debug += `Stages found: ${stagesQuery.data?.length || 0} \n`;
 
           // Fetch tasks for all work orders
           const tasksQuery = await adminClient
@@ -399,7 +435,7 @@ export default function CustomerPortal() {
             .in("work_order_id", workOrderIds)
             .order("created_at");
 
-          debug += `Tasks found: ${tasksQuery.data?.length || 0}\n`;
+          debug += `Tasks found: ${tasksQuery.data?.length || 0} \n`;
 
           // Fetch services for all work orders
           const servicesQuery = await adminClient
@@ -407,7 +443,7 @@ export default function CustomerPortal() {
             .select("*")
             .in("work_order_id", workOrderIds);
 
-          debug += `Services found: ${servicesQuery.data?.length || 0}\n`;
+          debug += `Services found: ${servicesQuery.data?.length || 0} \n`;
 
           // Transform and merge stages data
           const processedWorkOrders: WorkOrderProgress[] = workOrdersData.map((wo: any) => {
@@ -447,8 +483,8 @@ export default function CustomerPortal() {
             };
           });
 
-          debug += `Processed work orders: ${processedWorkOrders.length}\n`;
-          debug += `Active work orders: ${processedWorkOrders.filter(w => w.status !== "Completed" && w.status !== "Cancelled").length}\n`;
+          debug += `Processed work orders: ${processedWorkOrders.length} \n`;
+          debug += `Active work orders: ${processedWorkOrders.filter(w => w.status !== "Completed" && w.status !== "Cancelled").length} \n`;
 
           setWorkOrders(processedWorkOrders);
         } else {
@@ -464,7 +500,7 @@ export default function CustomerPortal() {
 
       setDebugInfo(debug);
     } catch (error: any) {
-      debug += `ERROR: ${error.message}\n`;
+      debug += `ERROR: ${error.message} \n`;
       setDebugInfo(debug);
       console.error("Error fetching data:", error);
     } finally {
@@ -512,7 +548,7 @@ export default function CustomerPortal() {
     // Create a composite key: work_order_id OR vehicle_id + vehicle_number
     // This groups work orders with the same vehicle together
     const key = wo.id ||
-      (wo.vehicle?.id ? `vehicle-${wo.vehicle.id}` : `unknown-${Math.random()}`);
+      (wo.vehicle?.id ? `vehicle - ${wo.vehicle.id} ` : `unknown - ${Math.random()} `);
 
     if (!acc[key]) {
       acc[key] = {
@@ -564,10 +600,12 @@ export default function CustomerPortal() {
   };
 
   const getStageProgress = (stages: WorkOrderStage[]) => {
-    if (stages.length === 0) return 0;
+    if (!stages || stages.length === 0) return 0;
     const completed = stages.filter(s => s.status === 'completed').length;
     return (completed / stages.length) * 100;
   };
+
+
 
   const formatDateTime = (date: string | null) => {
     if (!date) return "N/A";
@@ -653,8 +691,8 @@ export default function CustomerPortal() {
         const { data, error } = await adminClient
           .from("service_history")
           .select(`
-            *,
-            vehicle:vehicles(id, vehicle_number, model, customer_id)
+  *,
+  vehicle: vehicles(id, vehicle_number, model, customer_id)
           `)
           .in("vehicle_id", customerVehicleIds)
           .order("service_date", { ascending: false });
@@ -686,7 +724,7 @@ export default function CustomerPortal() {
     if (unpaidInvoices.length > 0 && !loading) {
       toast({
         title: "Payment Reminder",
-        description: `You have ${unpaidInvoices.length} unpaid invoice(s). Please review them.`,
+        description: `You have ${unpaidInvoices.length} unpaid invoice(s).Please review them.`,
         variant: "destructive",
       });
     }
@@ -761,8 +799,8 @@ export default function CustomerPortal() {
     setIsSubmittingPayment(true);
     try {
       const fileExt = paymentProof.name.split('.').pop();
-      const fileName = `proof-${invoicesToLink[0].id}-${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const fileName = `proof - ${invoicesToLink[0].id} -${Date.now()}.${fileExt} `;
+      const filePath = `${fileName} `;
 
       const { error: uploadError } = await supabase.storage
         .from('payment-proofs')
@@ -846,1050 +884,682 @@ export default function CustomerPortal() {
     });
   }, [vehicles, workOrdersById]);
 
+  const getActiveCount = useCallback((vId: string) => {
+    const vehicleWorkOrders = Object.values(workOrdersById).filter(
+      (wo: any) => wo.vehicle_id === vId
+    );
+    return vehicleWorkOrders.filter(
+      (wo: any) => !["delivered", "completed", "cancelled", "approved"].includes(
+        (wo.status || "").toLowerCase()
+      )
+    ).length;
+  }, [workOrdersById]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground">
+        <div className="relative">
+          <div className="h-24 w-24 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+          <img src={profile?.logo_url || logo} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-12 w-12 object-contain animate-pulse" alt="Logo" />
+        </div>
+        <h2 className="mt-8 text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+          Accessing My Garage
+        </h2>
+        <p className="mt-2 text-muted-foreground text-sm uppercase tracking-wider">Loading...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            {profile?.logo_url ? (
-              <img src={profile.logo_url} alt="Logo" className="h-10 w-10 object-contain rounded" />
-            ) : (
-              <Truck className="h-8 w-8 text-primary" />
-            )}
-            <div>
-              <h1 className="text-2xl font-bold uppercase">{profile?.company_name || 'Customer Portal'}</h1>
-              <p className="text-sm text-muted-foreground">Welcome, {user?.full_name || user?.email}</p>
+    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary pb-10">
+      {/* Tactical Background Overlay */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(var(--primary),0.05)_0%,transparent_50%)]" />
+        <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(circle_at_100%_100%,rgba(var(--primary),0.02)_0%,transparent_30%)]" />
+      </div>
+
+      <header className="border-b border-border bg-background/80 sticky top-0 z-50 backdrop-blur-xl">
+        <div className="container mx-auto px-4 h-20 grid grid-cols-3 items-center">
+          {/* Column 1: Branding */}
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center shadow-[0_0_20px_rgba(var(--primary),0.3)] overflow-hidden shrink-0">
+              <img
+                src={profile?.logo_url || logo}
+                className="h-9 w-9 object-contain brightness-0 invert"
+                alt="Logo"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = logo;
+                }}
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold text-primary uppercase tracking-tight leading-tight">
+                {profile?.company_name || "Amma Auto Garage"}
+              </span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Online
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={() => setShowDebug(!showDebug)}>
-              <AlertCircle className="h-4 w-4 mr-2" />
-              {showDebug ? "Hide Debug" : "Debug"}
-            </Button>
-            <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <Badge variant="outline">Customer</Badge>
-            <Button onClick={signOut} variant="outline">
-              <LogOut className="h-4 w-4 mr-2" />Logout
+
+          {/* Column 2: Page Title (Centered) */}
+          <div className="flex flex-col items-center justify-center">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground uppercase text-center">
+              My Garage
+            </h1>
+            <div className="h-0.5 w-12 bg-primary mt-1 rounded-full opacity-50" />
+          </div>
+
+          {/* Column 3: User & Sign Out */}
+          <div className="flex items-center justify-end gap-6">
+            <div className="hidden xl:flex items-center gap-3 px-4 py-2 bg-background/50 rounded-2xl border border-border shadow-inner">
+              <User className="h-4 w-4 text-primary" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none mb-1">User</span>
+                <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  {user?.email?.split('@')[0]}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => signOut()}
+              className="h-10 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-secondary transition-all group px-4 rounded-xl"
+            >
+              <LogOut className="h-4 w-4 mr-2 group-hover:translate-x-1 transition-transform text-primary" />
+              <span className="font-bold uppercase text-[10px] tracking-wider">Log Out</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
-        {/* Debug Panel */}
-        {showDebug && (
-          <Card className="mb-8 border-red-200 bg-red-50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2 text-red-700">
-                <AlertCircle className="h-4 w-4" />
-                Debug Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="text-xs overflow-auto max-h-64 whitespace-pre-wrap text-red-700">
-                {debugInfo || "Loading debug info..."}
-              </pre>
+      <main className="container mx-auto px-4 py-8 relative z-10">
+        {/* Quick Links / KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card className="bg-background/40 border-border backdrop-blur-md hover:bg-background/60 transition-all group relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={profile?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">Total Vehicles</p>
+              <h3 className="text-4xl font-bold text-foreground tracking-tight leading-none">{vehicles.length}</h3>
+              <p className="text-[11px] font-bold text-primary uppercase tracking-wider mt-3 italic">Vehicles</p>
             </CardContent>
           </Card>
-        )}
 
-        {/* Live Tracking Banner */}
-        {activeWorkOrders.length > 0 && (
-          <Card className="mb-8 border-primary/20 bg-primary/5">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-full">
-                  <MapPin className="h-5 w-5 text-primary animate-pulse" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Wrench className="h-4 w-4" />
-                    Live Vehicle Tracking
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Track your vehicle repairs in real-time. Updates appear automatically.
-                  </p>
-                </div>
-                <Badge variant="default" className="flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                  Live
-                </Badge>
-              </div>
+          <Card className="bg-background/40 border-border backdrop-blur-md hover:bg-background/60 transition-all group relative overflow-hidden text-orange-400">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={profile?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">Active Work</p>
+              <h3 className="text-4xl font-bold text-foreground tracking-tight leading-none">{activeWorkOrders.length}</h3>
+              <p className="text-[11px] font-bold text-orange-400 uppercase tracking-wider mt-3 italic">In Progress</p>
             </CardContent>
           </Card>
-        )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">My Vehicles</CardTitle>
-              <Truck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent><div className="text-2xl font-bold">{vehicles.length}</div></CardContent>
+          <Card className="bg-background/40 border-border backdrop-blur-md hover:bg-background/60 transition-all group relative overflow-hidden text-green-400">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={profile?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">History</p>
+              <h3 className="text-4xl font-bold tracking-tight leading-none">{completedWorkOrders.length}</h3>
+              <p className="text-[11px] font-bold text-green-400 uppercase tracking-wider mt-3 italic">Past Services</p>
+            </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Active Repairs</CardTitle>
-              <Wrench className="h-4 w-4 text-blue-500" />
-            </CardHeader>
-            <CardContent><div className="text-2xl font-bold text-blue-600">{activeWorkOrders.length}</div></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Unpaid Invoices</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{invoices.filter((inv) => inv.status !== 'Paid' && inv.status !== 'Draft').length}</div>
+
+          <Card className="bg-background/40 border-border backdrop-blur-md hover:bg-background/60 transition-all group relative overflow-hidden text-primary">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={profile?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">Outstanding</p>
+              <h3 className="text-4xl font-bold text-foreground tracking-tight leading-none">
+                ₹{invoices.filter(i => i.status !== 'Paid' && i.type !== 'quotation').reduce((sum, i) => sum + (i.balance || 0), 0).toLocaleString()}
+              </h3>
+              <p className="text-[11px] font-bold text-primary uppercase tracking-wider mt-3 italic">Payment Due</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Active Repairs with Live Progress */}
-        {activeWorkOrders.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Wrench className="h-5 w-5 text-primary" />
-              Active Repairs
-            </h2>
-            <div className="space-y-4">
-              {activeWorkOrders.map((order) => {
-                const progress = getStageProgress(order.stages);
-                const isExpanded = expandedOrders.has(order.id);
-                // Repairs are visible only if repairs_approved is true OR if the service is completed
-                // Use case-insensitive comparison for status
-                const orderStatus = order.status?.toLowerCase() || "";
-                const showRepairs = order.inspection_status === 'approved' ||
-                  ['completed', 'approved', 'delivered'].includes(orderStatus);
-
-                // Get all services - combine work order's service_type with services array
-                const services = order.services || [];
-                // Get combined service types from the Set (for work orders with same vehicle)
-                const combinedServiceTypes = (order as any).combined_service_types || new Set([order.service_type].filter(Boolean));
-                const serviceTypesArray = Array.from(combinedServiceTypes);
-                const hasMultipleServices = serviceTypesArray.length > 1;
-
-                // Build allServices array for task display
-                const allServices = [
-                  ...services,
-                  ...(order.service_type && !services.find((s: any) => s.service_type === order.service_type)
-                    ? [{ id: order.id, service_type: order.service_type }]
-                    : [])
-                ];
-
-                return (
-                  <Card key={order.id} className="overflow-hidden">
-                    <CardContent className="p-0">
-                      {/* Header */}
-                      <div
-                        className={`p-4 border-b cursor-pointer transition-colors ${showRepairs
-                          ? "bg-green-50/50 hover:bg-green-50"
-                          : "bg-muted/30 hover:bg-muted/50"
-                          }`}
-                        onClick={() => toggleOrderExpanded(order.id)}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              {/* Primary service type */}
-                              <h3 className="font-semibold text-lg">{String(serviceTypesArray[0] || order.service_type || '')}</h3>
-                              {/* Additional services badge */}
-                              {hasMultipleServices && (
-                                <Badge variant="secondary" className="text-xs">
-                                  +{serviceTypesArray.length - 1} more service{serviceTypesArray.length > 2 ? 's' : ''}
-                                </Badge>
-                              )}
-                              <Badge variant="outline" className="text-xs">#{order.id.slice(0, 6)}</Badge>
-                              {order.priority === "Urgent" && (
-                                <Badge variant="destructive" className="text-xs">Urgent</Badge>
-                              )}
-                            </div>
-                            {/* Show all services in a single line */}
-                            <div className="flex items-center gap-2 mb-1">
-                              {serviceTypesArray.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {serviceTypesArray.map((st: string, index: number) => (
-                                    <Badge
-                                      key={index}
-                                      variant="outline"
-                                      className={`text-xs ${index === 0 ? 'border-primary/50' : ''}`}
-                                    >
-                                      {st}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              ) : (
-                                <Badge variant="outline" className="text-xs">{order.service_type}</Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Truck className="h-3 w-3" />
-                                {order.vehicle?.vehicle_number || "N/A"} {order.vehicle?.model && `(${order.vehicle.model})`}
-                              </span>
-                              {showRepairs ? (
-                                <span className="flex items-center gap-1 text-green-600">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                  Live Tracking Active
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-1 text-orange-600">
-                                  <Clock className="h-3 w-3" />
-                                  Pending Inspection/Approval
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant={order.status === "In Progress" ? "default" : "secondary"}>
-                              {order.status}
-                            </Badge>
-                            {isExpanded ? (
-                              <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                            ) : (
-                              <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Expanded Details */}
-                      {isExpanded && (
-                        <div className="p-4 space-y-4 bg-muted/10">
-
-                          {/* Visibility Blocking Banner */}
-                          {!showRepairs && (
-                            <div className="p-6 bg-background rounded-lg border-2 border-dashed border-muted-foreground/20 flex flex-col items-center justify-center text-center space-y-2">
-                              <ShieldCheck className="h-10 w-10 text-primary/50 mb-2" />
-                              <h3 className="font-semibold text-lg">Inspection & Processing</h3>
-                              <p className="text-muted-foreground max-w-md">
-                                We are currently inspecting your vehicle. Detailed repair plans and live tracking will be available once our team completes the initial assessment and gets approval.
-                              </p>
-                              <Badge variant="outline" className="mt-2">Estimated wait: ~30-60 mins</Badge>
-                            </div>
-                          )}
-
-                          {/* Description */}
-                          <div>
-                            <h4 className="text-sm font-medium mb-1">Service Request</h4>
-                            <p className="text-sm text-muted-foreground">{order.description}</p>
-                          </div>
-
-                          {showRepairs && (
-                            <>
-                              {/* Compact Progress Tracker */}
-                              <div>
-                                <h4 className="text-sm font-medium mb-3">Overall Progress</h4>
-                                <CompactProgressTracker
-                                  currentStage={order.current_stage}
-                                  status={order.status}
-                                />
-                              </div>
-
-                              {/* Detailed Stages - Vertical Timeline */}
-                              <div className="mt-6">
-                                <h4 className="text-sm font-medium mb-4 flex items-center gap-2">
-                                  <Activity className="h-4 w-4 text-primary" />
-                                  Repair Journey
-                                </h4>
-                                <div className="space-y-0 relative pl-4 border-l-2 border-muted">
-                                  {STAGES.map((stage, index) => {
-                                    const stageData = order.stages.find(s => s.stage === stage);
-                                    const stageStatus = stageData?.status || 'pending';
-                                    const isCompleted = stageStatus === 'completed';
-                                    const isInProgress = stageStatus === 'in_progress';
-                                    const isNext = !isCompleted && !isInProgress && index > 0 &&
-                                      order.stages.find(s => s.stage === STAGES[index - 1])?.status === 'completed';
-
-                                    // Dynamic description based on stage
-                                    let description = "";
-                                    if (stage === 'Inspection') description = isCompleted ? "Vehicle inspection completed" : "Initial check of vehicle condition";
-                                    if (stage === 'Repair') {
-                                      if (isCompleted) description = "All repair tasks completed";
-                                      else if (isInProgress) description = "Technicians are working on your vehicle";
-                                      else description = "Scheduled for repairs";
-                                    }
-                                    if (stage === 'Review') {
-                                      if (isInProgress) description = "Admin Review: Waiting for Approval"; // Explicit request
-                                      else description = "Final review of work done";
-                                    }
-                                    if (stage === 'Quality Check') {
-                                      if (isInProgress) description = "Quality Check in Progress"; // Explicit request
-                                      else description = "Ensuring high standards";
-                                    }
-                                    if (stage === 'Delivery') description = isCompleted ? "Vehicle delivered to customer" : "Ready for handover";
-
-                                    return (
-                                      <div key={stage} className="relative pb-8 last:pb-0 pl-6">
-                                        {/* Status Dot */}
-                                        <div
-                                          className={`absolute -left-[21px] top-0 h-10 w-10 rounded-full border-4 border-background flex items-center justify-center transition-all ${isCompleted ? "bg-green-500 text-white" :
-                                            isInProgress ? "bg-blue-500 text-white animate-pulse" :
-                                              isNext ? "bg-primary/20 text-primary border-primary" :
-                                                "bg-muted text-muted-foreground"
-                                            }`}
-                                        >
-                                          {isCompleted ? <CheckCircle2 className="h-5 w-5" /> :
-                                            isInProgress ? <Wrench className="h-4 w-4" /> :
-                                              stage === 'Delivery' ? <Truck className="h-4 w-4" /> :
-                                                <span className="text-xs font-bold">{index + 1}</span>}
-                                        </div>
-
-                                        {/* Content Card */}
-                                        <div className={`p-4 rounded-lg border transition-all ${isCompleted ? "bg-green-50/50 border-green-100" :
-                                          isInProgress ? "bg-blue-50/50 border-blue-100 shadow-sm" :
-                                            "bg-card border-border/50"
-                                          }`}>
-                                          <div className="flex justify-between items-start mb-1">
-                                            <h5 className={`font-semibold ${isCompleted ? "text-green-900" :
-                                              isInProgress ? "text-blue-700" :
-                                                "text-foreground"
-                                              }`}>
-                                              {stage}
-                                            </h5>
-                                            <Badge variant={
-                                              isCompleted ? "default" :
-                                                isInProgress ? "secondary" : "outline"
-                                            } className={isCompleted ? "bg-green-600 hover:bg-green-700" : ""}>
-                                              {isCompleted ? "Completed" :
-                                                isInProgress ? "In Progress" : "Pending"}
-                                            </Badge>
-                                          </div>
-
-                                          <p className="text-sm text-muted-foreground mb-4">
-                                            {description}
-                                          </p>
-
-                                          {/* Granular Repair Tasks - Only for Repair Stage */}
-                                          {stage === 'Repair' && order.tasks.length > 0 && (
-                                            <div className="mt-4 space-y-4">
-                                              {/* Group tasks by service */}
-                                              {allServices.map((service) => {
-                                                const serviceTasks = order.tasks.filter(t => t.service_id === service.id);
-                                                if (serviceTasks.length === 0) return null;
-
-                                                return (
-                                                  <div key={service.id || service.service_type} className="space-y-2 bg-background/50 rounded-lg p-3 border border-border/50">
-                                                    <h6 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2 mb-2">
-                                                      <Wrench className="h-3 w-3" />
-                                                      {service.service_type} Tasks
-                                                    </h6>
-                                                    <div className="space-y-2">
-                                                      {serviceTasks.map((task) => (
-                                                        <div key={task.id} className="flex items-center justify-between gap-2 p-2 rounded bg-card/50 border border-border/30">
-                                                          <div className="flex items-center gap-2">
-                                                            <div className={`h-2 w-2 rounded-full ${task.status === 'completed' ? 'bg-green-500' :
-                                                              task.status === 'in_progress' ? 'bg-blue-500 animate-pulse' :
-                                                                'bg-muted'
-                                                              }`} />
-                                                            <span className="text-sm font-medium">{task.task_name}</span>
-                                                          </div>
-                                                          <Badge variant="outline" className={`text-[10px] h-5 ${task.status === 'completed' ? 'border-green-200 text-green-700 bg-green-50' :
-                                                            task.status === 'in_progress' ? 'border-blue-200 text-blue-700 bg-blue-50' :
-                                                              ''
-                                                            }`}>
-                                                            {task.status.replace('_', ' ')}
-                                                          </Badge>
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })}
-
-                                              {/* Show tasks without service_id (General Tasks) */}
-                                              {order.tasks.filter(t => !t.service_id).length > 0 && (
-                                                <div className="space-y-2 bg-background/50 rounded-lg p-3 border border-border/50">
-                                                  <h6 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2 mb-2">
-                                                    <Activity className="h-3 w-3" />
-                                                    General Progress
-                                                  </h6>
-                                                  <div className="space-y-2">
-                                                    {order.tasks.filter(t => !t.service_id).map((task) => (
-                                                      <div key={task.id} className="flex items-center justify-between gap-2 p-2 rounded bg-card/50 border border-border/30">
-                                                        <div className="flex items-center gap-2">
-                                                          <div className={`h-2 w-2 rounded-full ${task.status === 'completed' ? 'bg-green-500' :
-                                                            task.status === 'in_progress' ? 'bg-blue-500 animate-pulse' :
-                                                              'bg-muted'
-                                                            }`} />
-                                                          <span className="text-sm font-medium">{task.task_name}</span>
-                                                        </div>
-                                                        <Badge variant="outline" className={`text-[10px] h-5 ${task.status === 'completed' ? 'border-green-200 text-green-700 bg-green-50' :
-                                                          task.status === 'in_progress' ? 'border-blue-200 text-blue-700 bg-blue-50' :
-                                                            ''
-                                                          }`}>
-                                                          {task.status.replace('_', ' ')}
-                                                        </Badge>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          )}
-
-                                          {/* Enhanced Delivery Stage Visuals */}
-                                          {stage === 'Delivery' && isInProgress && (
-                                            <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary/20 flex flex-col items-center text-center space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-700">
-                                              <div className="relative">
-                                                <Truck className="h-12 w-12 text-primary animate-bounce" />
-                                                <MapPin className="h-6 w-6 text-red-500 absolute -bottom-1 -right-1 animate-pulse" />
-                                              </div>
-                                              <div>
-                                                <h6 className="font-bold text-primary">Your vehicle is ready!</h6>
-                                                <p className="text-sm text-muted-foreground">Our team is preparing for handover. We'll see you soon!</p>
-                                              </div>
-                                              <Button size="sm" className="w-full sm:w-auto">
-                                                Contact Service Advisor
-                                              </Button>
-                                            </div>
-                                          )}
-
-                                          {stage === 'Delivery' && isCompleted && (
-                                            <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-100 flex flex-col items-center text-center space-y-2">
-                                              <div className="p-3 bg-green-100 rounded-full">
-                                                <CheckCircle2 className="h-8 w-8 text-green-600" />
-                                              </div>
-                                              <h6 className="font-bold text-green-800">Successfully Delivered</h6>
-                                              <p className="text-sm text-green-700">Thank you for choosing Amma Auto!</p>
-                                            </div>
-                                          )}
-
-                                          {/* Timestamps */}
-                                          {stageData?.completed_at && (
-                                            <div className="flex items-center gap-2 text-xs text-green-700 font-medium mt-3">
-                                              <CheckCircle2 className="h-3 w-3" />
-                                              Finished: {formatDateTime(stageData.completed_at)}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </>
-                          )}
-
-                          {/* Timestamps */}
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
-                            <span>Created: {formatDateTime(order.created_at)}</span>
-                            {order.portal_updated_at && (
-                              <span>Last Updated: {formatDateTime(order.portal_updated_at)}</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {workOrders.length === 0 && (
-          <Card className="mb-8">
-            <CardContent className="p-8 text-center">
-              <Truck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No Active Repairs</h3>
-              <p className="text-muted-foreground">Your repairs will appear here once they are in progress.</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Once your vehicle is accepted by staff, you'll be able to track progress live.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        <Tabs defaultValue="vehicles" className="w-full">
-          <TabsList>
-            <TabsTrigger value="vehicles">My Vehicles</TabsTrigger>
-            <TabsTrigger value="workorders">Work Orders</TabsTrigger>
-            <TabsTrigger value="history">Work History</TabsTrigger>
-            <TabsTrigger value="invoices">Invoices</TabsTrigger>
-            <TabsTrigger value="quotations">Quotations</TabsTrigger>
+        <Tabs defaultValue="vehicles" className="space-y-6">
+          <TabsList className="flex p-1.5 rounded-2xl border-border bg-secondary/80 backdrop-blur-md shadow-2xl w-full max-w-2xl mx-auto mb-12">
+            <TabsTrigger value="vehicles" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+              <Car className="h-3.5 w-3.5" /> Vehicles
+            </TabsTrigger>
+            <TabsTrigger value="workorders" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+              <Activity className="h-3.5 w-3.5" /> Active
+            </TabsTrigger>
+            <TabsTrigger value="history" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+              <History className="h-3.5 w-3.5" /> History
+            </TabsTrigger>
+            <TabsTrigger value="invoices" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+              <FileText className="h-3.5 w-3.5" /> Invoices
+            </TabsTrigger>
+            <TabsTrigger value="quotations" className="rounded-full px-8 flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+              <Zap className="h-3.5 w-3.5" /> Estimates
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="vehicles">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>My Vehicles</CardTitle>
-                    <CardDescription>
-                      Detailed information about your registered vehicles
-                    </CardDescription>
-                  </div>
-                  {serviceHistory.length > 0 && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setViewingVehicleHistory({
-                          vehicleId: 'all',
-                          vehicleNumber: 'All Vehicles',
-                          history: serviceHistory
-                        });
+          <TabsContent value="vehicles" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {sortedVehicles.length === 0 ? (
+                <div className="col-span-full py-20 text-center bg-background/40 border border-border rounded-3xl backdrop-blur-md">
+                  <div className="h-20 w-20 rounded-full bg-background border-border shadow-sm shadow-primary/20 flex items-center justify-center mx-auto mb-4 overflow-hidden p-2">
+                    <img
+                      src={profile?.logo_url || logo}
+                      className="h-full w-full object-contain opacity-50 transition-opacity group-hover:opacity-100"
+                      alt="Logo"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = logo;
                       }}
-                      className="flex items-center gap-2"
-                    >
-                      <History className="h-4 w-4" />
-                      Common Service History
-                    </Button>
-                  )}
+                    />
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-2 tracking-tight">No Vehicles Found</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">Your garage is empty. Once a vehicle is registered under your profile, it will appear here.</p>
                 </div>
-              </CardHeader>
-              <CardContent>
-                {vehicles.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No vehicles registered yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {sortedVehicles.map((vehicle) => {
-                      const vehicleWorkOrders = Object.values(workOrdersById).filter(
-                        (wo: any) => wo.vehicle_id === vehicle.id
-                      );
-                      const activeCount = vehicleWorkOrders.filter(
-                        (wo: any) => !["delivered", "completed", "cancelled", "approved"].includes(
-                          (wo.status || "").toLowerCase()
-                        )
-                      ).length;
-                      const completedCount = vehicleWorkOrders.length - activeCount;
+              ) : (
+                sortedVehicles.map((vehicle) => {
+                  const vehicleWorkOrders = Object.values(workOrdersById).filter(wo => wo.vehicle_id === vehicle.id);
+                  const activeCount = vehicleWorkOrders.filter(wo => !["delivered", "completed", "cancelled", "approved"].includes((wo.status || "").toLowerCase())).length;
+                  const completedCount = vehicleWorkOrders.filter(wo => ["delivered", "completed", "approved"].includes((wo.status || "").toLowerCase())).length;
 
-                      return (
-                        <div
-                          key={vehicle.id}
-                          className={`border p-4 rounded-lg relative transition-all ${activeCount > 0 ? 'border-primary border-2 bg-primary/5 shadow-md' : 'bg-card'}`}
-                        >
-                          {activeCount > 0 && (
-                            <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[10px] px-3 py-1 rounded-bl-lg font-medium flex items-center gap-1 shadow-sm z-10">
-                              <Wrench className="h-3 w-3 animate-pulse" />
-                              Service In Progress
-                            </div>
-                          )}
-                          <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 pt-2">
-                            {/* Vehicle Main Info */}
+                  return (
+                    <Card key={vehicle.id} className="bg-background/40 border-border backdrop-blur-md hover:border-primary/30 transition-all group overflow-hidden rounded-3xl">
+                      <div className="p-6">
+                        <div className="flex justify-between items-start mb-6">
+                          <div>
+                            <span className="text-[10px] font-bold text-primary uppercase tracking-tight mb-1 block">Vehicle Details</span>
+                            <h3 className="text-2xl font-bold text-foreground tracking-tight">{vehicle.vehicle_number}</h3>
+                            <p className="text-sm text-muted-foreground font-medium">{vehicle.model}</p>
+                          </div>
+                          <div className="h-10 w-10 rounded-xl bg-background border border-border shadow-sm shadow-primary/20 flex items-center justify-center p-2 group-hover:scale-110 transition-transform">
+                            <img
+                              src={profile?.logo_url || logo}
+                              className="h-full w-full object-contain grayscale brightness-0 invert opacity-40 group-hover:opacity-100 transition-opacity"
+                              alt="Logo"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = logo;
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-6">
+                          <div className="bg-background/50 p-3 rounded-2xl border border-border">
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Active Services</p>
+                            <p className="text-xl font-bold text-foreground">{activeCount}</p>
+                          </div>
+                          <div className="bg-background/50 p-3 rounded-2xl border border-border">
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">History</p>
+                            <p className="text-xl font-bold text-foreground">{completedCount}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            className="flex-1 bg-secondary/50 border-border hover:bg-secondary text-foreground rounded-xl h-12 font-bold transition-all"
+                            onClick={() => {
+                              const vehicleHistory = serviceHistory.filter(h => h.vehicle_id === vehicle.id);
+                              setViewingVehicleHistory({
+                                vehicleId: vehicle.id,
+                                vehicleNumber: vehicle.vehicle_number,
+                                history: vehicleHistory
+                              });
+                            }}
+                          >
+                            <History className="h-4 w-4 mr-2 text-primary" /> Service Logs
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          </TabsContent>
+
+
+          <TabsContent value="workorders" className="space-y-4">
+            {activeWorkOrders.length === 0 ? (
+              <div className="py-20 text-center bg-background/40 border border-border rounded-3xl backdrop-blur-md">
+                <div className="h-20 w-20 rounded-full bg-background border-border shadow-sm shadow-primary/20 flex items-center justify-center mx-auto mb-4 overflow-hidden p-2">
+                  <img
+                    src={profile?.logo_url || logo}
+                    className="h-full w-full object-contain opacity-50 transition-opacity group-hover:opacity-100"
+                    alt="Logo"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = logo;
+                    }}
+                  />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-2 tracking-tight">No Active Services</h3>
+                <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">There are no vehicles currently being serviced. When a service starts, you'll see real-time progress here.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6">
+                {activeWorkOrders.map((order) => {
+                  const progress = getStageProgress(order.stages || []);
+                  return (
+                    <Card key={order.id} className="bg-background/40 border-border backdrop-blur-md hover:border-primary/30 transition-all overflow-hidden rounded-3xl border-l-4 border-l-primary">
+                      <CardContent className="p-0">
+                        <div className="p-6 md:p-8">
+                          <div className="flex flex-col md:flex-row justify-between gap-6 mb-8">
                             <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-3">
-                                <Truck className={`h-5 w-5 ${activeCount > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
-                                <h3 className="font-semibold text-lg">{vehicle.vehicle_number}</h3>
-                              </div>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {/* Model */}
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Model:</span>
-                                  <span className="font-medium">{vehicle.model || "N/A"}</span>
-                                </div>
-
-                                {/* Vehicle Type */}
-                                <div className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground">Type:</span>
-                                  <span className="font-medium">{vehicle.vehicle_type || "N/A"}</span>
-                                </div>
-
-                                {/* Color */}
-                                {vehicle.color && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">Color:</span>
-                                    <span className="font-medium">{vehicle.color}</span>
-                                  </div>
-                                )}
-
-                                {/* Year */}
-                                {vehicle.year && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">Year:</span>
-                                    <span className="font-medium">{vehicle.year}</span>
-                                  </div>
-                                )}
-
-                                {/* Registration Date */}
-                                {vehicle.created_at && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">Registered:</span>
-                                    <span className="font-medium">
-                                      {new Date(vehicle.created_at).toLocaleDateString("en-IN", {
-                                        day: "2-digit",
-                                        month: "short",
-                                        year: "numeric"
-                                      })}
-                                    </span>
-                                  </div>
-                                )}
-
-                                {/* VIN/Chassis Number */}
-                                {vehicle.vin && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">VIN:</span>
-                                    <span className="font-medium text-xs font-mono">{vehicle.vin}</span>
-                                  </div>
-                                )}
-
-                                {/* Engine Number */}
-                                {vehicle.engine_number && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">Engine:</span>
-                                    <span className="font-medium text-xs font-mono">{vehicle.engine_number}</span>
-                                  </div>
-                                )}
-
-                                {/* Service Tracking - New Section */}
-                                <div className="md:col-span-2 mt-2 pt-2 border-t grid grid-cols-1 md:grid-cols-3 gap-3">
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">Odometer:</span>
-                                    <span className="font-medium">
-                                      {vehicle.kilometers_driven ? `${vehicle.kilometers_driven.toLocaleString()} km` : "N/A"}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">Next Service @:</span>
-                                    <span className="font-medium">
-                                      {vehicle.next_service_km ? `${vehicle.next_service_km.toLocaleString()} km` : "N/A"}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-muted-foreground">Next Service Date:</span>
-                                    <span className="font-medium">
-                                      {vehicle.next_service_date
-                                        ? new Date(vehicle.next_service_date).toLocaleDateString("en-IN", {
-                                          day: "2-digit",
-                                          month: "short",
-                                          year: "numeric"
-                                        })
-                                        : "N/A"
-                                      }
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Vehicle Stats */}
-                            <div className="flex flex-col gap-2 min-w-[150px]">
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={
-                                    completedCount > 0 && activeCount === 0 ? "default" :
-                                      activeCount > 0 ? "secondary" : "outline"
-                                  }
-                                  className={activeCount > 0 ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}
-                                >
-                                  {completedCount > 0 && activeCount === 0 ? "Completed" :
-                                    activeCount > 0 ? "In Progress" : "Available"}
+                              <div className="flex items-center gap-3 mb-4">
+                                <Badge className="bg-primary/10 text-primary border-primary/20 uppercase text-[10px] font-bold tracking-wider px-3 py-1">
+                                  {order.status.replace('_', ' ')}
                                 </Badge>
+                                <span className="text-xs text-muted-foreground">ID: {order.id.slice(0, 8).toUpperCase()}</span>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                <span className={`font-medium ${activeCount > 0 ? 'text-primary' : 'text-blue-600'}`}>{activeCount}</span> active repairs
+                              <h3 className="text-2xl font-bold text-foreground tracking-tight mb-2 uppercase">
+                                {order.combined_service_types ? Array.from(order.combined_service_types).join(" + ") : order.service_type}
+                              </h3>
+                              <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
+                                <div className="flex items-center gap-2">
+                                  <Car className="h-4 w-4 text-primary" />
+                                  <span>{order.vehicle?.vehicle_number}</span>
+                                </div>
+                                <div className="h-1 w-1 rounded-full bg-muted-foreground" />
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-primary" />
+                                  <span>Started {formatDateTime(order.created_at)}</span>
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                <span className="font-medium text-green-600">{completedCount}</span> completed
-                              </div>
+                            </div>
 
-                              {/* History Button */}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const vehicleHistory = serviceHistory.filter(h => h.vehicle_id === vehicle.id);
-                                  setViewingVehicleHistory({
-                                    vehicleId: vehicle.id,
-                                    vehicleNumber: vehicle.vehicle_number,
-                                    history: vehicleHistory
-                                  });
-                                }}
-                                className="flex items-center gap-2 mt-2"
-                              >
-                                <History className="h-4 w-4" />
-                                History
-                              </Button>
+                            <div className="flex flex-col items-center md:items-end justify-center min-w-[200px]">
+                              <div className="relative h-24 w-24 mb-2">
+                                <svg className="h-24 w-24 -rotate-90">
+                                  <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-muted/20" />
+                                  <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent"
+                                    strokeDasharray={251.2}
+                                    strokeDashoffset={251.2 - (251.2 * progress) / 100}
+                                    className="text-primary transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
+                                  />
+                                </svg>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                  <span className="text-xl font-bold text-foreground leading-none">{Math.round(progress)}%</span>
+                                  <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-wider">Complete</span>
+                                </div>
+                              </div>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{order.current_stage || "Initializing"}</p>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
 
-          <TabsContent value="workorders">
-            <Card>
-              <CardHeader>
-                <CardTitle>My Work Orders</CardTitle>
-                <CardDescription>
-                  All active work orders visible to you
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {activeWorkOrders.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No active work orders</p>
-                ) : (
-                  <div className="space-y-4">
-                    {activeWorkOrders.map((order) => {
-                      const services = order.services || [];
-                      return (
-                        <div key={order.id} className="border p-4 rounded-lg">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <h3 className="font-semibold">{order.service_type}</h3>
-                                {services.length > 0 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {services.length} service{services.length > 1 ? 's' : ''}
-                                  </Badge>
-                                )}
-                              </div>
-                              {services.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mb-2">
-                                  {services.map((service: any) => (
-                                    <Badge key={service.id} variant="secondary" className="text-xs">
-                                      {service.service_type}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                              <p className="text-sm text-muted-foreground">{order.description}</p>
-                              <p className="text-sm text-muted-foreground">
-                                Vehicle: {order.vehicle?.vehicle_number || "N/A"}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Created: {formatDateTime(order.created_at)}
-                              </p>
+                          <div className="bg-background/50 rounded-2xl border border-border p-6 backdrop-blur-sm">
+                            <div className="flex items-center gap-2 mb-6">
+                              <Gauge className="h-4 w-4 text-primary" />
+                              <span className="text-xs font-bold text-foreground uppercase tracking-wider">Progress Timeline</span>
                             </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <Badge variant={order.status === "Completed" || order.status === "Delivered" ? "default" : "secondary"}>
-                                {order.status}
-                              </Badge>
-                              {order.current_stage && (
-                                <span className="text-xs text-muted-foreground">
-                                  Stage: {order.current_stage}
-                                </span>
-                              )}
-                            </div>
+                            <CompactProgressTracker
+                              currentStage={order.current_stage || ""}
+                              status={order.status}
+                              className="mt-2"
+                            />
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+
+                        <div className="bg-background/30 border-t border-border p-4 flex justify-between items-center">
+                          <div className="flex items-center gap-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => toggleOrderExpanded(order.id)}
+                            >
+                              <Search className="h-4 w-4 mr-2" />
+                              {expandedOrders.has(order.id) ? "Hide Details" : "View Details"}
+                            </Button>
+                          </div>
+                          <Badge variant="outline" className="border-border text-muted-foreground text-[10px] font-bold">
+                            LIVE UPDATE
+                          </Badge>
+                        </div>
+
+                        {expandedOrders.has(order.id) && (
+                          <div className="p-8 bg-background border-t border-border animate-in fade-in slide-in-from-top-4 duration-500">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
+                              <div>
+                                <h4 className="text-xs font-bold text-primary uppercase tracking-wider mb-4">Service Details</h4>
+                                <div className="space-y-4 bg-secondary/50 p-6 rounded-2xl border border-border shadow-inner">
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground font-medium uppercase text-[10px]">Primary Request</span>
+                                    <span className="text-secondary-foreground font-bold">{order.service_type}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground font-medium uppercase text-[10px]">Reported Issues</span>
+                                    <span className="text-foreground italic text-right max-w-[200px]">{order.description || "No description provided"}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-muted-foreground font-medium uppercase text-[10px]">Current Status</span>
+                                    <Badge variant="secondary" className="bg-secondary text-foreground border-border font-bold uppercase text-[9px]">{order.status.replace('_', ' ')}</Badge>
+                                  </div>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-bold text-primary uppercase tracking-wider mb-4">Breakdown</h4>
+                                <div className="space-y-2">
+                                  {order.services && order.services.length > 0 ? (
+                                    order.services.map((s: any, idx: number) => (
+                                      <div key={idx} className="flex items-center gap-3 p-3 bg-secondary/30 rounded-xl border border-border">
+                                        <div className="h-2 w-2 rounded-full bg-primary/40 shadow-[0_0_8px_rgba(var(--primary),0.4)]" />
+                                        <span className="text-foreground font-bold uppercase text-[11px] tracking-tight">{s.service_type}</span>
+                                        <span className="ml-auto text-muted-foreground text-xs">CODE-{idx + 101}</span>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <p className="text-muted-foreground italic p-4 text-center bg-secondary/30 rounded-xl border border-border border-dashed">No itemized services listed</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="history">
-            <Card>
-              <CardHeader>
-                <CardTitle>Work History</CardTitle>
-                <CardDescription>
-                  Completed and delivered work orders
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {completedWorkOrders.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No completed work orders yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {completedWorkOrders.map((order) => {
-                      const services = order.services || [];
-                      return (
-                        <Card key={order.id} className="overflow-hidden">
-                          <CardContent className="p-0">
-                            {/* Header with vehicle info */}
-                            <div className="p-4 border-b bg-green-50/50 flex flex-row justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h3 className="font-semibold text-lg">{order.vehicle?.vehicle_number || "N/A"}</h3>
-                                  <Badge variant="outline">{order.vehicle?.model || ""}</Badge>
-                                </div>
-                                <p className="text-sm text-muted-foreground">
-                                  {order.customer?.name || "Customer"}
-                                </p>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setViewDetailOrder(order)}
-                                className="flex items-center gap-2"
-                              >
-                                <Eye className="h-4 w-4" />
-                                View Details
-                              </Button>
-                            </div>
+          <TabsContent value="history" className="space-y-4">
+            {completedWorkOrders.length === 0 ? (
+              <div className="py-20 text-center bg-background/40 border border-border rounded-3xl backdrop-blur-md">
+                <div className="h-20 w-20 rounded-full bg-background border-border shadow-sm shadow-primary/20 flex items-center justify-center mx-auto mb-4 overflow-hidden p-2">
+                  <img
+                    src={profile?.logo_url || logo}
+                    className="h-full w-full object-contain opacity-50 transition-opacity group-hover:opacity-100"
+                    alt="Logo"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = logo;
+                    }}
+                  />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-2 tracking-tight">No Past Services</h3>
+                <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">Once your vehicle services are completed, they will appear here.</p>
+              </div>
+            ) : (
+              <div className="relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-muted-foreground before:to-transparent">
+                {completedWorkOrders.map((order, idx) => (
+                  <div key={order.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active mb-12">
+                    {/* Icon Circle */}
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full border border-border bg-background text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500 z-10 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                      <CheckCircle2 className="h-5 w-5" />
+                    </div>
 
-                            {/* Services Section */}
-                            <div className="p-4 border-b">
-                              <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                Services:
-                              </h4>
-                              <div className="space-y-1">
-                                {services.length > 0 ? (
-                                  services.map((service: any) => (
-                                    <div key={service.id} className="text-sm">
-                                      {service.service_type}
-                                    </div>
-                                  ))
-                                ) : (
-                                  <div className="text-sm">{order.service_type}</div>
-                                )}
-                              </div>
-                            </div>
+                    {/* Content Card */}
+                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-background/40 border border-border backdrop-blur-md p-6 rounded-3xl group-hover:border-primary/20 transition-all duration-500">
+                      <div className="flex items-center justify-between mb-4">
+                        <time className="text-[10px] font-bold text-primary uppercase tracking-wider">{formatDate(order.created_at)}</time>
+                        <Badge variant="outline" className="border-border text-muted-foreground text-[9px] uppercase font-bold">Completed Service</Badge>
+                      </div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="h-10 w-10 rounded-xl bg-background flex items-center justify-center border border-border">
+                          <Car className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <h4 className="text-foreground font-bold uppercase tracking-tight">{order.vehicle?.vehicle_number}</h4>
+                          <p className="text-xs text-muted-foreground font-medium">{order.vehicle?.model}</p>
+                        </div>
+                      </div>
+                      <h3 className="text-foreground font-bold mb-4 flex items-center gap-2">
+                        <Wrench className="h-4 w-4 text-primary" />
+                        {order.service_type}
+                      </h3>
 
-                            {/* Status Section */}
-                            <div className="p-4 border-b">
-                              <div className="flex flex-wrap gap-2 mb-2">
-                                <Badge variant="secondary">{order.status}</Badge>
-                                {order.current_stage && (
-                                  <Badge variant="outline">{order.current_stage}</Badge>
-                                )}
-                              </div>
-                              {/* Repair Progress */}
-                              <div className="mt-3">
-                                <div className="flex items-center justify-between text-sm mb-1">
-                                  <span>Repair Progress</span>
-                                  <span className="font-medium">
-                                    {order.repair_status === 'approved' ? 'Approved' :
-                                      order.repair_status === 'completed' ? 'Completed' :
-                                        order.repair_status === 'in_progress' ? 'In Progress' :
-                                          order.repair_status}
-                                  </span>
-                                </div>
-                                <Progress
-                                  value={order.repair_status === 'approved' ? 100 :
-                                    order.repair_status === 'completed' ? 100 :
-                                      order.repair_status === 'in_progress' ? 50 : 0}
-                                  className="h-2"
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {order.repair_status === 'approved'
-                                    ? '2 of 2 completed'
-                                    : order.repair_status === 'completed'
-                                      ? '2 of 2 completed'
-                                      : '0 of 2 completed'}
-                                  {' '} • {order.repair_status === 'approved'
-                                    ? '100% Complete'
-                                    : order.repair_status === 'completed'
-                                      ? '100% Complete'
-                                      : '0% Complete'}
-                                </p>
-                              </div>
-                            </div>
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {order.services?.map((s: any, i: number) => (
+                          <Badge key={i} variant="secondary" className="bg-background text-muted-foreground border-border text-[10px] py-1">
+                            {s.service_type}
+                          </Badge>
+                        ))}
+                      </div>
 
-                            {/* Footer with assigned date */}
-                            <div className="p-4 bg-muted/20">
-                              <p className="text-xs text-muted-foreground">
-                                Assigned: {formatDateTime(order.created_at)}
-                              </p>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="invoices">
-            <Card>
-              <CardHeader><CardTitle>My Invoices</CardTitle></CardHeader>
-              <CardContent>
-                {invoices.filter(i => i.type !== 'quotation').length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No invoices yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {invoices.filter(i => i.type !== 'Paid' && i.status !== 'Draft' && i.type !== 'quotation').length > 0 && (
-                      <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{selectedInvoiceIds.length} Selected</Badge>
-                          <span className="text-sm font-medium">
-                            Total Due: ₹{invoices.filter(i => selectedInvoiceIds.includes(i.id)).reduce((sum, i) => sum + (i.balance || 0), 0).toLocaleString()}
-                          </span>
+                      <div className="flex items-center justify-between border-t border-border pt-4">
+                        <div className="flex -space-x-2">
+                          <div className="h-6 w-6 rounded-full bg-background border-2 border-background flex items-center justify-center" title="Systems Check">
+                            <Gauge className="h-3 w-3 text-muted-foreground" />
+                          </div>
+                          <div className="h-6 w-6 rounded-full bg-background border-2 border-background flex items-center justify-center" title="Verified">
+                            <ShieldCheck className="h-3 w-3 text-muted-foreground" />
+                          </div>
                         </div>
                         <Button
+                          variant="ghost"
                           size="sm"
-                          disabled={selectedInvoiceIds.length === 0}
-                          onClick={() => {
-                            const selected = invoices.filter(i => selectedInvoiceIds.includes(i.id));
-                            setPayingInvoices(selected);
-                          }}
-                          className="bg-green-600 hover:bg-green-700 h-8"
+                          className="h-8 text-xs font-bold text-muted-foreground hover:text-primary-foreground"
+                          onClick={() => setViewDetailOrder(order)}
                         >
-                          <CreditCard className="h-4 w-4 mr-2" /> Pay Selected
+                          View Details <ArrowRight className="h-3 w-3 ml-2" />
                         </Button>
                       </div>
-                    )}
-                    {invoices.filter(i => i.type !== 'quotation').map((invoice) => {
-                      const isPayable = invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending');
-                      return (
-                        <div key={invoice.id} className="border p-4 rounded-lg bg-card/50">
-                          <div className="flex items-start gap-4">
-                            {isPayable && (
-                              <div className="pt-2">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600"
-                                  checked={selectedInvoiceIds.includes(invoice.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedInvoiceIds(prev => [...prev, invoice.id]);
-                                    } else {
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="invoices" className="space-y-4">
+            {invoices.filter(i => i.type !== 'quotation').length === 0 ? (
+              <div className="py-20 text-center bg-background/40 border border-border rounded-3xl backdrop-blur-md">
+                <div className="h-20 w-20 rounded-full bg-background border-border shadow-sm shadow-primary/20 flex items-center justify-center mx-auto mb-4 overflow-hidden p-2">
+                  <img
+                    src={profile?.logo_url || logo}
+                    className="h-full w-full object-contain opacity-50 transition-opacity group-hover:opacity-100"
+                    alt="Logo"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = logo;
+                    }}
+                  />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-2 tracking-tight">All Paid</h3>
+                <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">No outstanding invoices. You are all caught up!</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Batch Payment HUD */}
+                {invoices.filter(i => i.status !== 'Paid' && i.status !== 'Draft' && i.type !== 'quotation' && i.balance > 0).length > 1 && (
+                  <div className="flex flex-col md:flex-row items-center justify-between p-6 bg-primary/10 border border-primary/20 rounded-3xl backdrop-blur-md gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-primary flex items-center justify-center shadow-[0_0_20px_rgba(var(--primary),0.3)]">
+                        <CreditCard className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h4 className="text-foreground font-bold uppercase tracking-tight">Bill Payment</h4>
+                        <p className="text-xs text-muted-foreground font-medium">{selectedInvoiceIds.length} Invoices selected for batch payment</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Selected Total</p>
+                        <p className="text-2xl font-bold text-foreground leading-none">₹{invoices.filter(i => selectedInvoiceIds.includes(i.id)).reduce((sum, i) => sum + (i.balance || 0), 0).toLocaleString()}</p>
+                      </div>
+                      <Button
+                        size="lg"
+                        disabled={selectedInvoiceIds.length === 0}
+                        onClick={() => {
+                          const selected = invoices.filter(i => selectedInvoiceIds.includes(i.id));
+                          setPayingInvoices(selected);
+                        }}
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl h-14 px-8 font-bold uppercase tracking-wider transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                      >
+                        Pay Now
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-4">
+                  {invoices.filter(i => i.type !== 'quotation').map((invoice) => {
+                    const isPayable = invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending') && (invoice.balance || 0) > 0;
+                    const isVerifying = invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending');
+
+                    return (
+                      <Card key={invoice.id} className={cn(
+                        "bg-background/40 border-border backdrop-blur-md hover:bg-background/60 transition-all group overflow-hidden rounded-3xl",
+                        selectedInvoiceIds.includes(invoice.id) && "border-primary/40 bg-primary/5"
+                      )}>
+                        <CardContent className="p-0">
+                          <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="flex items-center gap-6 w-full md:w-auto">
+                              {isPayable && (
+                                <div
+                                  className={cn(
+                                    "h-6 w-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all",
+                                    selectedInvoiceIds.includes(invoice.id) ? "bg-primary border-primary" : "border-muted-foreground hover:border-primary"
+                                  )}
+                                  onClick={() => {
+                                    if (selectedInvoiceIds.includes(invoice.id)) {
                                       setSelectedInvoiceIds(prev => prev.filter(id => id !== invoice.id));
+                                    } else {
+                                      setSelectedInvoiceIds(prev => [...prev, invoice.id]);
                                     }
                                   }}
-                                />
-                              </div>
-                            )}
-                            <div className="flex-1 flex justify-between items-start">
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h3 className="font-semibold text-lg">
-                                    {invoice.bill_number ? `Bill #${invoice.bill_number}` : invoice.invoice_number}
-                                  </h3>
-                                  <Badge variant={
-                                    invoice.status === 'Paid' ? 'default' :
-                                      invoice.status === 'Draft' ? 'secondary' :
-                                        'destructive'
-                                  } className={invoice.status === 'Paid' ? 'bg-green-600' : ''}>
-                                    {invoice.status}
-                                  </Badge>
+                                >
+                                  {selectedInvoiceIds.includes(invoice.id) && <CheckCircle2 className="h-4 w-4 text-primary-foreground" />}
                                 </div>
-                                <p className="text-sm text-muted-foreground">
-                                  {format(new Date(invoice.created_at), "MMM d, yyyy")}
-                                </p>
-                                <div className="space-y-1 mt-2">
-                                  <div className="text-lg font-bold">₹{invoice.balance.toLocaleString()} Due</div>
-                                  <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                                    Total Bill: ₹{invoice.total.toLocaleString()}
-                                    {invoice.paid_amount > 0 && ` • Paid: ₹${invoice.paid_amount.toLocaleString()}`}
-                                    {invoice.total_deductions > 0 && ` • Deductions: ₹${invoice.total_deductions.toLocaleString()}`}
+                              )}
+                              <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 rounded-2xl bg-background flex items-center justify-center border border-border">
+                                  <FileText className="h-6 w-6 text-muted-foreground" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h3 className="text-foreground font-bold tracking-tight uppercase">{invoice.bill_number ? `Bill #${invoice.bill_number}` : invoice.invoice_number}</h3>
+                                    {invoice.status === 'Paid' ? (
+                                      <Badge className="bg-green-500/10 text-green-500 border-green-500/20 text-[9px] font-bold uppercase">Settled</Badge>
+                                    ) : isVerifying ? (
+                                      <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20 text-[9px] font-bold uppercase animate-pulse">Verifying</Badge>
+                                    ) : (
+                                      <Badge className="bg-primary/10 text-primary border-primary/20 text-[9px] font-bold uppercase">Outstanding</Badge>
+                                    )}
                                   </div>
+                                  <p className="text-muted-foreground text-xs tracking-tight uppercase">{formatDate(invoice.created_at)}</p>
                                 </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col md:flex-row items-center gap-8 w-full md:w-auto">
+                              <div className="text-right hidden md:block">
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Amount</p>
+                                <p className="text-lg font-bold text-muted-foreground">₹{invoice.total.toLocaleString()}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">Amount Due</p>
+                                <p className="text-2xl font-bold text-foreground leading-none">₹{invoice.balance.toLocaleString()}</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="flex items-center gap-2"
-                                  onClick={() => generateInvoicePDF(invoice.work_order_id)}
+                                  className="h-10 w-10 p-0 rounded-xl bg-background border-border hover:bg-background/80"
+                                  onClick={() => handleViewInvoice(invoice)}
+                                  title="View Details"
                                 >
-                                  <Download className="h-4 w-4" />
-                                  Download PDF
+                                  <Eye className="h-4 w-4 text-muted-foreground" />
                                 </Button>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="flex items-center gap-2"
-                                  onClick={() => handleViewInvoice(invoice)}
+                                  className="h-10 w-10 p-0 rounded-xl bg-background border-border hover:bg-background/80"
+                                  onClick={() => generateInvoicePDF(invoice.work_order_id)}
+                                  title="Download PDF"
                                 >
-                                  <Eye className="h-4 w-4" />
-                                  View
+                                  <Download className="h-4 w-4 text-muted-foreground" />
                                 </Button>
                                 {isPayable && (
                                   <Button
                                     size="sm"
-                                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                                    className="bg-primary hover:bg-primary/90 text-foreground rounded-xl h-10 px-4 font-bold uppercase tracking-wider text-[10px]"
                                     onClick={() => setPayingInvoice(invoice)}
                                   >
-                                    <CreditCard className="h-4 w-4" />
-                                    {invoice.type === 'quotation' ? 'Pay Advance' : 'Pay Now'}
+                                    Pay Now
                                   </Button>
-                                )}
-                                {(invoice.status !== 'Paid' && (invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending'))) && (
-                                  <Badge variant="outline" className="border-yellow-500 text-yellow-600">
-                                    <Hourglass className="h-3 w-3 mr-1" /> Verifying
-                                  </Badge>
                                 )}
                               </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="quotations">
-            <Card>
-              <CardHeader><CardTitle>My Quotations</CardTitle></CardHeader>
-              <CardContent>
-                {invoices.filter(i => i.type === 'quotation').length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No quotations yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {invoices.filter(i => i.type === 'quotation').map((invoice) => (
-                      <div key={invoice.id} className="border p-4 rounded-lg bg-card/50">
-                        <div className="flex justify-between items-start">
+          <TabsContent value="quotations" className="space-y-4">
+            {invoices.filter(i => i.type === 'quotation').length === 0 ? (
+              <div className="py-20 text-center bg-background/40 border border-border rounded-3xl backdrop-blur-md">
+                <div className="h-20 w-20 rounded-full bg-background border-border shadow-sm shadow-primary/20 flex items-center justify-center mx-auto mb-4">
+                  <Zap className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-2">No Estimates</h3>
+                <p className="text-muted-foreground max-w-md mx-auto">All project estimates and quotes will be listed here. You can review and approve them to start work.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {invoices.filter(i => i.type === 'quotation').map((invoice) => (
+                  <Card key={invoice.id} className="bg-background/40 border-border backdrop-blur-md hover:bg-background/60 transition-all rounded-3xl overflow-hidden">
+                    <CardContent className="p-6">
+                      <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="flex items-center gap-4">
+                          <div className="h-12 w-12 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                            <Zap className="h-6 w-6 text-orange-500" />
+                          </div>
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-lg">
-                                Quotation #{invoice.invoice_number}
-                              </h3>
-                              <Badge variant="outline" className="border-orange-500 text-orange-600">
-                                Estimate
-                              </Badge>
-                              <Badge variant={
-                                invoice.status === 'Paid' ? 'default' :
-                                  invoice.status === 'Draft' ? 'secondary' :
-                                    'destructive' // Finalized/Unpaid
-                              } className={invoice.status === 'Paid' ? 'bg-green-600' : ''}>
-                                {invoice.status}
-                              </Badge>
+                              <h3 className="text-foreground font-bold tracking-tight uppercase">ESTIMATE #{invoice.invoice_number}</h3>
+                              <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 text-[9px] font-bold uppercase">Pending Approval</Badge>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                              {format(new Date(invoice.created_at), "MMM d, yyyy")}
-                            </p>
-                            <p className="text-lg font-bold mt-2">₹{(invoice.total || 0).toLocaleString()}</p>
+                            <p className="text-muted-foreground text-xs tracking-tight uppercase">{formatDate(invoice.created_at)}</p>
                           </div>
-                          <div className="flex items-center">
+                        </div>
+                        <div className="flex flex-col md:flex-row items-center gap-8">
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Estimated Cost</p>
+                            <p className="text-2xl font-bold text-foreground leading-none">₹{invoice.total.toLocaleString()}</p>
                             <Button
                               variant="outline"
                               size="sm"
-                              className="flex items-center gap-2"
-                              onClick={() => generateInvoicePDF(invoice.work_order_id)}
-                            >
-                              <Download className="h-4 w-4" />
-                              Download PDF
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex items-center gap-2 ml-2"
+                              className="h-10 rounded-xl bg-background border border-border shadow-inner hover:bg-secondary text-muted-foreground font-bold px-4 transition-all"
                               onClick={() => handleViewInvoice(invoice)}
                             >
-                              <Eye className="h-4 w-4" />
-                              View
+                              <Eye className="h-4 w-4 mr-2" /> Review
                             </Button>
-                            {(invoice.status !== 'Paid' && invoice.status !== 'Draft' && invoice.status !== 'Payment Verification Pending' && !invoice.payments?.some((p: any) => p.status === 'pending')) && (
-                              <Button
-                                size="sm"
-                                className="flex items-center gap-2 ml-2 bg-green-600 hover:bg-green-700"
-                                onClick={() => setPayingInvoice(invoice)}
-                              >
-                                <CreditCard className="h-4 w-4" />
-                                Pay Advance
-                              </Button>
-                            )}
-                            {(invoice.status !== 'Paid' && (invoice.status === 'Payment Verification Pending' || invoice.payments?.some((p: any) => p.status === 'pending'))) && (
-                              <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
-                                <Hourglass className="h-3 w-3 mr-1" /> Verifying
-                              </Badge>
-                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="bg-background border-border shadow-inner uppercase tracking-wider text-[10px] font-bold p-2 rounded-xl h-10 w-10 p-0 shadow-lg hover:bg-secondary transition-all"
+                              onClick={() => generateInvoicePDF(invoice.work_order_id)}
+                            >
+                              <Download className="h-4 w-4 text-muted-foreground" />
+                            </Button>
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
+
         </Tabs>
       </main>
 
@@ -1909,7 +1579,7 @@ export default function CustomerPortal() {
             <DialogDescription>
               {payingInvoices.length > 1
                 ? `Paying for ${payingInvoices.length} Invoices`
-                : `Submit payment details for ${payingInvoice?.type === 'quotation' ? 'Quotation' : 'Invoice'} #${payingInvoice?.type === 'quotation' ? payingInvoice?.invoice_number : (payingInvoice?.bill_number || payingInvoice?.invoice_number)}`
+                : `Submit payment details for ${payingInvoice?.type === 'quotation' ? 'Quotation' : 'Invoice'} #${payingInvoice?.type === 'quotation' ? payingInvoice?.invoice_number : (payingInvoice?.bill_number || payingInvoice?.invoice_number)} `
               }
             </DialogDescription>
           </DialogHeader>
@@ -1925,7 +1595,7 @@ export default function CustomerPortal() {
                   ).toLocaleString()}
                 </span>
               </div>
-              <div className="flex justify-between items-center text-[10px] text-muted-foreground uppercase tracking-widest pt-1 border-t border-muted-foreground/10">
+              <div className="flex justify-between items-center text-[10px] text-muted-foreground uppercase tracking-wider pt-1 border-t border-muted-foreground/10">
                 <span>Total Bill Amount</span>
                 <span>₹{(payingInvoices.length > 0
                   ? payingInvoices.reduce((sum, i) => sum + (i.total || 0), 0)
@@ -2084,7 +1754,7 @@ export default function CustomerPortal() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
       {/* Invoice Detail Dialog */}
       <Dialog open={!!viewingInvoice} onOpenChange={(open) => !open && setViewingInvoice(null)}>
@@ -2092,7 +1762,7 @@ export default function CustomerPortal() {
           <DialogHeader>
             <DialogTitle>Invoice Details</DialogTitle>
             <DialogDescription>
-              {viewingInvoice?.bill_number ? `Bill #${viewingInvoice.bill_number}` : viewingInvoice?.invoice_number}
+              {viewingInvoice?.bill_number ? `Bill #${viewingInvoice.bill_number} ` : viewingInvoice?.invoice_number}
             </DialogDescription>
           </DialogHeader>
 
@@ -2161,7 +1831,7 @@ export default function CustomerPortal() {
                       </div>
                     )}
                     <Separator />
-                    <div className="flex justify-between items-center text-base font-black pt-1">
+                    <div className="flex justify-between items-center text-base font-bold pt-1">
                       <span>Remaining Balance:</span>
                       <span className={Math.max(0, viewingInvoice?.total - viewingInvoicePayments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (viewingInvoice?.total_deductions || 0)) <= 0 ? "text-green-600" : "text-destructive"}>
                         ₹{Math.max(0, viewingInvoice?.total - viewingInvoicePayments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (viewingInvoice?.total_deductions || 0)).toLocaleString()}
@@ -2212,7 +1882,7 @@ export default function CustomerPortal() {
             <Button variant="outline" onClick={() => setViewingInvoice(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
 
 
@@ -2238,7 +1908,7 @@ export default function CustomerPortal() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <span className="text-muted-foreground">Order ID:</span>
-                    <span className="font-mono ml-2">#{viewDetailOrder.id}</span>
+                    <span className="ml-2 font-bold">#{viewDetailOrder.id}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Status:</span>
@@ -2327,12 +1997,12 @@ export default function CustomerPortal() {
 
                     return (
                       <div key={stage} className="relative pb-6 last:pb-0 pl-6">
-                        <div className={`absolute -left-[21px] top-0 h-8 w-8 rounded-full border-4 border-background flex items-center justify-center ${isCompleted ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
+                        <div className={`absolute -left-[21px] top-0 h-8 w-8 rounded-full border-4 border-background flex items-center justify-center shadow-sm z-10 ${isCompleted ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
                           }`}>
-                          {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs">{index + 1}</span>}
+                          {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs font-bold">{index + 1}</span>}
                         </div>
                         <div className="flex items-center justify-between">
-                          <h5 className={`font-medium ${isCompleted ? "text-green-900" : "text-foreground"}`}>
+                          <h5 className={cn("font-medium", isCompleted ? "text-green-600 dark:text-green-400" : "text-foreground")}>
                             {stage}
                           </h5>
                           <Badge variant={isCompleted ? "default" : "outline"} className={isCompleted ? "bg-green-600" : ""}>
@@ -2390,7 +2060,7 @@ export default function CustomerPortal() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
       {/* Vehicle History Modal */}
       <Dialog

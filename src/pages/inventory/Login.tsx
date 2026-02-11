@@ -66,8 +66,9 @@ export default function InventoryLogin() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-            <Card className="w-full max-w-md bg-slate-800 border-slate-700 text-white shadow-2xl">
+        <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
+            <div className="absolute inset-0 bg-grid-white/[0.02] -z-10" />
+            <Card className="w-full max-w-md bg-card border-border text-foreground shadow-2xl relative z-10">
                 <CardHeader className="space-y-2 text-center">
                     <div className="flex justify-center mb-4">
                         <div className="p-4 bg-primary rounded-2xl shadow-lg shadow-primary/20">
@@ -79,29 +80,29 @@ export default function InventoryLogin() {
                         </div>
                     </div>
                     <CardTitle className="text-3xl font-bold tracking-tight uppercase">{profile?.company_name || 'Inventory Room'}</CardTitle>
-                    <CardDescription className="text-slate-400">Authorized Personnel Only</CardDescription>
+                    <CardDescription className="text-muted-foreground">Authorized Personnel Only</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleLogin} className="space-y-6">
                         <div className="space-y-2">
-                            <Label htmlFor="email" className="text-slate-300">Staff Email</Label>
+                            <Label htmlFor="email" className="text-foreground">Staff Email</Label>
                             <Input
                                 id="email"
                                 type="email"
                                 placeholder="staff@example.com"
-                                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 h-12"
+                                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-12"
                                 value={loginData.email}
                                 onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
                                 required
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="password" className="text-slate-300">Password</Label>
+                            <Label htmlFor="password" className="text-foreground">Password</Label>
                             <Input
                                 id="password"
                                 type="password"
                                 placeholder="••••••••"
-                                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 h-12"
+                                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-12"
                                 value={loginData.password}
                                 onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                                 required
@@ -118,7 +119,7 @@ export default function InventoryLogin() {
                             )}
                         </Button>
                         <div className="pt-4 text-center">
-                            <p className="text-xs text-slate-500 uppercase tracking-widest">{profile?.company_name || 'Service Center'} Inventory Management</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-widest">{profile?.company_name || 'Service Center'} Inventory Management</p>
                         </div>
                     </form>
                 </CardContent>

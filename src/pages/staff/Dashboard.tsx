@@ -18,9 +18,10 @@ import {
   LogOut, CheckCircle2, Clock, AlertTriangle,
   Briefcase, User, RefreshCw, Eye, EyeOff,
   Wrench, Shield, Lock, LockOpen, Activity, QrCode,
-  Package, ChevronRight, XCircle
+  Package, ChevronRight, XCircle, Archive, Zap
 } from "lucide-react"
 import { format } from "date-fns"
+import logo from "@/assets/logo.png"
 import { PartRequestList } from "@/components/inventory/PartRequestList"
 import {
   Dialog,
@@ -141,6 +142,8 @@ interface VehicleWork {
   estimated_delivery_date: string | null
   queue_position: number
   progress: number
+  completed_tasks?: number
+  total_tasks?: number
   is_reopened?: boolean;
   reopen_reason?: string;
 }
@@ -514,45 +517,95 @@ export default function StaffDashboard() {
     fetchCompany();
   }, []);
 
+  if (loading && workItems.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground">
+        <div className="relative">
+          <div className="h-24 w-24 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+          <img src={company?.logo_url || logo} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-12 w-12 object-contain animate-pulse" alt="Logo" />
+        </div>
+        <p className="mt-4 text-xs font-bold text-primary uppercase tracking-wider animate-pulse">
+          Loading Dashboard...
+        </p>
+        <p className="mt-2 text-muted-foreground text-sm uppercase tracking-wider">
+          {company?.company_name || 'Amma Auto Garage'} Dashboard
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            {company?.logo_url ? (
-              <img src={company.logo_url} alt="Logo" className="h-10 w-10 object-contain rounded" />
-            ) : (
-              <Briefcase className="h-8 w-8 text-primary" />
-            )}
-            <div>
-              <h1 className="text-2xl font-bold uppercase">{company?.company_name || 'Staff Portal'}</h1>
-              <p className="text-sm text-muted-foreground">
-                Welcome, {user?.full_name || user?.email || "Staff Member"}
-              </p>
+    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground">
+      {/* Background Overlay */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(var(--primary),0.05)_0%,transparent_50%)]" />
+        <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(circle_at_100%_100%,rgba(var(--primary),0.02)_0%,transparent_30%)]" />
+      </div>
+
+      {/* Header */}
+      <header className="border-b border-border bg-background/80 sticky top-0 z-50 backdrop-blur-xl">
+        <div className="container mx-auto px-4 h-20 grid grid-cols-3 items-center">
+          {/* Column 1: Branding */}
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center shadow-[0_0_20px_rgba(var(--primary),0.3)] overflow-hidden shrink-0">
+              <img src={company?.logo_url || logo} className="h-9 w-9 object-contain brightness-0 invert" alt="Logo" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold text-primary uppercase tracking-tight leading-tight">
+                {company?.company_name || "Amma Auto Garage"}
+              </span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  System Active
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            {notificationCount > 0 && (
-              <Button variant="outline" size="icon" className="relative" onClick={fetchWorkItems}>
-                <AlertTriangle className="h-5 w-5" />
-                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-                  {notificationCount}
+
+          {/* Column 2: Page Title (Centered) */}
+          <div className="flex flex-col items-center justify-center">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground uppercase text-center">
+              Dashboard
+            </h1>
+            <div className="h-0.5 w-12 bg-primary mt-1 rounded-full opacity-50" />
+          </div>
+
+          {/* Column 3: Sync & Controls */}
+          <div className="flex items-center justify-end gap-3">
+            <div className="hidden xl:flex items-center gap-3 px-4 py-2 bg-background/50 rounded-2xl border border-border shadow-inner mr-4">
+              <User className="h-4 w-4 text-primary" />
+              <div className="flex flex-col cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setIsProfileOpen(true)}>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none mb-1">Employee</span>
+                <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  {user?.full_name || user?.email?.split('@')[0]}
                 </span>
-              </Button>
-            )}
-            <Badge variant="secondary">Staff</Badge>
+              </div>
+            </div>
+
             <Button
               variant="outline"
-              onClick={() => setIsProfileOpen(true)}
-              title="My Profile"
+              size="icon"
+              className="h-10 w-10 rounded-xl border-border bg-secondary shadow-inner relative group transition-all"
+              onClick={fetchWorkItems}
             >
-              <User className="h-4 w-4 mr-2" />
-              Profile
-            </Button>
-            <Button onClick={signOut} variant="outline" size="icon" title="Logout">
-              <LogOut className="h-4 w-4" />
+              <RefreshCw className={cn("h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors", loading && "animate-spin")} />
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-foreground font-bold flex items-center justify-center border-2 border-background shadow-lg">
+                  {notificationCount}
+                </span>
+              )}
             </Button>
 
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-xl border-border bg-secondary shadow-inner text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              onClick={signOut}
+              title="Log Out"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </header>
@@ -561,7 +614,7 @@ export default function StaffDashboard() {
       <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>My Employee Profile</DialogTitle>
+            <DialogTitle>My Profile</DialogTitle>
             <DialogDescription>Your personal and official employment details.</DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
@@ -603,7 +656,7 @@ export default function StaffDashboard() {
                 <CardHeader>
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
                     <Shield className="h-4 w-4 text-primary" />
-                    Official Details & Identity
+                    Employment Details
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -656,105 +709,129 @@ export default function StaffDashboard() {
       </Dialog>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Acceptance</CardTitle>
-              <Clock className="h-4 w-4 text-orange-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-orange-600">{pendingTasks}</div>
-              <p className="text-xs text-muted-foreground">Awaiting your action</p>
+        {/* Performance HUD / Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card className="bg-background/40 border-border backdrop-blur-md relative overflow-hidden group shadow-sm transition-all">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={company?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">New Assignments</p>
+              <h3 className="text-4xl font-bold text-foreground tracking-tight leading-none">{workItems.filter(w => w.status === 'assigned' || w.status === 'pending_acceptance').length}</h3>
+              <p className="text-[11px] font-bold text-blue-500 uppercase tracking-wider mt-3 italic">Awaiting Acceptance</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
-              <Briefcase className="h-4 w-4 text-blue-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-blue-600">{inProgressTasks}</div>
-              <p className="text-xs text-muted-foreground">Active work</p>
+
+          <Card className="bg-background/40 border-border backdrop-blur-md relative overflow-hidden group shadow-sm transition-all">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={company?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">Active Jobs</p>
+              <h3 className="text-4xl font-bold text-foreground tracking-tight leading-none">{activeWorkItems.length}</h3>
+              <p className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider mt-3 italic">In Progress</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Awaiting Approval</CardTitle>
-              <Activity className="h-4 w-4 text-purple-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-600">{awaitingApproval}</div>
-              <p className="text-xs text-muted-foreground">Pending manager review</p>
+
+          <Card className="bg-background/40 border-border backdrop-blur-md relative overflow-hidden group shadow-sm transition-all">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={company?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">Approval Queue</p>
+              <h3 className="text-4xl font-bold text-foreground tracking-tight leading-none">{workItems.filter(w => w.status === 'pending_approval').length}</h3>
+              <p className="text-[11px] font-bold text-purple-500 uppercase tracking-wider mt-3 italic">Awaiting Approval</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Assigned</CardTitle>
-              <User className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-green-600">{workItems.length}</div>
-              <p className="text-xs text-muted-foreground">Vehicles assigned</p>
+
+          <Card className="bg-background/40 border-border backdrop-blur-md relative overflow-hidden group shadow-sm transition-all text-primary">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <img src={company?.logo_url || logo} className="h-12 w-12 object-contain grayscale brightness-0 invert" alt="..." />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground font-bold uppercase tracking-wider mb-2 text-xs">Performance</p>
+              <h3 className="text-4xl font-bold text-foreground tracking-tight leading-none">{completedWorkItems.length}%</h3>
+              <p className="text-[11px] font-bold text-primary uppercase tracking-wider mt-3 italic">Total Completed</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Workflow Info Banner */}
-        <Card className="mb-8 border-primary/20 bg-primary/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Shield className="h-5 w-5 text-primary" />
-              <div className="flex-1">
-                <h3 className="font-semibold">Dynamic Repair Workflow</h3>
-                <p className="text-sm text-muted-foreground">
-                  Repairs are hidden until inspection is approved. Complete tasks individually and submit for approval.
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={fetchWorkItems} disabled={loading}>
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
+        {/* Info Banner */}
+        <div className="mb-8 border border-border bg-secondary/20 rounded-2xl p-6 backdrop-blur-md relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-32 h-32 opacity-5 pointer-events-none -mr-8 -mt-8">
+            <Shield className="w-full h-full text-primary" />
+          </div>
+          <div className="flex flex-col md:flex-row items-center gap-6">
+            <div className="h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+              <Activity className="h-6 w-6 text-primary" />
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex-1 text-center md:text-left">
+              <h3 className="text-sm font-bold text-foreground uppercase tracking-wider mb-1">Standard Procedure</h3>
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider leading-relaxed">
+                Repairs are locked until inspection is verified. Complete individual tasks and submit for approval.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchWorkItems}
+              disabled={loading}
+              className="rounded-xl bg-secondary/50 border-border bg-secondary/50 hover:bg-secondary/80 h-10 px-6 group"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-2 text-primary", loading && 'animate-spin')} />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Refresh</span>
+            </Button>
+          </div>
+        </div>
 
         {/* Work Items Tabs */}
-        <div className="space-y-4">
-          <div className="flex space-x-1 rounded-xl bg-muted p-1">
+        {/* Mission Tabs */}
+        <div className="space-y-6">
+          <div className="flex p-1.5 rounded-2xl border-border bg-secondary/80 backdrop-blur-md shadow-2xl w-full max-w-2xl mx-auto">
             <button
               onClick={() => setActiveTab("active")}
-              className={`w-full rounded-lg py-2.5 text-sm font-medium leading-5 ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${activeTab === "active"
-                ? "bg-background text-foreground shadow"
-                : "text-muted-foreground hover:bg-white/[0.12] hover:text-white"
-                }`}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-[10px] font-bold uppercase tracking-wider transition-all",
+                activeTab === "active"
+                  ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/50"
+              )}
             >
-              Active Work ({activeWorkItems.length})
+              <Activity className="h-3.5 w-3.5" />
+              Active Jobs ({activeWorkItems.length})
             </button>
             <button
               onClick={() => setActiveTab("history")}
-              className={`w-full rounded-lg py-2.5 text-sm font-medium leading-5 ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${activeTab === "history"
-                ? "bg-background text-foreground shadow"
-                : "text-muted-foreground hover:bg-white/[0.12] hover:text-white"
-                }`}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-[10px] font-bold uppercase tracking-wider transition-all",
+                activeTab === "history"
+                  ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/50"
+              )}
             >
-              Completed History ({completedWorkItems.length})
+              <Archive className="h-3.5 w-3.5" />
+              History ({completedWorkItems.length})
             </button>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="h-5 w-5" />
-                {activeTab === "active" ? "My Assigned Work" : "Work History"}
-              </CardTitle>
-              <CardDescription>
-                {activeTab === "active"
-                  ? "Active and pending tasks requiring your attention."
-                  : "Completed work orders and delivered vehicles."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <div>
+                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
+                  {activeTab === "active" ? "Active Assignments" : "Assignment History"}
+                </h3>
+                <p className="text-[10px] font-bold text-muted-foreground italic uppercase tracking-wider mt-0.5">
+                  {activeTab === "active"
+                    ? "Live data from ongoing jobs."
+                    : "Historical records and completed jobs."}
+                </p>
+              </div>
+              <Badge variant="outline" className="border-border bg-card text-muted-foreground text-[9px]">
+                {activeTab === "active" ? activeWorkItems.length : completedWorkItems.length} RECORDS FOUND
+              </Badge>
+            </div>
+
+            <div className="min-h-[400px]">
               {loading ? (
                 <div className="space-y-4">
                   {[1, 2, 3].map((i) => (
@@ -770,19 +847,21 @@ export default function StaffDashboard() {
                   ))}
                 </div>
               ) : (activeTab === "active" ? activeWorkItems : completedWorkItems).length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <CheckCircle2 className="h-12 w-12 text-muted-foreground" />
-                      <h3 className="font-medium text-lg">No Items Found</h3>
-                      <p className="text-muted-foreground">
-                        {activeTab === "active"
-                          ? "No active work assigned to you right now."
-                          : "You haven't completed any work orders yet."}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="p-20 bg-secondary/20 border border-border border-dashed rounded-3xl flex flex-col items-center justify-center text-center gap-6 relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--primary)_0%,transparent_70%)] opacity-[0.03] group-hover:opacity-[0.05] transition-opacity" />
+                  <div className="h-20 w-20 rounded-3xl bg-card border-border shadow-lg shadow-primary/20 flex items-center justify-center relative overflow-hidden p-3 group">
+                    <img src={company?.logo_url || logo} className="h-full w-full object-contain opacity-50 grayscale group-hover:grayscale-0 transition-all duration-500" alt="Logo" />
+                    <div className="absolute inset-0 rounded-3xl border border-primary/20 scale-110 animate-ping opacity-0 group-hover:opacity-100" />
+                  </div>
+                  <div className="space-y-2 relative z-10">
+                    <h3 className="text-xl font-bold text-foreground uppercase tracking-tight">No Data Found</h3>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider max-w-[280px]">
+                      {activeTab === "active"
+                        ? "No active assignments found."
+                        : "No history records found."}
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {(activeTab === "active" ? activeWorkItems : completedWorkItems).map((work, index) => {
@@ -817,195 +896,257 @@ export default function StaffDashboard() {
 
                     return (
                       <Card key={work.id} className={cn(
-                        "overflow-hidden transition-all",
-                        work.priority === 'urgent' && "border-l-4 border-l-red-600 bg-red-50/20",
-                        work.priority === 'high' && "border-l-4 border-l-orange-500 bg-orange-50/10",
+                        "bg-card shadow-inner border border-border backdrop-blur-md hover:border-primary/20 transition-all overflow-hidden rounded-2xl relative",
+                        work.priority === 'urgent' && "border-l-4 border-l-red-600",
+                        work.priority === 'high' && "border-l-4 border-l-orange-500",
                         work.priority === 'medium' && "border-l-4 border-l-blue-500",
-                        work.priority === 'low' && "border-l-4 border-l-green-500",
-                        !work.priority && "border-l-4 border-l-gray-200"
+                        work.priority === 'low' && "border-l-4 border-l-emerald-500"
                       )}>
+                        {/* Industrial Warning Stripe for High Priority */}
+                        {(work.priority === 'urgent' || work.priority === 'high') && (
+                          <div className={cn(
+                            "absolute top-0 right-0 w-32 h-6 -mr-8 mt-2 rotate-45 opacity-20 pointer-events-none",
+                            work.priority === 'urgent' ? "bg-red-500" : "bg-orange-500"
+                          )} style={{
+                            backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.2) 10px, rgba(0,0,0,0.2) 20px)'
+                          }} />
+                        )}
                         <CardContent className="p-0">
-                          {/* Header - RESTRUCTURED: Services above Description */}
-                          <div className="p-4 border-b bg-muted/30">
-                            <div className="flex items-start justify-between">
+                          {/* Header - Job Details */}
+                          <div className="p-6 border-b border-border bg-card/20">
+                            <div className="flex flex-col md:flex-row items-start justify-between gap-6">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  {/* Status/Priority Badges First */}
-                                  <Badge variant={
-                                    work.priority === 'urgent' ? 'destructive' :
-                                      work.priority === 'high' ? 'default' :
-                                        'outline'
-                                  } className="uppercase text-[10px] tracking-wider">
-                                    {work.priority}
+                                <div className="flex items-center gap-2 mb-4">
+                                  <Badge className={cn(
+                                    "uppercase text-[9px] font-bold tracking-wider px-3 py-0.5 border",
+                                    work.priority === 'urgent' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                      work.priority === 'high' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                                        "bg-secondary text-muted-foreground border-border shadow-inner p-1 rounded-md px-2 py-0.5 text-[9px]"
+                                  )}>
+                                    Priority: {work.priority}
                                   </Badge>
 
                                   {deliveryInfo.status !== 'none' && (
-                                    <Badge variant="outline" className={cn("flex items-center gap-1", deliveryInfo.color)}>
+                                    <Badge variant="outline" className={cn("flex items-center gap-1.5 text-[9px] py-0.5 px-2 bg-secondary border-border shadow-inner p-1", deliveryInfo.status === 'overdue' || deliveryInfo.status === 'urgent' ? 'text-red-500 border-red-500/20' : 'text-muted-foreground')}>
                                       <Clock className="h-3 w-3" />
                                       {deliveryInfo.formatted}
                                     </Badge>
                                   )}
-                                </div>
 
-                                <CardTitle className="text-xl flex items-center gap-2 mb-1">
-                                  {work.vehicle_number}
-                                  <span className="text-muted-foreground font-normal text-base">- {work.vehicle_model}</span>
-                                </CardTitle>
-
-                                <CardDescription className="flex items-center gap-2 mb-3">
-                                  <User className="h-3 w-3" /> {work.customer_name}
-                                  {work.company_name && <span className="text-xs bg-muted px-1.5 py-0.5 rounded">🏢 {work.company_name}</span>}
-                                </CardDescription>
-
-                                {/* Services Section - Moved Above Description */}
-                                <div className="mb-3">
-                                  {(work as any).service_types && (work as any).service_types.size > 0 ? (
-                                    <div className="flex flex-wrap gap-2">
-                                      {Array.from((work as any).service_types).map((st: any, i: number) => (
-                                        <Badge key={i} variant="secondary" className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
-                                          <Wrench className="h-3 w-3 mr-1" />
-                                          {st}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                                      <Wrench className="h-3 w-3 mr-1" />
-                                      {work.service_type}
+                                  {work.is_reopened && (
+                                    <Badge className="bg-orange-500 text-black text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 animate-pulse">
+                                      <RefreshCw className="h-2.5 w-2.5 mr-1" /> Reopened
                                     </Badge>
                                   )}
                                 </div>
 
-                                {/* Description Section - Below Services */}
+                                <div className="mb-4">
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <h3 className="text-2xl font-bold text-foreground tracking-tight uppercase">
+                                      {work.vehicle_number}
+                                    </h3>
+                                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
+                                      ID: {work.work_order_id.slice(0, 8).toUpperCase()}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-muted-foreground font-bold text-sm uppercase tracking-wide">{work.vehicle_model}</p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-4 mb-6">
+                                  <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-background/50 border-border">
+                                    <User className="h-3 w-3 text-primary" />
+                                    <span>{work.customer_name}</span>
+                                    {work.company_name && (
+                                      <>
+                                        <div className="bg-muted-foreground w-1 h-1 rounded-full opacity-50" />
+                                        <span className="text-primary">{work.company_name}</span>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    {Array.from((work as any).service_types || [work.service_type]).map((st: any, i: number) => (
+                                      <div key={i} className="flex items-center gap-1.5 bg-primary/5 text-primary border border-primary/20 text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
+                                        <Wrench className="h-2.5 w-2.5" />
+                                        {st}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
                                 {work.description && (
-                                  <div className="text-sm text-muted-foreground bg-background/50 p-2 rounded border border-dashed">
-                                    <span className="font-semibold text-xs uppercase tracking-wider block mb-1">Instructions:</span>
-                                    {work.description}
+                                  <div className="bg-background/50 p-4 rounded-xl border border-border border-l-2 border-l-primary/50 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-2 opacity-5">
+                                      <Activity className="h-12 w-12" />
+                                    </div>
+                                    <span className="text-[9px] font-bold text-primary uppercase tracking-wider block mb-2">Instructions</span>
+                                    <p className="text-xs text-foreground leading-relaxed italic">"{work.description}"</p>
                                   </div>
                                 )}
                               </div>
 
-                              {/* Right Side Status Badges */}
-                              <div className="flex flex-col items-end gap-2 ml-4">
-                                {getInspectionStatusBadge(work.inspection_status)}
-                                {canAccept ? (
-                                  <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                                    <Clock className="h-3 w-3 mr-1" /> Action Required
-                                  </Badge>
-                                ) : isWaitingForInspection ? (
-                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                    <Eye className="h-3 w-3 mr-1" /> Inspection Pending
-                                  </Badge>
-                                ) : isWaitingForAdminRelease ? (
-                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                    <Lock className="h-3 w-3 mr-1" /> Admin Release Pending
-                                  </Badge>
-                                ) : hasAccepted ? (
-                                  <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
-                                    <CheckCircle2 className="h-3 w-3 mr-1" /> Work Started
-                                  </Badge>
-                                ) : null}
+                              <div className="flex flex-col items-center md:items-end gap-4 min-w-[160px]">
+                                <div className="text-right">
+                                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block mb-2">Inspection Status</span>
+                                  {getInspectionStatusBadge(work.inspection_status)}
+                                </div>
 
-                                {work.is_reopened && (
-                                  <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse text-[10px]">
-                                    <RefreshCw className="h-2 w-2 mr-1" /> Reopened
-                                  </Badge>
-                                )}
+                                <div className="w-full h-px bg-white/5" />
 
-                                {/* Progress */}
-                                <div className="mt-2 w-24">
-                                  <div className="flex justify-between text-[10px] items-center mb-1 font-medium text-muted-foreground">
-                                    <span>Progress</span>
-                                    <span>{work.progress}%</span>
+                                <div className="w-full text-right">
+                                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block mb-2">Work Status</span>
+                                  <div className="flex flex-col items-end gap-2">
+                                    {canAccept ? (
+                                      <Badge className="bg-orange-500 text-black border-0 text-[9px] font-bold uppercase px-2 py-0.5">
+                                        Ready to Start
+                                      </Badge>
+                                    ) : isWaitingForInspection ? (
+                                      <Badge variant="outline" className="text-yellow-500 border-yellow-500/20 text-[9px] font-bold uppercase px-2 py-0.5 bg-yellow-500/5">
+                                        Inspection Pending...
+                                      </Badge>
+                                    ) : isWaitingForAdminRelease ? (
+                                      <Badge variant="outline" className="text-blue-400 border-blue-500/20 text-[9px] font-bold uppercase px-2 py-0.5 bg-blue-400/5">
+                                        Pending Admin Approval
+                                      </Badge>
+                                    ) : hasAccepted ? (
+                                      <Badge className="bg-emerald-500 text-black border-0 text-[10px] font-bold uppercase px-2 py-0.5">
+                                        In Progress
+                                      </Badge>
+                                    ) : null}
                                   </div>
-                                  <Progress value={work.progress} className="h-1.5" />
+                                </div>
+
+                                <div className="w-full mt-2">
+                                  <div className="flex justify-between text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                                    <span>Progress</span>
+                                    <span className="text-primary font-bold">{work.progress}%</span>
+                                  </div>
+                                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border">
+                                    <div
+                                      className="h-full bg-primary shadow-[0_0_10px_rgba(var(--primary),0.5)] transition-all duration-1000 ease-out"
+                                      style={{ width: `${work.progress}%` }}
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           </div>
 
-                          {/* Waiting States Banners */}
+                          {/* Waiting States Tactical Banners */}
                           {isWaitingForInspection && (
-                            <div className="p-8 bg-muted/20 border-b flex flex-col items-center justify-center text-center gap-2">
-                              <div className="h-12 w-12 rounded-full bg-yellow-100 flex items-center justify-center mb-2">
-                                <Eye className="h-6 w-6 text-yellow-600" />
+                            <div className="p-12 bg-card/40 border-b border-border flex flex-col items-center justify-center text-center gap-4 relative overflow-hidden group">
+                              <div className="absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_center,var(--primary)_0%,transparent_70%)] animate-pulse" />
+                              <div className="bg-secondary border-border shadow-inner rounded-2xl flex flex-col items-center justify-center h-16 w-16 mb-2 shadow-2xl group-hover:border-primary/30 transition-colors">
+                                <Eye className="h-8 w-8 text-primary shadow-primary/20 group-hover:scale-110 transition-transform" />
                               </div>
-                              <h3 className="font-semibold text-lg text-muted-foreground">Waiting for Inspection Approval</h3>
-                              <p className="text-sm text-muted-foreground max-w-[300px]">
-                                The work order has been created. The "Accept & Start Work" button will appear here once the Admin approves the inspection.
+                              <h3 className="text-xl font-bold text-foreground uppercase tracking-tight">Inspection Pending</h3>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider max-w-[320px] leading-loose">
+                                System awaiting Admin approval for vehicle inspection. Work cannot start until verified.
                               </p>
+                              <div className="flex gap-2 mt-2">
+                                <div className="h-1 w-8 bg-primary/20 rounded-full animate-pulse" />
+                                <div className="h-1 w-8 bg-primary/20 rounded-full animate-pulse delay-75" />
+                                <div className="h-1 w-8 bg-primary/20 rounded-full animate-pulse delay-150" />
+                              </div>
                             </div>
                           )}
 
                           {isWaitingForAdminRelease && (
-                            <div className="p-8 bg-muted/20 border-b flex flex-col items-center justify-center text-center gap-2">
-                              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center mb-2">
-                                <Lock className="h-6 w-6 text-blue-600" />
+                            <div className="p-12 bg-card/40 border-b border-border flex flex-col items-center justify-center text-center gap-4 relative overflow-hidden group">
+                              <div className="bg-secondary/50 border-border shadow-inner rounded-2xl flex flex-col items-center justify-center p-4 h-16 w-16 mb-2 shadow-2xl group-hover:border-blue-500/50 transition-colors">
+                                <Lock className="h-8 w-8 text-blue-500" />
                               </div>
-                              <h3 className="font-semibold text-lg text-muted-foreground">Waiting for Admin Release</h3>
-                              <p className="text-sm text-muted-foreground max-w-[300px]">
-                                Inspection approved. Waiting for the Admin to release the work to you.
+                              <h3 className="text-xl font-bold text-foreground uppercase tracking-tight">Admin Approval Needed</h3>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider max-w-[320px] leading-loose">
+                                Inspection approved. Awaiting work assignment from Manager.
                               </p>
                             </div>
                           )}
 
-                          {/* Assignment Prominence - Show big button ONLY if actionable (canAccept) */}
+                          {/* Mission Acceptance Terminal */}
                           {canAccept && (
-                            <div className="p-8 bg-orange-50/50 border-b flex flex-col items-center justify-center text-center gap-4">
-                              <div className="h-16 w-16 rounded-full bg-orange-100 flex items-center justify-center">
-                                <Clock className="h-8 w-8 text-orange-600 animate-pulse" />
+                            <div className="p-12 bg-orange-500/5 border-b border-orange-500/10 flex flex-col items-center justify-center text-center gap-6 relative overflow-hidden">
+                              <div className="absolute inset-0 opacity-10" style={{
+                                backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(249,115,22,0.1) 10px, rgba(249,115,22,0.1) 20px)'
+                              }} />
+
+                              <div className="h-20 w-20 rounded-3xl bg-card border border-orange-500/30 flex items-center justify-center shadow-[0_0_30px_rgba(249,115,22,0.15)] animate-bounce-slow">
+                                <Clock className="h-10 w-10 text-orange-500" />
                               </div>
-                              <div className="space-y-1">
-                                <h3 className="font-bold text-lg text-orange-900 text-zinc-900">Ready for Repair</h3>
-                                <p className="text-sm text-orange-700 max-w-[250px]">
-                                  Inspection approved. Please accept to start repairs.
-                                </p>
+
+                              <div className="space-y-2 relative z-10">
+                                <h3 className="text-2xl font-bold text-foreground uppercase tracking-tight">Ready to Start</h3>
+                                <p className="text-[10px] font-bold text-orange-500/70 uppercase tracking-wider">Accept Assignment to Begin Work</p>
                               </div>
+
                               <Button
                                 size="lg"
                                 onClick={() => handleAcceptWork(work.id)}
-                                className="bg-green-600 hover:bg-green-700 text-white font-bold px-8 shadow-lg transform transition-transform active:scale-95"
+                                className="bg-emerald-500 hover:bg-emerald-600 text-black font-bold uppercase tracking-wider px-10 py-7 text-sm rounded-xl shadow-[0_10px_30px_rgba(16,185,129,0.3)] transform transition-all hover:scale-105 active:scale-95 group"
                               >
-                                <CheckCircle2 className="h-5 w-5 mr-2" />
-                                Accept & Start Work
+                                <CheckCircle2 className="h-5 w-5 mr-3 group-hover:rotate-12 transition-transform" />
+                                Start Work
                               </Button>
                             </div>
                           )}
 
-                          {/* Progress Section - Visible ONLY when Accepted (Work Started) and not finished */}
+                          {/* Progress Section - Active Intelligence Gathering / Deployment */}
                           {(hasAccepted && !isFinished) && (
-                            <div className={`p-4 border-b ${repairsAvailable ? 'bg-green-50/50' : 'bg-blue-50/50'}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  {repairsAvailable ? (
-                                    <Wrench className="h-4 w-4 text-green-600" />
-                                  ) : (
-                                    <Eye className="h-4 w-4 text-blue-600" />
-                                  )}
-                                  <h4 className={`font-medium ${repairsAvailable ? 'text-green-800' : 'text-blue-800'}`}>
-                                    {repairsAvailable ? 'Repair Progress' : 'Inspection Progress'}
-                                  </h4>
-                                  {repairsApproved && (
-                                    <Badge variant="default" className="bg-green-600">
-                                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                                      Approved
-                                    </Badge>
-                                  )}
+                            <div className={cn(
+                              "bg-background/80 shadow-inner p-6 border-b border-border transition-all duration-300",
+                              repairsAvailable ? 'bg-emerald-500/5' : 'bg-blue-500/5'
+                            )}>
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                  <div className={cn(
+                                    "h-8 w-8 rounded-lg flex items-center justify-center border",
+                                    repairsAvailable ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                                  )}>
+                                    {repairsAvailable ? <Wrench className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </div>
+                                  <div>
+                                    <h4 className={cn(
+                                      "text-xs font-bold uppercase tracking-wider leading-none mb-1",
+                                      repairsAvailable ? 'text-emerald-500' : 'text-blue-500'
+                                    )}>
+                                      {repairsAvailable ? 'Current Stage: Repair' : 'Current Stage: Inspection'}
+                                    </h4>
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                      {progress.completed} / {progress.total} Tasks Completed
+                                    </span>
+                                  </div>
                                 </div>
-                                <span className="text-sm font-medium">
-                                  {progress.completed} of {progress.total} completed
-                                </span>
+                                {repairsApproved && (
+                                  <Badge className="bg-emerald-500 text-black border-0 text-[9px] font-bold uppercase px-2 py-0.5">
+                                    Approved
+                                  </Badge>
+                                )}
                               </div>
-                              <Progress value={progress.percent} className="h-2 mb-2" />
-                              <div className="text-xs text-muted-foreground">
-                                {progress.percent}% Complete
+
+                              <div className="relative pt-1">
+                                <div className="flex mb-2 items-center justify-between">
+                                  <div className="text-right">
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider inline-block">
+                                      Progress: {progress.percent}%
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="overflow-hidden h-2 mb-2 text-xs flex rounded-full bg-card border border-border">
+                                  <div
+                                    style={{ width: `${progress.percent}%` }}
+                                    className={cn(
+                                      "shadow-none flex flex-col text-center whitespace-nowrap text-foreground justify-center transition-all duration-1000",
+                                      repairsAvailable ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]'
+                                    )}
+                                  />
+                                </div>
                               </div>
                             </div>
                           )}
 
-                          {/* Tasks Section - Visible when NOT pending acceptance OR when finished (History) */}
+                          {/* Tasks Section */}
                           {(hasAccepted || isFinished) && work.tasks && work.tasks.length > 0 && (
-                            <div className="p-4 space-y-4">
+                            <div className="p-6 space-y-6">
                               {/* Show all unique tasks (no duplication) */}
                               {(() => {
                                 // Get unique tasks by id
@@ -1024,118 +1165,159 @@ export default function StaffDashboard() {
                                 return (
                                   <>
                                     {currentTasks.length > 0 && (
-                                      <div className="border rounded-lg p-4">
-                                        <div className="flex items-center justify-between mb-3">
-                                          <h4 className="text-sm font-medium flex items-center gap-2">
-                                            <Wrench className="h-4 w-4" />
-                                            {repairsAvailable ? 'Repair Tasks' : 'Inspection Tasks'}
+                                      <div className="bg-secondary/30 rounded-2xl border border-border overflow-hidden">
+                                        <div className="bg-background border-b border-border shadow-inner p-4 flex items-center justify-between">
+                                          <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                                            <Activity className="h-3 w-3 text-primary" />
+                                            Tasks
                                           </h4>
-                                          <Badge variant="outline" className="text-xs">
-                                            {currentTasks.filter(t => t.is_completed).length}/{currentTasks.length} tasks
+                                          <Badge variant="outline" className="text-[9px] text-muted-foreground border-border bg-card">
+                                            {currentTasks.filter(t => t.is_completed).length} / {currentTasks.length} COMPLETED
                                           </Badge>
                                         </div>
 
-                                        <div className="space-y-2">
+                                        <div className="divide-y divide-border">
                                           {currentTasks.map((task: RepairTask, index: number) => (
                                             <div
                                               key={task.id}
-                                              className={`flex flex-col p-2 rounded-lg border transition-all ${task.is_completed ? "bg-green-50 border-green-200" : "bg-muted/30 border-transparent hover:bg-muted/50"}`}
+                                              className={cn(
+                                                "flex flex-col p-4 transition-all group/task hover:bg-white/[0.02]",
+                                                task.is_completed ? "bg-primary/10" : ""
+                                              )}
                                             >
-                                              <div className="flex items-center gap-3">
-                                                <Checkbox
-                                                  id={`task-${task.id}`}
-                                                  checked={task.is_completed}
-                                                  onCheckedChange={(checked) => handleToggleTask(task.id, work.work_order_id, checked === true)}
-                                                  disabled={isPendingApproval || repairsApproved || isFinished}
-                                                  className="h-5 w-5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                                                />
-                                                <div className="flex-1 flex items-center gap-2 flex-wrap">
-                                                  <label
-                                                    htmlFor={`task-${task.id}`}
-                                                    className={`text-sm cursor-pointer ${task.is_completed && !isFinished ? "line-through text-muted-foreground" : "font-medium"}`}
-                                                  >
-                                                    {index + 1}. {task.task_name}
-                                                  </label>
-                                                  {task.price !== undefined && task.price > 0 && (
-                                                    <Badge variant="outline" className="text-[10px] h-4 px-1 bg-blue-50/50 text-blue-700 border-blue-100">
-                                                      ₹{task.price}
-                                                    </Badge>
-                                                  )}
-                                                  <Badge variant="outline" className="text-[10px] uppercase">
-                                                    {task.task_type}
-                                                  </Badge>
+                                              <div className="flex items-center gap-4">
+                                                <div className="relative">
+                                                  <Checkbox
+                                                    id={`task-${task.id}`}
+                                                    checked={task.is_completed}
+                                                    onCheckedChange={(checked) => handleToggleTask(task.id, work.work_order_id, checked === true)}
+                                                    disabled={isPendingApproval || repairsApproved || isFinished}
+                                                    className={cn(
+                                                      "h-6 w-6 border-2 transition-all rounded-lg",
+                                                      task.is_completed
+                                                        ? "bg-emerald-500 border-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                                                        : "bg-card border-border group-hover/task:border-primary/50"
+                                                    )}
+                                                  />
+                                                </div>
+                                                <div className="flex-1">
+                                                  <div className="flex items-center justify-between gap-4">
+                                                    <label
+                                                      htmlFor={`task-${task.id}`}
+                                                      className={cn(
+                                                        "text-sm font-bold tracking-tight cursor-pointer",
+                                                        task.is_completed ? "text-muted-foreground italic line-through opacity-70" : "text-foreground"
+                                                      )}
+                                                    >
+                                                      {task.task_name}
+                                                    </label>
+                                                    <div className="flex items-center gap-2">
+                                                      {task.price !== undefined && task.price > 0 && (
+                                                        <span className="text-[10px] font-bold text-primary/70">
+                                                          ₹{task.price}
+                                                        </span>
+                                                      )}
+                                                      <span className="text-[8px] font-bold text-muted-foreground uppercase border border-border px-1.5 py-0.5 rounded shadow-sm">
+                                                        {task.task_type}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+
                                                   {task.completed_at && (
-                                                    <span className="text-[10px] text-green-600 font-medium">
-                                                      ✓ {format(new Date(task.completed_at), "MMM d, HH:mm")}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5 mt-1">
+                                                      <div className="h-1 w-1 rounded-full bg-emerald-500" />
+                                                      <span className="text-[9px] font-bold text-primary/70 uppercase tracking-wider">
+                                                        Completed {format(new Date(task.completed_at), "HH:mm")}
+                                                      </span>
+                                                    </div>
                                                   )}
                                                 </div>
                                               </div>
 
                                               {task.is_rejected && (
-                                                <div className="mt-2 ml-8 flex items-start gap-1.5 p-1.5 bg-red-50 border border-red-100 rounded text-[10px] text-red-700">
-                                                  <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                                                  <div className="flex-1">
-                                                    <span className="font-bold uppercase tracking-wider">Rejected:</span> {task.rejection_reason}
+                                                <div className="mt-3 ml-10 p-3 bg-red-500/5 border border-red-500/10 rounded-xl flex items-start gap-3">
+                                                  <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                                                  <div className="space-y-1">
+                                                    <span className="text-[9px] font-bold text-red-500 uppercase tracking-wider">Task Rejected</span>
+                                                    <p className="text-[10px] text-destructive-foreground font-medium leading-relaxed italic">"{task.rejection_reason}"</p>
                                                   </div>
                                                 </div>
                                               )}
                                             </div>
                                           ))}
                                         </div>
-                                      </div >
+                                      </div>
                                     )}
 
-                                    {/* Notification if all current stage tasks are done */}
+                                    {/* Tactical Notification */}
                                     {allCurrentCompleted && !repairsAvailable && work.inspection_status === 'pending' && (
-                                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center gap-2 text-blue-800 text-sm">
-                                        <CheckCircle2 className="h-4 w-4" />
-                                        Inspection completed. Waiting for Admin approval to start repairs.
+                                      <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl flex items-center gap-3">
+                                        <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500">
+                                          <Shield className="h-4 w-4" />
+                                        </div>
+                                        <div>
+                                          <h5 className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1">Inspection Verification Pending</h5>
+                                          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Wait for Manager verification to proceed with repairs.</p>
+                                        </div>
                                       </div>
                                     )}
                                   </>
                                 );
                               })()}
 
-                              {/* Submit for Approval Button */}
+                              {/* Action Terminal Bottom */}
                               {allRepairsCompleted && !isFinished && (
-                                <Button
-                                  className="w-full mt-4"
-                                  onClick={() => handleSubmitForApproval(work.work_order_id)}
-                                  disabled={isPendingApproval || repairsApproved}
-                                  variant={isPendingApproval ? "secondary" : "default"}
-                                >
-                                  {isPendingApproval ? (
-                                    <>
-                                      <Clock className="h-4 w-4 mr-2 animate-pulse" />
-                                      Waiting for Approval
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                                      All Repairs Complete - Submit for Approval
-                                    </>
+                                <div className="space-y-3 pt-2">
+                                  <Button
+                                    className={cn(
+                                      "w-full h-14 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg",
+                                      isPendingApproval
+                                        ? "bg-secondary/50 text-muted-foreground cursor-not-allowed border border-border shadow-inner p-2 rounded-xl"
+                                        : "bg-primary text-black hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]"
+                                    )}
+                                    onClick={() => handleSubmitForApproval(work.work_order_id)}
+                                    disabled={isPendingApproval || repairsApproved}
+                                  >
+                                    {isPendingApproval ? (
+                                      <div className="flex items-center gap-3">
+                                        <RefreshCw className="h-4 w-4 animate-spin" />
+                                        Approval Pending...
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-3">
+                                        <CheckCircle2 className="h-4 w-4" />
+                                        Submit for Approval
+                                      </div>
+                                    )}
+                                  </Button>
+                                  {!isPendingApproval && (
+                                    <p className="text-[9px] text-center font-bold text-muted-foreground/60 uppercase tracking-wider">
+                                      Final Verification Step Required Before Release
+                                    </p>
                                   )}
-                                </Button>
+                                </div>
                               )}
 
                               {isPendingApproval && !repairsApproved && (
-                                <div className="flex items-center justify-center gap-2 p-3 bg-purple-50 rounded-lg">
-                                  <Clock className="h-4 w-4 text-purple-600 animate-pulse" />
-                                  <span className="text-sm font-medium text-purple-800">
-                                    Awaiting Manager Approval
-                                  </span>
+                                <div className="flex flex-col items-center gap-3 p-6 bg-secondary/50 p-6 rounded-2xl border border-border shadow-inner">
+                                  <div className="h-10 w-10 rounded-full bg-card flex items-center justify-center border border-border relative">
+                                    <Clock className="h-5 w-5 text-purple-500 animate-pulse" />
+                                    <div className="absolute inset-0 rounded-full border border-purple-500/20 animate-ping" />
+                                  </div>
+                                  <div className="text-center">
+                                    <h5 className="text-[10px] font-bold text-purple-400 uppercase tracking-wider leading-none mb-1.5">Waiting for Approval</h5>
+                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Manager is reviewing work.</p>
+                                  </div>
                                 </div>
                               )}
                             </div>
                           )}
 
-                          {/* Parts Section */}
-                          <div className="p-4 border-b">
+                          <div className="p-6">
                             <Button
                               variant="outline"
                               size="sm"
-                              className="w-full flex justify-between items-center group"
+                              className="w-full h-11 rounded-xl bg-card border-border hover:border-primary/30 flex justify-between items-center group transition-all"
                               onClick={() => setExpandedParts(prev => ({
                                 ...prev,
                                 [work.work_order_id]: !prev[work.work_order_id]
@@ -1143,47 +1325,30 @@ export default function StaffDashboard() {
                             >
                               <div className="flex items-center gap-2">
                                 <Package className="h-4 w-4 text-primary" />
-                                <span>Parts & Inventory</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Parts & Inventory</span>
                               </div>
-                              <ChevronRight className={`h-4 w-4 transition-transform ${expandedParts[work.work_order_id] ? 'rotate-90' : ''}`} />
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-[9px] text-muted-foreground border-border">
+                                  ACCESS PORTAL
+                                </Badge>
+                                <ChevronRight className={cn("h-4 w-4 text-muted-foreground transition-transform", expandedParts[work.work_order_id] && 'rotate-90')} />
+                              </div>
                             </Button>
 
                             {expandedParts[work.work_order_id] && (
-                              <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                              <div className="mt-4 p-4 bg-card/50 rounded-xl border border-border animate-in fade-in slide-in-from-top-2 duration-300">
                                 <PartRequestList workOrderId={work.work_order_id} isAdmin={false} isReadOnly={isFinished} />
                               </div>
                             )}
                           </div>
-
-                          {/* Footer Actions */}
-                          <div className="p-4 border-t bg-muted/10 flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
-                              Assigned: {work.assigned_at ? format(new Date(work.assigned_at), "PPP p") : "N/A"}
-                            </span>
-                            <div className="flex gap-2">
-                              {/* Prominent button is now in the body, keeping footer clean or adding secondary actions */}
-                              {canComplete && !repairsAvailable && work.inspection_status === 'approved' && (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground italic">
-                                  <LockOpen className="h-4 w-4" />
-                                  <span>Ready for repair stage</span>
-                                </div>
-                              )}
-                              {canComplete && !repairsAvailable && (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <Lock className="h-4 w-4" />
-                                  <span>Waiting for inspection approval</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
                         </CardContent>
                       </Card>
-                    );
+                    )
                   })}
-                </div >
+                </div>
               )}
-            </CardContent >
-          </Card >
+            </div>
+          </div >
         </div >
       </main >
     </div >

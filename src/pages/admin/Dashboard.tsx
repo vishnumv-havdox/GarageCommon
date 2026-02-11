@@ -21,12 +21,13 @@ import {
   Clock,
   ArrowRight,
   CheckCircle2,
-  AlertCircle,
-  Activity,
-  History,
   LayoutDashboard,
-  Wrench
+  Wrench,
+  Activity,
+  History as HistoryIcon,
+  AlertCircle
 } from "lucide-react";
+import { GarageClock } from "@/components/dashboard/GarageClock";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import {
   BarChart,
@@ -149,20 +150,24 @@ export default function AdminDashboard() {
 
         <main className="flex-1 p-4 lg:p-8 space-y-8 max-w-7xl mx-auto w-full">
           {/* Header */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <LayoutDashboard className="h-5 w-5 text-primary" />
-                <h1 className="text-3xl font-bold tracking-tight">Admin Command Center</h1>
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <LayoutDashboard className="h-6 w-6 text-primary" />
+                </div>
+                <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white">
+                  Command <span className="text-primary">Center</span>
+                </h1>
               </div>
-              <p className="text-muted-foreground">
-                Automated Workshop Intelligence • {format(new Date(), "MMMM yyyy")}
+              <p className="text-sm font-medium text-muted-foreground flex items-center gap-2 pl-12">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                Real-time Workshop Management Terminal
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <Button onClick={() => navigate("/admin/work-orders")}>
-                <Plus className="h-4 w-4 mr-2" /> New Work Order
-              </Button>
+
+            <div className="flex flex-col md:flex-row items-end md:items-center gap-4 w-full lg:w-auto">
+              <GarageClock />
             </div>
           </div>
 
@@ -311,7 +316,7 @@ export default function AdminDashboard() {
                         <h3 className="text-4xl font-black">{completedCount}</h3>
                       </div>
                       <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
-                        <History className="h-6 w-6" />
+                        <HistoryIcon className="h-6 w-6" />
                       </div>
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-xs text-slate-300 font-medium">
@@ -385,7 +390,7 @@ export default function AdminDashboard() {
               <Card className="shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <History className="h-4 w-4 text-primary" /> Active Work Orders
+                    <HistoryIcon className="h-4 w-4 text-primary" /> Active Work Orders
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">

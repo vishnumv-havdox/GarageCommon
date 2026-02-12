@@ -1208,7 +1208,7 @@ export default function WorkOrderDetail() {
                                                             })()}
                                                             {emp.accepted_at && (
                                                                 <span className="text-[9px] text-muted-foreground font-mono">
-                                                                    {format(new Date(emp.accepted_at), "MMM d, HH:mm")}
+                                                                    {format(new Date(emp.accepted_at), "MMM d, h:mm a")}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -1494,18 +1494,18 @@ export default function WorkOrderDetail() {
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between text-xs">
                                         <span className="text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Created</span>
-                                        <span>{format(new Date(workOrder.created_at), "MMM d, yyyy HH:mm")}</span>
+                                        <span>{format(new Date(workOrder.created_at), "MMM d, yyyy h:mm a")}</span>
                                     </div>
                                     {workOrder.accepted_at && (
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="text-muted-foreground flex items-center gap-1"><RefreshCw className="h-3 w-3" /> Accepted</span>
-                                            <span>{format(new Date(workOrder.accepted_at), "MMM d, HH:mm")}</span>
+                                            <span>{format(new Date(workOrder.accepted_at), "MMM d, h:mm a")}</span>
                                         </div>
                                     )}
                                     {workOrder.completed_at && (
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="text-muted-foreground flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Completed</span>
-                                            <span>{format(new Date(workOrder.completed_at), "MMM d, HH:mm")}</span>
+                                            <span>{format(new Date(workOrder.completed_at), "MMM d, h:mm a")}</span>
                                         </div>
                                     )}
                                 </div>

@@ -45,7 +45,9 @@ import {
   Gauge,
   QrCode,
   Archive,
-  Zap
+  Zap,
+  Plus,
+  Trash2
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { format } from "date-fns";
@@ -65,6 +67,20 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { BookAppointmentDialog } from "@/components/forms/BookAppointmentDialog";
+import { Calendar as CalendarUI } from "@/components/ui/calendar";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 
 // Import ProgressTracker component
@@ -151,7 +167,9 @@ export default function CustomerPortal() {
   const { toast } = useToast();
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrderProgress[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]); // Add employees state
   const [loading, setLoading] = useState(true);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [debugInfo, setDebugInfo] = useState<string>("");
@@ -186,8 +204,19 @@ export default function CustomerPortal() {
   // Invoice View State
   const [viewingInvoice, setViewingInvoice] = useState<any | null>(null);
   const [viewingInvoiceItems, setViewingInvoiceItems] = useState<any[]>([]);
+  const [customerId, setCustomerId] = useState<string>("");
   const [viewingInvoicePayments, setViewingInvoicePayments] = useState<any[]>([]);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
+
+  // Activity History State
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
+
+  // Reschedule dialog state
+  const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
+  const [rescheduleAppointment, setRescheduleAppointment] = useState<any | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>(undefined);
+  const [rescheduleReason, setRescheduleReason] = useState("");
 
   // Sync payment amount when paying invoices change
   useEffect(() => {
@@ -292,6 +321,7 @@ export default function CustomerPortal() {
       }
 
       debug += `Customer ID: ${customerId} \n`;
+      setCustomerId(customerId);
 
       // Fetch vehicles and invoices using admin client to bypass RLS
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -299,6 +329,7 @@ export default function CustomerPortal() {
 
       let vehiclesRes: any = { data: [], error: null };
       let invoicesRes: any = { data: [], error: null };
+      let employeesRes: any = { data: [], error: null }; // Add employees res
       let adminClient: any = null;
 
       if (SERVICE_ROLE_KEY) {
@@ -306,18 +337,21 @@ export default function CustomerPortal() {
           auth: { autoRefreshToken: false, persistSession: false }
         });
 
-        // Use admin client to fetch vehicles for this customer (bypasses RLS)
         vehiclesRes = await adminClient
           .from("vehicles")
           .select("*")
           .eq("customer_id", customerId);
 
-        invoicesRes = await supabase.from("invoices").select("*, payments(status)").eq("customer_id", customerId);
+        invoicesRes = await supabase.from("invoices").select("*, payments(*)").eq("customer_id", customerId);
+
+        // Fetch employees for name resolution
+        employeesRes = await adminClient.from("employees").select("id, name, user_id");
       } else {
         // Fallback to regular client
-        [vehiclesRes, invoicesRes] = await Promise.all([
+        [vehiclesRes, invoicesRes, employeesRes] = await Promise.all([
           supabase.from("vehicles").select("*").eq("customer_id", customerId),
-          supabase.from("invoices").select("*, payments(status)").eq("customer_id", customerId),
+          supabase.from("invoices").select("*, payments(*)").eq("customer_id", customerId),
+          supabase.from("employees").select("id, name, user_id"),
         ]);
       }
 
@@ -353,12 +387,40 @@ export default function CustomerPortal() {
       debug += `Vehicles found: ${vehiclesRes.data?.length || 0} \n`;
       debug += `Invoices found: ${processedInvoices.length} \n`;
       setInvoices(processedInvoices);
+      setEmployees(employeesRes.data || []); // Set employees
 
       // Get customer's vehicle IDs
       const customerVehicleIds = (vehiclesRes.data || []).map((v: any) => v.id);
       debug += `Customer Vehicle IDs: ${JSON.stringify(customerVehicleIds)} \n`;
 
       // Fetch work orders using admin client to bypass RLS
+      debug += `\n-- - Fetching Appointments -- -\n`;
+      const appointmentsQuery = await supabase
+        .from("appointments")
+        .select(`
+          *,
+          vehicle:vehicles(vehicle_number, model),
+          history:appointment_history(
+            *,
+            actor:profiles!changed_by(full_name)
+          )
+        `)
+        .eq("customer_id", customerId)
+        .order("created_at", { ascending: false });
+
+      if (appointmentsQuery.error) {
+        console.error("Error fetching appointments:", appointmentsQuery.error);
+        debug += `Error fetching appointments: ${appointmentsQuery.error.message}\n`;
+      } else {
+        // Filter out history hidden from customer
+        const processedAppointments = (appointmentsQuery.data || []).map(app => ({
+          ...app,
+          history: (app.history || []).filter((h: any) => h.hidden_from_customer !== true)
+        }));
+        setAppointments(processedAppointments);
+        debug += `Appointments found: ${processedAppointments.length}\n`;
+      }
+
       debug += `\n-- - Fetching Work Orders-- -\n`;
 
       let allWorkOrders: any[] = [];
@@ -758,6 +820,109 @@ export default function CustomerPortal() {
     }
   }, [user, vehicles]);
 
+  const handleDeleteAppointment = async (id: string) => {
+    try {
+      const oldApp = appointments.find(a => a.id === id);
+      const { error } = await (supabase
+        .from('appointments') as any)
+        .update({
+          status: 'cancelled',
+          deleted_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Record in history
+      await (supabase.from('appointment_history') as any).insert({
+        appointment_id: id,
+        old_status: oldApp?.status,
+        new_status: 'cancelled',
+        changed_by: user?.id,
+        action_type: 'soft_deleted',
+        notes: 'Appointment cancelled by customer'
+      });
+
+      toast({ title: "Appointment Deleted", description: "Your appointment request has been removed." });
+      fetchData();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to delete appointment" });
+    }
+  };
+
+  const handleAcceptDate = async (appointmentId: string) => {
+    try {
+      const { error } = await (supabase as any).rpc('accept_appointment_date', {
+        appointment_id: appointmentId
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Date Accepted",
+        description: "You've accepted the assigned appointment date."
+      });
+      fetchData();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to accept date"
+      });
+    }
+  };
+
+  const handleRequestReschedule = async (
+    appointmentId: string,
+    newDate: Date,
+    reason: string
+  ) => {
+    try {
+      const { error } = await (supabase as any).rpc('request_appointment_reschedule', {
+        appointment_id: appointmentId,
+        new_date: newDate.toISOString(),
+        reason: reason
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Reschedule Requested",
+        description: "Your reschedule request has been sent to the admin."
+      });
+      fetchData();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to request reschedule"
+      });
+    }
+  };
+
+  const handleCancelWithReason = async (appointmentId: string, reason: string) => {
+    try {
+      const { error } = await (supabase as any).rpc('cancel_appointment_by_customer', {
+        appointment_id: appointmentId,
+        reason: reason
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Appointment Cancelled",
+        description: "Your appointment has been cancelled."
+      });
+      fetchData();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to cancel appointment"
+      });
+    }
+  };
+
   // Fetch service history when vehicles are loaded
   useEffect(() => {
     if (vehicles.length > 0) {
@@ -1004,6 +1169,12 @@ export default function CustomerPortal() {
 
           {/* Column 3: User & Sign Out */}
           <div className="flex items-center justify-end gap-6">
+            <Button
+              onClick={() => setIsBookingOpen(true)}
+              className="hidden md:flex bg-primary text-primary-foreground hover:bg-primary/90 font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(var(--primary),0.4)] animate-pulse hover:animate-none transition-all"
+            >
+              <Calendar className="mr-2 h-4 w-4" /> Book Appointment
+            </Button>
             <div className="hidden xl:flex items-center gap-3 px-4 py-2 bg-background/50 rounded-2xl border border-border shadow-inner">
               <User className="h-4 w-4 text-primary" />
               <div className="flex flex-col">
@@ -1077,12 +1248,15 @@ export default function CustomerPortal() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 md:space-y-8">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto p-1.5 gap-2 rounded-2xl border-border bg-secondary/80 backdrop-blur-md shadow-2xl max-w-4xl mx-auto mb-12">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 h-auto p-1.5 gap-2 rounded-2xl border-border bg-secondary/80 backdrop-blur-md shadow-2xl max-w-4xl mx-auto mb-12">
             <TabsTrigger value="vehicles" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
               <Car className="h-3.5 w-3.5" /> Vehicles
             </TabsTrigger>
             <TabsTrigger value="workorders" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
               <Activity className="h-3.5 w-3.5" /> Active
+            </TabsTrigger>
+            <TabsTrigger value="appointments" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
+              <Calendar className="h-3.5 w-3.5" /> Requests
             </TabsTrigger>
             <TabsTrigger value="history" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider">
               <History className="h-3.5 w-3.5" /> History
@@ -1149,13 +1323,17 @@ export default function CustomerPortal() {
                             <img
                               src={profile?.logo_url || logo}
                               className={cn(
-                                "h-full w-full object-contain transition-opacity",
-                                activeCount > 0 ? "brightness-0 invert" : "grayscale brightness-0 invert opacity-40 group-hover:opacity-100"
+                                "h-full w-full object-contain transition-all duration-300",
+                                activeCount > 0 ? "opacity-100" : "opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-100"
                               )}
                               alt="Logo"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
-                                target.src = logo;
+                                if (target.src !== logo) {
+                                  target.src = logo;
+                                  target.classList.remove("grayscale", "opacity-60");
+                                  target.classList.add("opacity-100");
+                                }
                               }}
                             />
                           </div>
@@ -1388,83 +1566,512 @@ export default function CustomerPortal() {
             )}
           </TabsContent>
 
-          <TabsContent value="history" className="space-y-4">
-            {completedWorkOrders.length === 0 ? (
-              <div className="py-20 text-center bg-background/40 border border-border rounded-3xl backdrop-blur-md">
-                <div className="h-20 w-20 rounded-full bg-background border-border shadow-sm shadow-primary/20 flex items-center justify-center mx-auto mb-4 overflow-hidden p-2">
-                  <img
-                    src={profile?.logo_url || logo}
-                    className="h-full w-full object-contain opacity-50 transition-opacity group-hover:opacity-100"
-                    alt="Logo"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = logo;
-                    }}
-                  />
-                </div>
-                <h3 className="text-xl font-bold text-foreground mb-2 tracking-tight">No Past Services</h3>
-                <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">Once your vehicle services are completed, they will appear here.</p>
-              </div>
-            ) : (
-              <div className="relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-muted-foreground before:to-transparent">
-                {completedWorkOrders.map((order, idx) => (
-                  <div key={order.id} className="relative flex flex-col md:flex-row items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active mb-12">
-                    {/* Icon Circle */}
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border border-border bg-background text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500 z-10 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-                      <CheckCircle2 className="h-5 w-5" />
-                    </div>
-
-                    {/* Content Card */}
-                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-background/40 border border-border backdrop-blur-md p-6 rounded-3xl group-hover:border-primary/20 transition-all duration-500">
-                      <div className="flex items-center justify-between mb-4">
-                        <time className="text-[10px] font-bold text-primary uppercase tracking-wider">{formatDate(order.created_at)}</time>
-                        <Badge variant="outline" className="border-border text-muted-foreground text-[9px] uppercase font-bold">Completed Service</Badge>
-                      </div>
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="h-10 w-10 rounded-xl bg-background flex items-center justify-center border border-border">
-                          <Car className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <h4 className="text-foreground font-bold uppercase tracking-tight">{order.vehicle?.vehicle_number}</h4>
-                          <p className="text-xs text-muted-foreground font-medium">{order.vehicle?.model}</p>
-                        </div>
-                      </div>
-                      <h3 className="text-foreground font-bold mb-4 flex items-center gap-2">
-                        <Wrench className="h-4 w-4 text-primary" />
-                        {order.service_type}
-                      </h3>
-
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        {order.services?.map((s: any, i: number) => (
-                          <Badge key={i} variant="secondary" className="bg-background text-muted-foreground border-border text-[10px] py-1">
-                            {s.service_type}
-                          </Badge>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center justify-between border-t border-border pt-4">
-                        <div className="flex -space-x-2">
-                          <div className="h-6 w-6 rounded-full bg-background border-2 border-background flex items-center justify-center" title="Systems Check">
-                            <Gauge className="h-3 w-3 text-muted-foreground" />
-                          </div>
-                          <div className="h-6 w-6 rounded-full bg-background border-2 border-background flex items-center justify-center" title="Verified">
-                            <ShieldCheck className="h-3 w-3 text-muted-foreground" />
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs font-bold text-muted-foreground hover:text-primary-foreground"
-                          onClick={() => setViewDetailOrder(order)}
-                        >
-                          View Details <ArrowRight className="h-3 w-3 ml-2" />
-                        </Button>
-                      </div>
-                    </div>
+          <TabsContent value="appointments" className="space-y-4">
+            <Card className="border-border bg-card/50 backdrop-blur-md">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle>My Appointments</CardTitle>
+                    <CardDescription>Status of your service requests</CardDescription>
                   </div>
-                ))}
+                  <Button onClick={() => setIsBookingOpen(true)} size="sm" className="bg-primary/20 text-primary hover:bg-primary/30">
+                    <Plus className="h-4 w-4 mr-1" /> New Request
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="flex justify-between items-center h-12 w-full px-6 border-b">
+                  <div className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                    <Calendar className="h-4 w-4" /> Active Appointment Requests
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  {appointments.filter(app => !['cancelled', 'rejected', 'completed', 'converted'].includes(app.status)).length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground bg-background/30 rounded-xl border border-dashed">
+                      <Calendar className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p>No active requests found.</p>
+                      <Button variant="link" onClick={() => setIsBookingOpen(true)}>Book one now</Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {appointments.filter(app => !['cancelled', 'rejected', 'completed', 'converted'].includes(app.status)).map(app => (
+                        <div key={app.id} className="group flex flex-col md:flex-row gap-4 p-5 border rounded-2xl bg-background/40 hover:border-primary/30 transition-all">
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <Badge variant="outline" className="bg-background/50 uppercase text-[10px] tracking-wider">
+                                  {app.type === 'face_to_face' ? 'Visit' : 'Service'}
+                                </Badge>
+                                <span className="text-sm font-bold text-foreground">
+                                  {format(new Date(app.scheduled_at), "PPP p")}
+                                </span>
+                              </div>
+                              <Badge className={cn(
+                                "uppercase text-[10px] font-bold tracking-wider",
+                                app.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20" :
+                                  app.status === 'rejected' ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" :
+                                    app.status === 'completed' ? "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20" :
+                                      app.status === 'converted' ? "bg-purple-500/10 text-purple-500 hover:bg-purple-500/20" :
+                                        "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20"
+                              )}>
+                                {app.status}
+                              </Badge>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-muted-foreground mb-3">
+                                  {app.vehicle && (
+                                    <div className="flex items-center gap-2 bg-secondary/30 p-2 rounded-lg">
+                                      <Car className="h-4 w-4 text-primary" />
+                                      <span className="font-medium text-foreground">{app.vehicle.vehicle_number}</span>
+                                      <span className="text-xs">({app.vehicle.model})</span>
+                                    </div>
+                                  )}
+
+                                  {/* Date Comparison Section */}
+                                  <div className="flex flex-col gap-2">
+                                    {/* Requested Date */}
+                                    {app.requested_date && (
+                                      <div className="flex items-center gap-2 bg-secondary/30 p-2 rounded-lg">
+                                        <Clock className="h-4 w-4 text-blue-500" />
+                                        <div className="flex flex-col">
+                                          <span className="text-[9px] uppercase font-bold text-blue-500/70">Requested Date</span>
+                                          <span className="text-sm">{format(new Date(app.requested_date), "PPP p")}</span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Scheduled Date - highlight if different from requested */}
+                                    {app.scheduled_at && (
+                                      <div className={cn(
+                                        "flex items-center gap-2 p-2 rounded-lg",
+                                        app.requested_date && new Date(app.requested_date).getTime() !== new Date(app.scheduled_at).getTime()
+                                          ? "bg-orange-50 border-2 border-orange-200"
+                                          : "bg-secondary/30"
+                                      )}>
+                                        <Clock className={cn(
+                                          "h-4 w-4",
+                                          app.requested_date && new Date(app.requested_date).getTime() !== new Date(app.scheduled_at).getTime()
+                                            ? "text-orange-600"
+                                            : "text-primary"
+                                        )} />
+                                        <div className="flex flex-col">
+                                          <span className={cn(
+                                            "text-[9px] uppercase font-bold",
+                                            app.requested_date && new Date(app.requested_date).getTime() !== new Date(app.scheduled_at).getTime()
+                                              ? "text-orange-600"
+                                              : "text-primary/70"
+                                          )}>
+                                            {app.requested_date && new Date(app.requested_date).getTime() !== new Date(app.scheduled_at).getTime()
+                                              ? "Assigned Date (Changed by Admin)"
+                                              : "Appointed Date"}
+                                          </span>
+                                          <span className="text-sm font-semibold">{format(new Date(app.scheduled_at), "PPP p")}</span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {app.notes && (
+                                  <div className="text-xs text-muted-foreground bg-secondary/20 p-3 rounded-lg border border-border/50">
+                                    <span className="font-bold text-primary/70 uppercase text-[9px] mr-2">Note:</span>
+                                    {app.notes}
+                                  </div>
+                                )}
+
+                                {/* Customer Response Status */}
+                                {app.customer_response && (
+                                  <div className="mt-2">
+                                    {app.customer_response === 'accepted' && (
+                                      <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20">
+                                        ✓ You accepted this date
+                                      </Badge>
+                                    )}
+                                    {app.customer_response === 'reschedule_requested' && (
+                                      <Badge className="bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20">
+                                        ⏳ Reschedule requested - awaiting admin response
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Customer Action Buttons - show when date changed and no response yet */}
+                                {app.status === 'confirmed' &&
+                                  !app.customer_response &&
+                                  app.requested_date &&
+                                  app.scheduled_at &&
+                                  new Date(app.requested_date).getTime() !== new Date(app.scheduled_at).getTime() && (
+                                    <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                      <p className="text-xs text-orange-800 mb-3 font-medium">
+                                        The admin assigned a different date. Please choose an option:
+                                      </p>
+                                      <div className="flex flex-wrap gap-2">
+                                        <Button
+                                          size="sm"
+                                          className="bg-emerald-600 hover:bg-emerald-700"
+                                          onClick={() => handleAcceptDate(app.id)}
+                                        >
+                                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                                          Accept Date
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                                          onClick={() => {
+                                            setRescheduleAppointment(app);
+                                            setRescheduleDialogOpen(true);
+                                          }}
+                                        >
+                                          <Calendar className="h-3 w-3 mr-1" />
+                                          Request Reschedule
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="border-red-200 text-red-600 hover:bg-red-50"
+                                          onClick={() => {
+                                            const reason = prompt("Please provide a reason for cancellation:");
+                                            if (reason) {
+                                              handleCancelWithReason(app.id, reason);
+                                            }
+                                          }}
+                                        >
+                                          <X className="h-3 w-3 mr-1" />
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                {app.status === 'converted' && (
+                                  <div className="mt-3 flex items-center gap-2 text-xs text-purple-500 font-medium">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Converted to Work Order
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="ml-4">
+                                {['pending', 'confirmed'].includes(app.status) && (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive h-8 w-8">
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Cancel Appointment?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Are you sure you want to delete this appointment request? This action cannot be undone.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Keep Appointment</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteAppointment(app.id)} className="bg-destructive hover:bg-destructive/90">
+                                          Yes, Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-6">
+            <Tabs defaultValue="service_history" className="w-full">
+              <div className="flex justify-center mb-6">
+                <TabsList className="bg-secondary/50 p-1 rounded-xl border border-border/50">
+                  <TabsTrigger value="service_history" className="rounded-lg px-6 py-2 text-[10px] font-bold uppercase tracking-wider data-[state=active]:bg-primary data-[state=active]:text-foreground">
+                    Service History
+                  </TabsTrigger>
+                  <TabsTrigger value="appointment_log" className="rounded-lg px-6 py-2 text-[10px] font-bold uppercase tracking-wider data-[state=active]:bg-primary data-[state=active]:text-foreground">
+                    Appointment Log
+                  </TabsTrigger>
+                </TabsList>
               </div>
-            )}
+
+              <TabsContent value="service_history" className="space-y-4">
+                {completedWorkOrders.length === 0 ? (
+                  <div className="py-20 text-center bg-background/40 border border-border rounded-3xl backdrop-blur-md">
+                    <div className="h-20 w-20 rounded-full bg-background border-border shadow-sm shadow-primary/20 flex items-center justify-center mx-auto mb-4 overflow-hidden p-2">
+                      <img
+                        src={profile?.logo_url || logo}
+                        className="h-full w-full object-contain opacity-50 transition-opacity group-hover:opacity-100"
+                        alt="Logo"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = logo;
+                        }}
+                      />
+                    </div>
+                    <h3 className="text-xl font-bold text-foreground mb-2 tracking-tight">No Past Services</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">Once your vehicle services are completed, they will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-muted-foreground before:to-transparent">
+                    {completedWorkOrders.map((order, idx) => (
+                      <div key={order.id} className="relative flex flex-col md:flex-row items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active mb-12">
+                        {/* Icon Circle */}
+                        <div className="flex items-center justify-center w-10 h-10 rounded-full border border-border bg-background text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500 z-10 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                          <CheckCircle2 className="h-5 w-5" />
+                        </div>
+
+                        {/* Content Card */}
+                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-background/40 border border-border backdrop-blur-md p-6 rounded-3xl group-hover:border-primary/20 transition-all duration-500">
+                          <div className="flex items-center justify-between mb-4">
+                            <time className="text-[10px] font-bold text-primary uppercase tracking-wider">{formatDate(order.created_at)}</time>
+                            <Badge variant="outline" className="border-border text-muted-foreground text-[9px] uppercase font-bold">Completed Service</Badge>
+                          </div>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="h-10 w-10 rounded-xl bg-background flex items-center justify-center border border-border">
+                              <Car className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <h4 className="text-foreground font-bold uppercase tracking-tight">{order.vehicle?.vehicle_number}</h4>
+                              <p className="text-xs text-muted-foreground font-medium">{order.vehicle?.model}</p>
+                            </div>
+                          </div>
+                          <h3 className="text-foreground font-bold mb-4 flex items-center gap-2">
+                            <Wrench className="h-4 w-4 text-primary" />
+                            {order.service_type}
+                          </h3>
+
+                          <div className="flex flex-wrap gap-2 mb-6">
+                            {order.services?.map((s: any, i: number) => (
+                              <Badge key={i} variant="secondary" className="bg-background text-muted-foreground border-border text-[10px] py-1">
+                                {s.service_type}
+                              </Badge>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center justify-between border-t border-border pt-4">
+                            <div className="flex -space-x-2">
+                              <div className="h-6 w-6 rounded-full bg-background border-2 border-background flex items-center justify-center" title="Systems Check">
+                                <Gauge className="h-3 w-3 text-muted-foreground" />
+                              </div>
+                              <div className="h-6 w-6 rounded-full bg-background border-2 border-background flex items-center justify-center" title="Verified">
+                                <ShieldCheck className="h-3 w-3 text-muted-foreground" />
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs font-bold text-muted-foreground hover:text-primary-foreground"
+                              onClick={() => setViewDetailOrder(order)}
+                            >
+                              View Details <ArrowRight className="h-3 w-3 ml-2" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="appointment_log" className="space-y-4">
+                <Card className="border-border bg-card/50 backdrop-blur-md">
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <History className="h-5 w-5 text-primary" />
+                          Appointment Log
+                        </CardTitle>
+                        <CardDescription>Log of all appointment-related actions</CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {selectedHistoryIds.length > 0 && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-8 font-bold text-[10px] uppercase tracking-wider shadow-lg shadow-red-500/20"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                                Delete ({selectedHistoryIds.length})
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Selected Records?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Permanently delete {selectedHistoryIds.length} selected records? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={async () => {
+                                    const { error } = await (supabase as any).from('appointment_history').update({ hidden_from_customer: true }).in('id', selectedHistoryIds);
+                                    if (!error) {
+                                      toast({ title: "Records deleted" });
+                                      setSelectedHistoryIds([]);
+                                      fetchData();
+                                    }
+                                  }}
+                                  className="bg-destructive hover:bg-destructive/90"
+                                >
+                                  Yes, Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-[10px] h-8 font-bold text-destructive hover:text-destructive hover:bg-destructive/10 uppercase tracking-wider"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                              Clear All
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Clear Entire History?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Permanently clear your ENTIRE activity history log? This cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={async () => {
+                                  const allHistoryIds = appointments.flatMap(a => (a.history || []).map((h: any) => h.id));
+                                  if (allHistoryIds.length === 0) return;
+                                  const { error } = await (supabase as any).from('appointment_history').update({ hidden_from_customer: true }).in('id', allHistoryIds);
+                                  if (!error) {
+                                    toast({ title: "Audit log cleared" });
+                                    setSelectedHistoryIds([]);
+                                    fetchData();
+                                  }
+                                }}
+                                className="bg-destructive hover:bg-destructive/90"
+                              >
+                                Clear All
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-2">
+                      {appointments.flatMap(a => (a.history || []).map((h: any) => ({ ...h, appointment: a })))
+                        .sort((a, b) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime())
+                        .map((h: any) => (
+                          <div
+                            key={h.id}
+                            className={cn(
+                              "flex items-center justify-between p-3 border rounded-xl transition-all group cursor-pointer",
+                              selectedHistoryIds.includes(h.id)
+                                ? "bg-primary/10 border-primary ring-1 ring-primary/20"
+                                : "border-border/50 bg-secondary/10 hover:bg-secondary/20 hover:border-border"
+                            )}
+                            onClick={() => {
+                              setSelectedHistoryIds(prev =>
+                                prev.includes(h.id) ? prev.filter(id => id !== h.id) : [...prev, h.id]
+                              );
+                            }}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "h-5 w-5 rounded border flex items-center justify-center transition-colors",
+                                selectedHistoryIds.includes(h.id) ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30 bg-background"
+                              )}>
+                                {selectedHistoryIds.includes(h.id) && <CheckCircle2 className="h-3.5 w-3.5" />}
+                              </div>
+                              <div className={`h-8 w-8 rounded-full flex items-center justify-center border shadow-sm ${h.action_type === 'created' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                                h.action_type === 'soft_deleted' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                                  'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                                }`}>
+                                {h.action_type === 'created' ? <Plus className="h-3.5 w-3.5" /> :
+                                  h.action_type === 'soft_deleted' ? <Trash2 className="h-3.5 w-3.5" /> :
+                                    <Activity className="h-3.5 w-3.5" />}
+                              </div>
+                              <div>
+                                <div className="text-xs font-bold text-foreground capitalize flex items-center gap-1.5 flex-wrap">
+                                  {h.action_type.replace('_', ' ')}
+                                  {h.new_status && <Badge variant="outline" className="h-4 px-1 text-[9px] lowercase leading-none">{h.new_status}</Badge>}
+                                  <span className="text-[9px] text-muted-foreground font-normal">
+                                    • {h.appointment?.vehicle?.vehicle_number || "No Vehicle"}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                  {format(new Date(h.changed_at), "PPP p")}
+                                </div>
+                              </div>
+                            </div>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Log Entry?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this individual log record?
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      (supabase as any).from('appointment_history').update({ hidden_from_customer: true }).eq('id', h.id).then(({ error }: any) => {
+                                        if (!error) {
+                                          toast({ title: "Record Hidden" });
+                                          fetchData();
+                                        }
+                                      });
+                                    }}
+                                    className="bg-destructive hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        ))}
+                      {(appointments.length === 0 || appointments.every(a => !a.history || a.history.length === 0)) && (
+                        <div className="py-12 text-center text-muted-foreground bg-secondary/5 rounded-2xl border border-dashed">
+                          <Inbox className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                          <p className="font-medium">No activity history found.</p>
+                          <p className="text-xs mt-1">Your interaction logs will appear here as you book appointments.</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           <TabsContent value="invoices" className="space-y-4">
@@ -1679,7 +2286,8 @@ export default function CustomerPortal() {
 
       {/* Payment Dialog */}
       <Dialog
-        open={!!payingInvoice || payingInvoices.length > 0}
+        open={!!payingInvoice || payingInvoices.length > 0
+        }
         onOpenChange={(open) => {
           if (!open) {
             setPayingInvoice(null);
@@ -1868,7 +2476,7 @@ export default function CustomerPortal() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog >
+      </Dialog>
 
       {/* Invoice Detail Dialog */}
       <Dialog open={!!viewingInvoice} onOpenChange={(open) => !open && setViewingInvoice(null)}>
@@ -1996,7 +2604,7 @@ export default function CustomerPortal() {
             <Button variant="outline" onClick={() => setViewingInvoice(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog >
+      </Dialog>
 
 
 
@@ -2210,7 +2818,7 @@ export default function CustomerPortal() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog >
+      </Dialog>
 
       {/* Vehicle History Modal */}
       <Dialog
@@ -2224,7 +2832,11 @@ export default function CustomerPortal() {
               Service History - {viewingVehicleHistory?.vehicleNumber}
             </DialogTitle>
             <CardDescription>
-              {viewingVehicleHistory?.history.length || 0} service record(s) found
+              {(() => {
+                // Pre-calculate unique checks
+                const uniqueIds = new Set(viewingVehicleHistory?.history.map((h: any) => h.work_order_id));
+                return uniqueIds.size || 0;
+              })()} service record(s) found
             </CardDescription>
           </DialogHeader>
 
@@ -2235,7 +2847,7 @@ export default function CustomerPortal() {
                 <div>
                   <h3 className="font-semibold text-lg">{viewingVehicleHistory.vehicleNumber}</h3>
                   <p className="text-sm text-muted-foreground">
-                    Total Services: {viewingVehicleHistory.history.length}
+                    Total Services: {new Set(viewingVehicleHistory.history.map((h: any) => h.work_order_id)).size}
                   </p>
                 </div>
                 {viewingVehicleHistory.history.length === 0 && (
@@ -2256,26 +2868,102 @@ export default function CustomerPortal() {
                     <TableHead>Status</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>Completion Date</TableHead>
+                    <TableHead>Bill Amount</TableHead>
                     <TableHead>Approved By</TableHead>
+                    <TableHead>Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {viewingVehicleHistory.history.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="font-medium">{record.service_type}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {record.work_summary || record.service_description || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{record.status}</Badge>
-                      </TableCell>
-                      <TableCell>{formatDate(record.service_date)}</TableCell>
-                      <TableCell>
-                        {record.delivery_date ? formatDate(record.delivery_date) : "-"}
-                      </TableCell>
-                      <TableCell>{record.approved_by || "-"}</TableCell>
-                    </TableRow>
-                  ))}
+                  {(() => {
+                    // Filter duplicates - keep the one with most info (e.g. approved_by populated)
+                    const uniqueHistory = viewingVehicleHistory.history.reduce((acc: any[], current: any) => {
+                      const existingIndex = acc.findIndex(item => item.work_order_id === current.work_order_id);
+                      if (existingIndex === -1) {
+                        acc.push(current);
+                      } else {
+                        // If current has approved_by and existing doesn't, replace it
+                        if (current.approved_by && !acc[existingIndex].approved_by) {
+                          acc[existingIndex] = current;
+                        }
+                        // Or if current has delivery_date and existing doesn't
+                        else if (current.delivery_date && !acc[existingIndex].delivery_date) {
+                          acc[existingIndex] = current;
+                        }
+                      }
+                      return acc;
+                    }, []);
+
+                    return uniqueHistory.map((record: any) => {
+                      // Find invoice for this work order
+                      const recordInvoice = invoices.find(inv => inv.work_order_id === record.work_order_id);
+                      // Find approver name
+                      const approver = employees.find(e => e.id === record.approved_by || e.user_id === record.approved_by);
+
+                      // Calculate paid/deducted
+                      // Check for linked payments via payment_links first (fetched in `fetchData` but we only have invoices here)
+                      // Ideally we'd have the fully processed invoice with paid_amount attached.
+                      // Let's rely on the recordInvoice which we can enhance or use what we have.
+
+                      // Actually, fetching logic for invoices was: 
+                      // invoicesRes = await supabase.from("invoices").select("*, payments(status)").eq("customer_id", customerId);
+                      // processedInvoices calculated `paid_amount` using `allLinks`
+                      // So we should use `recordInvoice.paid_amount` if available, or fall back to payments array.
+
+                      const paidAmount = (recordInvoice as any)?.paid_amount ||
+                        recordInvoice?.payments?.filter((p: any) => p.status === 'approved').reduce((sum: number, p: any) => sum + (p.amount_applied || p.amount || 0), 0) || 0;
+
+                      const deductionAmount = recordInvoice?.total_deductions || 0;
+
+                      return (
+                        <TableRow key={record.id}>
+                          <TableCell className="font-medium">
+                            {record.service_type}
+                            <div className="text-[10px] text-muted-foreground">{record.work_order_id ? record.work_order_id.slice(0, 8) : '-'}</div>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">
+                            {record.work_summary || record.service_description || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{record.status}</Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatDateTime(record.service_date)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {record.delivery_date ? formatDateTime(record.delivery_date) :
+                              (record.status === 'Completed' || record.status === 'Delivered') ? formatDateTime(record.created_at) : "-"}
+                          </TableCell>
+                          <TableCell>
+                            {recordInvoice ? (
+                              <div className="flex flex-col text-xs">
+                                <span className="font-bold">₹{recordInvoice.total.toLocaleString()}</span>
+                                <span className="text-green-600">Paid: ₹{paidAmount.toLocaleString()}</span>
+                                {deductionAmount > 0 && <span className="text-orange-600">Ded: ₹{deductionAmount.toLocaleString()}</span>}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {approver ? approver.name : (record.approved_by ? "Admin" : "-")}
+                          </TableCell>
+                          <TableCell>
+                            {recordInvoice && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => handleViewInvoice(recordInvoice)}
+                                title="View Details"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
                 </TableBody>
               </Table>
             </div>
@@ -2298,6 +2986,99 @@ export default function CustomerPortal() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Reschedule Request Dialog */}
+      <Dialog open={rescheduleDialogOpen} onOpenChange={setRescheduleDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Request Reschedule</DialogTitle>
+            <DialogDescription>
+              Select a new preferred date and provide a reason for the reschedule request.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {rescheduleAppointment && (
+              <div className="text-sm text-muted-foreground bg-secondary/30 p-3 rounded-lg">
+                <p><strong>Current Assigned Date:</strong> {format(new Date(rescheduleAppointment.scheduled_at), "PPP p")}</p>
+                {rescheduleAppointment.requested_date && (
+                  <p className="mt-1"><strong>Your Original Request:</strong> {format(new Date(rescheduleAppointment.requested_date), "PPP p")}</p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>New Preferred Date</Label>
+              <CalendarUI
+                mode="single"
+                selected={rescheduleDate}
+                onSelect={setRescheduleDate}
+                className="rounded-md border mx-auto"
+                disabled={(date) => date < new Date()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Reason for Reschedule</Label>
+              <Textarea
+                placeholder="Please explain why you need to reschedule..."
+                value={rescheduleReason}
+                onChange={(e) => setRescheduleReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRescheduleDialogOpen(false);
+                setRescheduleDate(undefined);
+                setRescheduleReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!rescheduleDate || !rescheduleReason.trim()) {
+                  toast({
+                    variant: "destructive",
+                    title: "Missing Information",
+                    description: "Please select a date and provide a reason."
+                  });
+                  return;
+                }
+
+                handleRequestReschedule(
+                  rescheduleAppointment.id,
+                  rescheduleDate,
+                  rescheduleReason
+                );
+
+                setRescheduleDialogOpen(false);
+                setRescheduleDate(undefined);
+                setRescheduleReason("");
+                setRescheduleAppointment(null);
+              }}
+              disabled={!rescheduleDate || !rescheduleReason.trim()}
+            >
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <BookAppointmentDialog
+        open={isBookingOpen}
+        onOpenChange={setIsBookingOpen}
+        customerId={customerId}
+        onSuccess={() => {
+          toast({ title: "Appointment Requested", description: "We will contact you shortly to confirm." });
+          fetchData(); // Refresh to see if we want to show pending appointments somewhere? (Not implemented yet in activeWorkOrders, maybe in a new tab or just notification)
+        }}
+      />
     </div>
   );
 }

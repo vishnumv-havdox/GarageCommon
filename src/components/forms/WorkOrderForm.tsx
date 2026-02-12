@@ -12,13 +12,14 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings } from "lucide-react"
+import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList } from "lucide-react"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
 import { format } from "date-fns"
 import { Calendar as CalendarIcon, Clock } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 import { calculateServicePrice, checkServiceApplicability } from "@/utils/pricingEngine"
 
 interface Customer {
@@ -82,6 +83,15 @@ interface WorkOrderFormProps {
   initialWorkOrderId?: string
   isReopening?: boolean
   reopenReason?: string
+  initialData?: {
+    customerId?: string
+    vehicleId?: string
+    serviceType?: string // Name of service
+    description?: string
+    serviceIds?: string[] // IDs of catalog items (not used directly unless mapped to service types)
+    serviceTypeNames?: string[] // Names of service types to select
+    requestedServices?: string[] // Original services requested by customer
+  }
 }
 
 export function WorkOrderForm({
@@ -89,7 +99,8 @@ export function WorkOrderForm({
   onCancel,
   initialWorkOrderId,
   isReopening = false,
-  reopenReason = ""
+  reopenReason = "",
+  initialData
 }: WorkOrderFormProps) {
   const { toast } = useToast()
 
@@ -324,9 +335,7 @@ export function WorkOrderForm({
     })
   }, [vehicleModels, newVehicleData.manufacturer_id, newVehicleData.vehicle_type_id])
 
-  useEffect(() => {
-    fetchAllData()
-  }, [])
+
 
   const fetchAllData = async () => {
     setLoadingCustomers(true)
@@ -440,9 +449,7 @@ export function WorkOrderForm({
       }
 
       // Set service types from DB
-      // Set service types from DB
       if (serviceTypesRes?.data) {
-        console.log("DEBUG SERVICE TYPES:", serviceTypesRes.data);
         setDbServiceTypes(serviceTypesRes.data)
       }
 
@@ -458,6 +465,11 @@ export function WorkOrderForm({
       setLoadingEmployees(false)
     }
   }
+
+  // Load master data on mount
+  useEffect(() => {
+    fetchAllData();
+  }, []);
 
   // Filter vehicles by customer
   const filteredVehicles = customerId
@@ -535,8 +547,6 @@ export function WorkOrderForm({
           newSections[serviceType] = {
             ...section,
             tasks: updatedTasks,
-            // If total tasks cost > 0, the sum will be recalculated by ServiceSection anyway,
-            // but we update it here for immediate snapshot consistency.
             cost: updatedTasks.length > 0 ? updatedTasks.reduce((sum, t) => sum + (t.price || 0), 0) : priceResult.calculatedPrice || 0,
             calculatedPrice: priceResult.calculatedPrice,
             basePrice: priceResult.basePrice,
@@ -581,7 +591,7 @@ export function WorkOrderForm({
       if (wo.estimated_delivery_date) {
         const date = new Date(wo.estimated_delivery_date);
         setEstimatedDeliveryDate(date);
-        setEstimatedDeliveryTime(format(date, "HH:mm"));
+        setEstimatedDeliveryTime(format(date, "h:mm a"));
       }
 
       setLifecycleData({
@@ -727,6 +737,36 @@ export function WorkOrderForm({
       setServiceSections(newSections)
     }
   }
+
+  // Handle Initial Data (from Appointment) - Moved here to avoid hoisting issues
+  useEffect(() => {
+    if (initialData && !isLoading && !loadingCustomers && !loadingVehicles) {
+      if (initialData.customerId) {
+        setCustomerId(initialData.customerId);
+      }
+      if (initialData.vehicleId) {
+        setVehicleId(initialData.vehicleId);
+        setLifecycleData(prev => ({ ...prev, odometer_reading: 0, next_service_due_km: 0 }));
+      }
+      if (initialData.description) {
+        setGeneralDescription(initialData.description);
+      }
+
+      // Handle services
+      if (initialData.serviceTypeNames && initialData.serviceTypeNames.length > 0) {
+        initialData.serviceTypeNames.forEach(name => {
+          const exists = dbServiceTypes.find(s => s.name === name);
+          if (exists && !selectedServices.includes(name)) {
+            handleServiceToggle(name, true);
+          }
+        });
+      } else if (initialData.serviceType && !selectedServices.includes(initialData.serviceType)) {
+        // Legacy or single service
+        const exists = dbServiceTypes.find(s => s.name === initialData.serviceType);
+        if (exists) handleServiceToggle(initialData.serviceType, true);
+      }
+    }
+  }, [initialData, isLoading, loadingCustomers, loadingVehicles, dbServiceTypes]);
 
   const handleAddCustomService = async () => {
     if (!newServiceName.trim()) return;
@@ -1604,6 +1644,36 @@ export function WorkOrderForm({
     return customer.company_name ? `${customer.name} (${customer.company_name})` : customer.name
   }
 
+  // Handle Initial Data (from Appointment) - Moved here to avoid hoisting issues
+  useEffect(() => {
+    if (initialData && !isLoading && !loadingCustomers && !loadingVehicles) {
+      if (initialData.customerId) {
+        setCustomerId(initialData.customerId);
+      }
+      if (initialData.vehicleId) {
+        setVehicleId(initialData.vehicleId);
+        setLifecycleData(prev => ({ ...prev, odometer_reading: 0, next_service_due_km: 0 }));
+      }
+      if (initialData.description) {
+        setGeneralDescription(initialData.description);
+      }
+
+      // Handle services
+      if (initialData.serviceTypeNames && initialData.serviceTypeNames.length > 0) {
+        initialData.serviceTypeNames.forEach(name => {
+          const exists = dbServiceTypes.find(s => s.name === name);
+          if (exists && !selectedServices.includes(name)) {
+            handleServiceToggle(name, true);
+          }
+        });
+      } else if (initialData.serviceType && !selectedServices.includes(initialData.serviceType)) {
+        // Legacy or single service
+        const exists = dbServiceTypes.find(s => s.name === initialData.serviceType);
+        if (exists) handleServiceToggle(initialData.serviceType, true);
+      }
+    }
+  }, [initialData, isLoading, loadingCustomers, loadingVehicles, dbServiceTypes]);
+
   const filteredCustomers = customers.filter(c =>
     getCustomerDisplayName(c).toLowerCase().includes(customerSearch.toLowerCase())
   )
@@ -1635,6 +1705,24 @@ export function WorkOrderForm({
               <div className="space-y-1">
                 <h4 className="font-bold text-orange-800">Reopen Reason</h4>
                 <p className="text-sm text-orange-700 italic">"{internalReopenReason}"</p>
+              </div>
+            </div>
+          )}
+
+          {initialData?.requestedServices && initialData.requestedServices.length > 0 && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6 flex items-start gap-4">
+              <div className="p-2 bg-blue-100 rounded-full">
+                <ClipboardList className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h4 className="font-bold text-blue-800 uppercase text-xs tracking-wider">Services Requested by Customer</h4>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {initialData.requestedServices.map((s, i) => (
+                    <Badge key={i} variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">
+                      {s}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </div>
           )}

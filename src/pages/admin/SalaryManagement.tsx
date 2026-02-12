@@ -488,7 +488,7 @@ export default function SalaryManagementPage() {
                                                                 </Badge>
                                                             </TableCell>
                                                             <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                                                {format(new Date(a.created_at), 'dd MMM yyyy HH:mm')}
+                                                                {format(new Date(a.created_at), 'dd MMM yyyy h:mm a')}
                                                             </TableCell>
                                                             <TableCell className="text-right">
                                                                 <Button

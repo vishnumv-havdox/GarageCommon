@@ -1227,7 +1227,7 @@ export default function StaffDashboard() {
                                                     <div className="flex items-center gap-1.5 mt-1">
                                                       <div className="h-1 w-1 rounded-full bg-emerald-500" />
                                                       <span className="text-[9px] font-bold text-primary/70 uppercase tracking-wider">
-                                                        Completed {format(new Date(task.completed_at), "HH:mm")}
+                                                        Completed {format(new Date(task.completed_at), "h:mm a")}
                                                       </span>
                                                     </div>
                                                   )}

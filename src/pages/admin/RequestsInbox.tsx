@@ -26,6 +26,7 @@ export default function RequestsInbox() {
 
     const [workApprovals, setWorkApprovals] = useState<any[]>([]);
     const [partRequests, setPartRequests] = useState<any[]>([]);
+    const [appointments, setAppointments] = useState<any[]>([]);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [payments, setPayments] = useState<any[]>([]);
 
@@ -97,6 +98,20 @@ export default function RequestsInbox() {
             if (payError) throw payError;
             setPayments(payData || []);
 
+            const { data: appData, error: appError } = await supabase
+                .from("appointments")
+                .select(`
+                    *,
+                    customer:customers(name, phone, company_name),
+                    vehicle:vehicles(vehicle_number, model),
+                    services:appointment_services(service_name)
+                `)
+                .eq("status", "pending")
+                .order("created_at", { ascending: false });
+
+            if (appError) throw appError;
+            setAppointments(appData || []);
+
         } catch (error: any) {
             console.error("Error fetching requests:", error);
             toast({
@@ -156,7 +171,7 @@ export default function RequestsInbox() {
             const { error } = await supabase.rpc('issue_part_request', {
                 _request_id: request.id,
                 _issued_qty: request.requested_qty,
-                _employee_id: emp.id
+                _employee_id: (emp as any).id
             });
             if (error) throw error;
             toast({ title: "Part Request Approved", description: "Inventory has been updated." });
@@ -261,6 +276,36 @@ export default function RequestsInbox() {
         }
     };
 
+    const handleApproveAppointment = async (app: any) => {
+        setProcessingId(app.id);
+        try {
+            const { error } = await (supabase.from("appointments") as any).update({ status: 'confirmed' }).eq("id", app.id);
+            if (error) throw error;
+            toast({ title: "Appointment Approved", description: `Appointment for ${app.customer?.name} confirmed.` });
+            await refreshCounts();
+            fetchRequests();
+            setProcessingId(null);
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+            setProcessingId(null);
+        }
+    };
+
+    const handleRejectAppointment = async (app: any) => {
+        setProcessingId(app.id);
+        try {
+            const { error } = await (supabase.from("appointments") as any).update({ status: 'rejected' }).eq("id", app.id);
+            if (error) throw error;
+            toast({ title: "Appointment Rejected", description: "The request has been rejected." });
+            await refreshCounts();
+            fetchRequests();
+            setProcessingId(null);
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+            setProcessingId(null);
+        }
+    };
+
     return (
         <div className="flex flex-col lg:flex-row min-h-screen bg-[#f8fafc] dark:bg-[#020617]">
             <AdminSidebar />
@@ -310,6 +355,17 @@ export default function RequestsInbox() {
                                 )}
                             </TabsTrigger>
                             <TabsTrigger
+                                value="appointments"
+                                className="px-6 py-2.5 rounded-xl data-[state=active]:bg-yellow-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all"
+                            >
+                                Appointments
+                                {appointments.length > 0 && (
+                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                        {appointments.length}
+                                    </Badge>
+                                )}
+                            </TabsTrigger>
+                            <TabsTrigger
                                 value="part-requests"
                                 className="px-6 py-2.5 rounded-xl data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all"
                             >
@@ -354,6 +410,34 @@ export default function RequestsInbox() {
                                                 onReject={() => handleRejectWorkOrder(wo)}
                                                 onView={() => navigate(`/admin/work-orders/${wo.id}`)}
                                                 loading={processingId === wo.id}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            {/* Appointments Content */}
+                            <TabsContent value="appointments" className="animate-in fade-in slide-in-from-left-4 duration-500 mt-0">
+                                {appointments.length === 0 ? (
+                                    <EmptyState icon={<Calendar className="w-10 h-10" />} title="All Caught Up" description="No new appointment requests to review." />
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {appointments.map((app) => (
+                                            <RequestCard
+                                                key={app.id}
+                                                accent="orange"
+                                                id={app.id}
+                                                title={app.customer?.name || "New Customer"}
+                                                subtitle={`${app.vehicle?.vehicle_number || "New Vehicle"} • ${app.vehicle?.model || ""}`}
+                                                description={app.notes}
+                                                meta={`Scheduled: ${format(new Date(app.scheduled_at), "MMM d, h:mm a")}`}
+                                                subMeta={app.customer?.company_name ? `Company: ${app.customer.company_name}` : undefined}
+                                                extraInfo={app.services?.map((s: any) => s.service_name).join(", ")}
+                                                date={app.created_at}
+                                                onApprove={() => handleApproveAppointment(app)}
+                                                onReject={() => handleRejectAppointment(app)}
+                                                onView={() => navigate(`/admin/appointments`)}
+                                                loading={processingId === app.id}
                                             />
                                         ))}
                                     </div>
@@ -555,7 +639,7 @@ function RequestCard({
             </div>
 
             <div className="absolute top-2 right-4 text-[10px] font-mono text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                {format(new Date(date), "HH:mm")}
+                {format(new Date(date), "h:mm a")}
             </div>
         </Card>
     );

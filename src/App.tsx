@@ -28,6 +28,8 @@ import AdminSettings from "./pages/admin/Settings";
 import AdminAttendance from "./pages/admin/Attendance";
 import AdminSalary from "./pages/admin/SalaryManagement";
 import AdminServices from "./pages/admin/ServicesMaster";
+import BookingCatalog from "./pages/admin/BookingCatalog";
+import Appointments from "./pages/admin/Appointments";
 import InventoryLogin from "./pages/inventory/Login";
 import InventoryRoom from "./pages/inventory/InventoryRoom";
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -67,6 +69,8 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/attendance": AdminAttendance,
   "/admin/salary": AdminSalary,
   "/admin/services": AdminServices,
+  "/admin/booking-catalog": BookingCatalog,
+  "/admin/appointments": Appointments,
   "/inventory": AdminInventory,
   "/inventory/login": InventoryLogin,
   "/inventory/room": InventoryRoom,
@@ -113,4 +117,3 @@ const App = () => (
 );
 
 export default App;
-

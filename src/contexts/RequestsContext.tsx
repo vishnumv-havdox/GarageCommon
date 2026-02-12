@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 interface RequestsContextType {
     pendingPartRequests: number;
     pendingWorkApprovals: number;
+    pendingAppointments: number;
     totalPending: number;
     refreshCounts: () => Promise<void>;
 }
@@ -16,6 +17,7 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
     const [pendingPartRequests, setPendingPartRequests] = useState(0);
     const [pendingWorkApprovals, setPendingWorkApprovals] = useState(0);
+    const [pendingAppointments, setPendingAppointments] = useState(0);
     const { toast } = useToast();
 
     const fetchCounts = useCallback(async () => {
@@ -42,6 +44,15 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
 
             if (woError) console.error("Error fetching work approvals count:", woError);
             setPendingWorkApprovals(woCount || 0);
+
+            // 3. Appointments (pending)
+            const { count: appCount, error: appError } = await supabase
+                .from("appointments")
+                .select("*", { count: 'exact', head: true })
+                .eq("status", "pending");
+
+            if (appError) console.error("Error fetching appointments count:", appError);
+            setPendingAppointments(appCount || 0);
 
         } catch (error) {
             console.error("Error fetching request counts:", error);
@@ -81,10 +92,25 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
                     filter: "status=eq.Pending Approval"
                 },
                 () => {
-                    fetchCounts();
                     toast({
                         title: "Work Order Pending Approval",
                         description: "A work order needs your approval.",
+                    });
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "appointments",
+                    filter: "status=eq.pending"
+                },
+                () => {
+                    fetchCounts();
+                    toast({
+                        title: "New Appointment Request",
+                        description: "A new appointment has been requested.",
                     });
                 }
             )
@@ -98,7 +124,8 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
     const value = {
         pendingPartRequests,
         pendingWorkApprovals,
-        totalPending: pendingPartRequests + pendingWorkApprovals,
+        pendingAppointments,
+        totalPending: pendingPartRequests + pendingWorkApprovals + pendingAppointments,
         refreshCounts: fetchCounts
     };
 

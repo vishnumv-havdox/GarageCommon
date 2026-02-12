@@ -833,6 +833,102 @@ export interface Database {
           created_at?: string
         }
       }
+      booking_catalog: {
+        Row: {
+          id: string
+          display_name: string
+          description: string | null
+          estimated_cost: number
+          is_active: boolean
+          service_type_id: string | null
+          vehicle_category_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          display_name: string
+          description?: string | null
+          estimated_cost?: number
+          is_active?: boolean
+          service_type_id?: string | null
+          vehicle_category_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          display_name?: string
+          description?: string | null
+          estimated_cost?: number
+          is_active?: boolean
+          service_type_id?: string | null
+          vehicle_category_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      appointments: {
+        Row: {
+          id: string
+          customer_id: string
+          vehicle_id: string | null
+          type: 'face_to_face' | 'service'
+          status: 'pending' | 'confirmed' | 'rejected' | 'converted' | 'completed' | 'cancelled'
+          scheduled_at: string
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          customer_id: string
+          vehicle_id?: string | null
+          type: 'face_to_face' | 'service'
+          status?: 'pending' | 'confirmed' | 'rejected' | 'converted' | 'completed' | 'cancelled'
+          scheduled_at: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          customer_id?: string
+          vehicle_id?: string | null
+          type?: 'face_to_face' | 'service'
+          status?: 'pending' | 'confirmed' | 'rejected' | 'converted' | 'completed' | 'cancelled'
+          scheduled_at?: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      appointment_services: {
+        Row: {
+          id: string
+          appointment_id: string
+          catalog_item_id: string | null
+          service_name: string
+          cost_estimate: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          appointment_id: string
+          catalog_item_id?: string | null
+          service_name: string
+          cost_estimate?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          appointment_id?: string
+          catalog_item_id?: string | null
+          service_name?: string
+          cost_estimate?: number
+          created_at?: string
+        }
+      }
     }
     Views: {
       employee_details: {

@@ -26,13 +26,13 @@ export interface TaskItem {
     price: number;
     isPredefined: boolean;
     appliedRuleName?: string;
+    completed?: boolean;
 }
 
 
 interface TaskSelectorProps {
     serviceType: string;
     availableTasks: TaskTemplate[];
-    tasks: TaskItem[];
     tasks: TaskItem[];
     onTasksChange: (tasks: TaskItem[]) => void;
     onCustomTaskAdd?: (name: string, price: number) => Promise<TaskTemplate | null>;

@@ -169,6 +169,18 @@ export const accessControlConfig: AccessRule[] = [
     redirectTo: "/dashboard",
     description: "Services Master management - admin and manager",
   },
+  {
+    path: "/admin/booking-catalog",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Customer-facing Service Catalog",
+  },
+  {
+    path: "/admin/appointments",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Appointment Management",
+  },
 
   {
     path: "/admin/requests",
@@ -300,6 +312,7 @@ export interface NavItem {
 export const navConfig: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", roles: ["admin", "staff", "customer"], end: true },
   { label: "Inbox", path: "/admin/requests", icon: Inbox, roles: ["admin", "manager"] },
+  { label: "Appointments", path: "/admin/appointments", icon: Calendar, roles: ["admin", "manager"] },
   { label: "Users", path: "/admin/users", icon: Shield, roles: ["admin"] },
   { label: "Employees", path: "/admin/employees", icon: UserCog, roles: ["admin"] },
   { label: "Customers", path: "/admin/customers", icon: Users, roles: ["admin", "manager"] },
@@ -317,6 +330,7 @@ export const navConfig: NavItem[] = [
   { label: "Attendance", path: "/admin/attendance", icon: CalendarCheck, roles: ["admin", "manager"] },
   { label: "Salary & Payouts", path: "/admin/salary", icon: Banknote, roles: ["admin", "manager"] },
   { label: "Services Master", path: "/admin/services", icon: Wrench, roles: ["admin", "manager"] },
+  { label: "Booking Catalog", path: "/admin/booking-catalog", icon: BookOpen, roles: ["admin", "manager"] },
   { label: "Access Control", path: "/admin/access-control", icon: Shield, roles: ["admin"] },
   { label: "Staff Portal", path: "/staff", icon: Briefcase, roles: ["staff"] },
   { label: "My Portal", path: "/customer", icon: User, roles: ["customer"] },
@@ -326,6 +340,5 @@ export const navConfig: NavItem[] = [
 import {
   Shield, UserCog, Users, Truck, FileText, Package, Receipt,
   Briefcase, User, Settings, Activity, BarChart3, PieChart, QrCode,
-  CalendarCheck, Banknote, Wrench, Inbox, BookText
+  CalendarCheck, Banknote, Wrench, Inbox, BookText, BookOpen, Calendar
 } from "lucide-react";
-

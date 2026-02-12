@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { format } from "date-fns";
-import { Calendar as CalendarIcon, Activity } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { Calendar as CalendarIcon, Activity, User, Building2, Car, Clock, ArrowRight, CalendarDays } from "lucide-react";
 import {
     Popover,
     PopoverContent,
@@ -9,9 +9,12 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 export const GarageClock: React.FC = () => {
     const [time, setTime] = useState(new Date());
+    const [appointments, setAppointments] = useState<any[]>([]);
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
     const [gear, setGear] = useState(1);
     const [shifterPos, setShifterPos] = useState({ x: -14, y: -14 });
     const [isShifting, setIsShifting] = useState(false);
@@ -83,12 +86,28 @@ export const GarageClock: React.FC = () => {
     };
 
     useEffect(() => {
+        const fetchAppointments = async () => {
+            const { data } = await supabase
+                .from('appointments')
+                .select(`
+                    id, 
+                    scheduled_at, 
+                    status, 
+                    customer:customers(name, company_name), 
+                    vehicle:vehicles(vehicle_number)
+                `)
+                .not('status', 'in', '("cancelled","rejected")');
+            if (data) setAppointments(data);
+        };
+        fetchAppointments();
+    }, []);
+
+    useEffect(() => {
         requestRef.current = requestAnimationFrame(animate);
         return () => {
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
         };
     }, [gear, isShifting]);
-
 
     // --- SVG GAUGE CONFIG ---
     const startAngle = -120;
@@ -155,7 +174,7 @@ export const GarageClock: React.FC = () => {
     return (
         <div className="relative p-1 rounded-3xl bg-white shadow-xl border border-slate-200 select-none group inline-block">
 
-            <div className="relative bg-white/50 backdrop-blur-md rounded-[1.3rem] p-3 flex items-center gap-4 overflow-hidden h-32 border border-slate-100">
+            <div className="relative bg-white/50 backdrop-blur-md rounded-[1.3rem] p-3 flex items-center gap-4 h-32 border border-slate-100">
 
                 {/* Visual Shifter (Left) */}
                 <div className="flex flex-col items-center justify-center z-10 w-24 scale-100">
@@ -284,13 +303,105 @@ export const GarageClock: React.FC = () => {
                                 </span>
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 border-none shadow-xl rounded-2xl overflow-hidden mr-10" align="center" side="left">
-                            <div className="bg-white border border-slate-100 p-4">
-                                <Calendar
-                                    mode="single"
-                                    selected={time}
-                                    className="rounded-xl border border-slate-100 bg-white text-slate-900"
-                                />
+                        <PopoverContent className="w-auto p-0 border-none shadow-2xl rounded-3xl overflow-hidden mr-10 z-[300]" align="center" side="left">
+                            <div className="flex bg-white/95 backdrop-blur-xl border border-slate-200 overflow-hidden min-h-[350px]">
+                                {/* Left Side: Calendar */}
+                                <div className="p-4 border-r border-slate-100 bg-slate-50/50">
+                                    <Calendar
+                                        mode="single"
+                                        selected={selectedDate}
+                                        onSelect={setSelectedDate}
+                                        className="rounded-xl bg-transparent text-slate-900"
+                                        modifiers={{
+                                            hasAppointment: (date) =>
+                                                appointments.some(app =>
+                                                    format(new Date(app.scheduled_at), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd') &&
+                                                    !['cancelled', 'rejected', 'completed'].includes(app.status)
+                                                )
+                                        }}
+                                        modifiersStyles={{
+                                            hasAppointment: {
+                                                fontWeight: 'bold',
+                                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                                color: '#3b82f6',
+                                                border: '1px solid rgba(59, 130, 246, 0.2)'
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Right Side: Appointment Details */}
+                                <div className="w-80 p-6 flex flex-col h-full bg-white">
+                                    <div className="flex items-center gap-2 mb-6">
+                                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                                            <CalendarDays className="h-4 w-4 text-primary" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-slate-900 leading-none">
+                                                {selectedDate ? format(selectedDate, "MMMM dd") : "Select Date"}
+                                            </h4>
+                                            <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider mt-1">Appointments</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 space-y-4 overflow-y-auto max-h-[300px] pr-2 scrollbar-hide">
+                                        {selectedDate && appointments.filter(app =>
+                                            format(new Date(app.scheduled_at), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') &&
+                                            !['cancelled', 'rejected', 'completed'].includes(app.status)
+                                        ).length > 0 ? (
+                                            appointments
+                                                .filter(app =>
+                                                    format(new Date(app.scheduled_at), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') &&
+                                                    !['cancelled', 'rejected', 'completed'].includes(app.status)
+                                                )
+                                                .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+                                                .map((app) => (
+                                                    <div key={app.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-3 group hover:border-primary/30 hover:bg-primary/5 transition-all duration-300">
+                                                        <div className="flex justify-between items-start">
+                                                            <div className="flex items-center gap-2 text-slate-900 font-bold text-xs uppercase tracking-tight">
+                                                                <Clock className="h-3 w-3 text-primary" />
+                                                                {format(new Date(app.scheduled_at), "h:mm a")}
+                                                            </div>
+                                                            <div className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                                                {formatDistanceToNow(new Date(app.scheduled_at), { addSuffix: true })}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="space-y-1.5 pt-1">
+                                                            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
+                                                                <User className="h-3 w-3 text-slate-400" />
+                                                                {app.customer?.name || 'Unknown Customer'}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                                                                <Building2 className="h-3 w-3 text-slate-400 opacity-70" />
+                                                                {app.customer?.company_name || 'Individual'}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium italic">
+                                                                <Car className="h-3 w-3 text-slate-400 opacity-70" />
+                                                                {app.vehicle?.vehicle_number || 'No Vehicle'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center h-40 text-center space-y-3 opacity-60">
+                                                <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
+                                                    <Activity className="h-5 w-5 text-slate-400" />
+                                                </div>
+                                                <p className="text-xs font-medium text-slate-500">No appointments scheduled for this date</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-4 pt-4 border-t border-slate-100">
+                                        <Button variant="ghost" className="w-full justify-between h-9 text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/5 rounded-xl group" asChild>
+                                            <a href="/admin/appointments">
+                                                View Schedule
+                                                <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-1" />
+                                            </a>
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
                         </PopoverContent>
                     </Popover>

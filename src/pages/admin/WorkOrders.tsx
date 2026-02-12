@@ -10,11 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  LogOut, Users, Shield, Plus, Search, ClipboardList,
   Trash2, Eye, ArrowLeft, Calendar, FileText, Wrench, IndianRupee,
   CheckCircle2, XCircle, Clock, User, Truck, RefreshCw, AlertTriangle,
   BarChart3, Activity, MoreVertical, Play, CheckCircle,
-  ClipboardCheck, Clock5
+  ClipboardCheck, Clock5, Plus
 } from "lucide-react";
 import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -41,6 +40,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 // Types
 interface WorkOrder {
@@ -173,6 +174,9 @@ export default function AdminWorkOrders() {
   const [searchParams] = useSearchParams();
   const urlFilter = searchParams.get('filter');
 
+  // Scheduled Appointments (Upcoming)
+  const [scheduledJobs, setScheduledJobs] = useState<any[]>([]);
+
   // Stats
   const [stats, setStats] = useState({
     pending: 0,
@@ -180,6 +184,8 @@ export default function AdminWorkOrders() {
     pendingApproval: 0,
     completed: 0
   });
+
+  const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
 
   // Reopen Dialog State
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
@@ -232,16 +238,26 @@ export default function AdminWorkOrders() {
 
       setWorkOrders(mapped as any);
 
-      // Calculate stats
       const pending = mapped.filter((o: WorkOrder) => o.status === "Pending").length;
       const inProgress = mapped.filter((o: WorkOrder) =>
-        o.status === "In Progress" || o.status === "Accepted"
+        ["In Progress", "Accepted", "Under QC", "Inspection", "Repair", "Review", "Quality Check"].includes(o.status)
       ).length;
       const pendingApproval = mapped.filter((o: WorkOrder) => o.status === "Pending Approval").length;
       const completed = mapped.filter((o: WorkOrder) =>
-        o.status === "Approved" || o.status === "Completed"
+        ["Approved", "Completed", "Delivered"].includes(o.status)
       ).length;
+
       setStats({ pending, inProgress, pendingApproval, completed });
+
+      // Fetch confirmed appointments as "Scheduled Jobs"
+      const { data: appData } = await supabase
+        .from('appointments')
+        .select('*, customer:customers(name, company_name), vehicle:vehicles(vehicle_number, model)')
+        .eq('status', 'confirmed')
+        .order('scheduled_at', { ascending: true });
+
+      if (appData) setScheduledJobs(appData);
+
     } catch (error: any) {
       console.error("Fetch error:", error);
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -303,8 +319,14 @@ export default function AdminWorkOrders() {
 
   const handleFormSuccess = () => {
     setShowForm(false);
+    setSelectedAppointment(null);
     fetchWorkOrders();
     toast({ title: "Success", description: "Work order created successfully" });
+  };
+
+  const handleOpenJobCard = (app: any) => {
+    setSelectedAppointment(app);
+    setShowForm(true);
   };
 
   const filteredOrders = useMemo(() => {
@@ -476,7 +498,69 @@ export default function AdminWorkOrders() {
             </Card>
           </div>
 
-          {showForm && <div className="mb-8"><WorkOrderForm onSuccess={handleFormSuccess} onCancel={() => setShowForm(false)} /></div>}
+
+          {showForm && (
+            <div className="mb-8 p-6 bg-card rounded-xl border-2 border-primary/20 shadow-xl animate-in slide-in-from-top-4 duration-300">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Plus className="h-5 w-5" />
+                  {selectedAppointment ? 'Convert Appointment to Work Order' : 'Create New Work Order'}
+                </h2>
+                <Button variant="ghost" size="sm" onClick={() => { setShowForm(false); setSelectedAppointment(null); }}>
+                  <XCircle className="h-4 w-4 mr-2" /> Cancel
+                </Button>
+              </div>
+              <WorkOrderForm
+                onSuccess={handleFormSuccess}
+                onCancel={() => { setShowForm(false); setSelectedAppointment(null); }}
+                initialData={selectedAppointment ? {
+                  customerId: selectedAppointment.customer?.id || selectedAppointment.customer_id,
+                  vehicleId: selectedAppointment.vehicle?.id || selectedAppointment.vehicle_id,
+                  description: selectedAppointment.notes,
+                  serviceTypeNames: selectedAppointment.services?.map((s: any) => s.service_name) || [],
+                  requestedServices: selectedAppointment.services?.map((s: any) => s.service_name) || []
+                } : undefined}
+              />
+            </div>
+          )}
+
+
+          {/* Scheduled Appointments Section */}
+          {scheduledJobs.length > 0 && (
+            <div className="mb-8 space-y-4">
+              <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
+                <Clock className="h-5 w-5" />
+                Next Scheduled Arrivals (Appointments)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {scheduledJobs.map(job => (
+                  <Card key={job.id} className="bg-primary/5 border-primary/20 hover:shadow-md transition-shadow border-l-4 border-l-primary pb-2">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <Badge className="bg-primary text-white">Confirmed</Badge>
+                        <span className="text-xs font-bold text-primary flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {format(new Date(job.scheduled_at), 'MMM d, h:mm a')}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-lg">{job.vehicle?.vehicle_number || "N/A"}</h4>
+                      <p className="text-sm text-muted-foreground mb-3">{job.customer?.name || "Unknown Customer"}</p>
+
+                      <div className="flex flex-col gap-2">
+                        <Button size="sm" className="h-8 bg-primary hover:bg-primary/90 text-white font-bold" onClick={() => handleOpenJobCard(job)}>
+                          CREATE JOB CARD NOW
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => navigate('/admin/appointments')}>
+                          Process in Appointments <ArrowLeft className="h-3 w-3 ml-1 rotate-180" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <Separator className="mt-6" />
+            </div>
+          )}
 
           <div className="mb-6 space-y-4">
             <div className="relative max-w-md flex-1">

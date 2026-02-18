@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
+import { checkDuplicatePhone, DuplicatePhoneResult } from "@/lib/duplicatePhoneCheck";
+import { DuplicatePhoneDialog } from "@/components/shared/DuplicatePhoneDialog";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList } from "lucide-react"
+import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User } from "lucide-react"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
 import { format } from "date-fns"
@@ -165,6 +169,7 @@ export function WorkOrderForm({
   // Form state
   const [customerId, setCustomerId] = useState("")
   const [vehicleId, setVehicleId] = useState("")
+  const [assignedTo, setAssignedTo] = useState("")
   const [priority, setPriority] = useState("Medium")
 
   const [generalDescription, setGeneralDescription] = useState("")
@@ -177,6 +182,25 @@ export function WorkOrderForm({
     next_service_due_km: 0,
     is_fc_renewal: false
   })
+
+  // Driver state
+  interface Driver {
+    id: string;
+    name: string;
+    contact_number?: string;
+    driver_position?: string;
+  }
+  const [driverSuggestions, setDriverSuggestions] = useState<Driver[]>([])
+  const [driverSearchOpen, setDriverSearchOpen] = useState(false)
+  const [driverSearch, setDriverSearch] = useState("")
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null)
+  const [driverName, setDriverName] = useState("")
+  const [driverContact, setDriverContact] = useState("")
+  const [driverPosition, setDriverPosition] = useState("")
+
+  // Duplicate phone detection state
+  const [duplicatePhoneData, setDuplicatePhoneData] = useState<DuplicatePhoneResult | null>(null)
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
 
   // Multi-service state
   const [selectedServices, setSelectedServices] = useState<string[]>([])
@@ -380,7 +404,7 @@ export function WorkOrderForm({
             )
           )
         `),
-        supabase.from('employees').select('id, name, email, position_id, access_level, status').eq('status', 'active'),
+        supabase.from('employees').select('id, name, email, phone, position_id, access_level, status').eq('status', 'active'),
         supabase.from('service_types').select('*').order('name'),
         supabase.from('task_templates').select('id, name, service_type_id, price, is_active').eq('is_active', true),
         supabase.from('vehicle_manufacturers').select('*').order('name'),
@@ -481,6 +505,42 @@ export function WorkOrderForm({
     setCustomerSearch("")
     setCustomerSearchOpen(false)
     setVehicleId("")
+
+    // Fetch driver suggestions for this customer/company
+    fetchDriverSuggestions(id)
+  }
+
+  const fetchDriverSuggestions = async (companyId: string) => {
+    try {
+      const { data, error } = await supabase.rpc('suggest_drivers', {
+        company_id_param: companyId,
+        search_term: ''
+      })
+
+      if (error) throw error
+      setDriverSuggestions(data || [])
+    } catch (error) {
+      console.error("Error fetching driver suggestions:", error)
+      setDriverSuggestions([])
+    }
+  }
+
+  const handleDriverSelect = (driver: Driver) => {
+    setSelectedDriverId(driver.id)
+    setDriverName(driver.name)
+    setDriverContact(driver.contact_number || "")
+    setDriverPosition(driver.driver_position || "")
+    setDriverSearch("")
+    setDriverSearchOpen(false)
+  }
+
+  const handleDriverNameChange = (value: string) => {
+    setDriverName(value)
+    setDriverSearch(value)
+    // Clear selected driver if user is typing new name
+    if (selectedDriverId && value !== driverSuggestions.find(d => d.id === selectedDriverId)?.name) {
+      setSelectedDriverId(null)
+    }
   }
 
   const handleVehicleSelect = async (id: string) => {
@@ -585,6 +645,7 @@ export function WorkOrderForm({
       // Update basic fields
       setCustomerId(wo.vehicles.customer_id);
       setVehicleId(wo.vehicle_id);
+      setAssignedTo(wo.assigned_to || "");
       setPriority(wo.priority);
       setGeneralDescription(wo.description);
 
@@ -670,6 +731,16 @@ export function WorkOrderForm({
       loadExistingWorkOrder(initialWorkOrderId);
     }
   }, [initialWorkOrderId, loadExistingWorkOrder]);
+
+  const { user } = useAuth()
+  useEffect(() => {
+    if (!initialWorkOrderId && user?.email && employees.length > 0 && !assignedTo) {
+      const currentEmployee = employees.find(e => e.email?.toLowerCase() === user.email?.toLowerCase())
+      if (currentEmployee) {
+        setAssignedTo(currentEmployee.id)
+      }
+    }
+  }, [initialWorkOrderId, user, employees, assignedTo])
 
 
 
@@ -1437,6 +1508,36 @@ export function WorkOrderForm({
       return
     }
 
+    // Validate driver information (mandatory)
+    if (!driverName || !driverName.trim()) {
+      toast({
+        title: "Driver Information Required",
+        description: "Please enter the driver's name",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!driverContact || !driverContact.trim()) {
+      toast({
+        title: "Driver Information Required",
+        description: "Please enter the driver's contact number",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validate driver phone number format
+    const phoneValidation = validateIndianPhoneNumber(driverContact);
+    if (!phoneValidation.isValid) {
+      toast({
+        title: "Invalid Phone Number",
+        description: phoneValidation.error || "Please enter a valid 10-digit Indian phone number",
+        variant: "destructive",
+      })
+      return
+    }
+
     // Combine Date and Time
     const deliveryDateTime = new Date(estimatedDeliveryDate);
     const [hours, minutes] = estimatedDeliveryTime.split(':').map(Number);
@@ -1448,6 +1549,7 @@ export function WorkOrderForm({
 
       const orderPayload: any = {
         vehicle_id: vehicleId,
+        assigned_to: assignedTo || null,
         service_type: mainServiceType,
         description: generalDescription || "No description provided",
         priority: priority,
@@ -1510,6 +1612,57 @@ export function WorkOrderForm({
         if (error) throw error
         if (!workOrder) throw new Error("Failed to create work order")
         workOrderId = workOrder.id;
+      }
+
+      // Handle Driver Assignment/Creation
+      let finalDriverId = selectedDriverId;
+
+      if (driverName && !selectedDriverId) {
+        // Create new driver if name provided but not selected from existing
+        try {
+          const { data: newDriver, error: driverError } = await supabase
+            .from('drivers')
+            .insert([{
+              company_id: customerId,
+              name: driverName.trim(),
+              contact_number: driverContact.trim() || null,
+              driver_position: driverPosition || 'Driver'
+            }])
+            .select()
+            .single();
+
+          if (driverError) {
+            // Check if it's a unique constraint violation (driver already exists)
+            if (driverError.code === '23505') {
+              console.log("Driver already exists, fetching existing driver");
+              const { data: existingDriver } = await supabase
+                .from('drivers')
+                .select('id')
+                .eq('company_id', customerId)
+                .eq('name', driverName.trim())
+                .eq('contact_number', driverContact.trim() || null)
+                .single();
+
+              if (existingDriver) {
+                finalDriverId = existingDriver.id;
+              }
+            } else {
+              console.error("Error creating driver:", driverError);
+            }
+          } else if (newDriver) {
+            finalDriverId = newDriver.id;
+          }
+        } catch (err) {
+          console.error("Driver creation error:", err);
+        }
+      }
+
+      // Update work order with driver_id
+      if (finalDriverId) {
+        await supabase
+          .from('work_orders')
+          .update({ driver_id: finalDriverId })
+          .eq('id', workOrderId);
       }
 
       // 2. Sync Service Sections
@@ -1892,13 +2045,155 @@ export function WorkOrderForm({
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label>General Description</Label>
+                {/* Driver Information Section */}
+                {customerId && (
+                  <div className="space-y-4 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                      <h4 className="font-bold text-base text-blue-900">Driver Information *</h4>
+                      <span className="text-xs text-red-600 font-semibold">(Required)</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      {/* Driver Name with Auto-Suggest */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700">Driver Name *</Label>
+                        <Popover open={driverSearchOpen} onOpenChange={setDriverSearchOpen}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className="w-full justify-between h-11 text-base border-2 hover:border-blue-400">
+                              {driverName || "Select or enter driver name..."}
+                              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0" align="start">
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Search or type new driver..."
+                                value={driverSearch}
+                                onValueChange={handleDriverNameChange}
+                              />
+                              <CommandList>
+                                {driverSuggestions.length === 0 && driverSearch && (
+                                  <CommandEmpty>
+                                    <div className="p-2 text-center">
+                                      <p className="text-sm text-muted-foreground mb-2">
+                                        No existing driver found. Type to add new.
+                                      </p>
+                                    </div>
+                                  </CommandEmpty>
+                                )}
+                                {driverSuggestions.length === 0 && !driverSearch && (
+                                  <CommandEmpty>No drivers found for this company.</CommandEmpty>
+                                )}
+                                {driverSuggestions.length > 0 && (
+                                  <CommandGroup heading="Existing Drivers">
+                                    {driverSuggestions
+                                      .filter(d => d.name.toLowerCase().includes(driverSearch.toLowerCase()))
+                                      .map((driver) => (
+                                        <CommandItem
+                                          key={driver.id}
+                                          value={driver.name}
+                                          onSelect={() => handleDriverSelect(driver)}
+                                          className="flex flex-col items-start cursor-pointer"
+                                        >
+                                          <span className="font-medium">{driver.name}</span>
+                                          <span className="text-xs text-muted-foreground">
+                                            {driver.driver_position || 'Driver'} • {driver.contact_number || 'No contact'}
+                                          </span>
+                                        </CommandItem>
+                                      ))}
+                                  </CommandGroup>
+                                )}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      {/* Driver Contact and Position - Grid Layout (only show if name is filled) */}
+                      {driverName && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Driver Contact */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold text-gray-700">Contact Number *</Label>
+                            <Input
+                              type="tel"
+                              placeholder="Enter driver contact number..."
+                              value={driverContact}
+                              onChange={async (e) => {
+                                // Only allow digits, max 10
+                                const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                setDriverContact(value);
+
+                                // Check for duplicates when 10 digits and valid
+                                if (value.length === 10 && /^[6-9]/.test(value)) {
+                                  const result = await checkDuplicatePhone(value);
+                                  if (result.isDuplicate) {
+                                    setDuplicatePhoneData(result);
+                                    setShowDuplicateDialog(true);
+                                  }
+                                }
+                              }}
+                              className={`h-11 text-base border-2 ${driverContact.length === 10 && /^[6-9]/.test(driverContact)
+                                ? 'border-green-500 focus-visible:ring-green-500'
+                                : driverContact.length === 10
+                                  ? 'border-destructive focus-visible:ring-destructive'
+                                  : driverContact.length > 0
+                                    ? 'border-blue-400 focus-visible:ring-blue-400'
+                                    : ''
+                                }`}
+                              maxLength={10}
+                              pattern="[0-9]*"
+                              inputMode="numeric"
+                            />
+                            {driverContact.length > 0 && (
+                              <p className={`text-xs ${driverContact.length === 10 && /^[6-9]/.test(driverContact)
+                                ? 'text-green-600'
+                                : driverContact.length === 10
+                                  ? 'text-destructive'
+                                  : 'text-muted-foreground'
+                                }`}>
+                                {driverContact.length === 10 && /^[6-9]/.test(driverContact)
+                                  ? '✓ Valid phone number'
+                                  : driverContact.length === 10
+                                    ? 'Must start with 6, 7, 8, or 9'
+                                    : `${driverContact.length}/10 digits`}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Driver Position */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold text-gray-700">Position/Role</Label>
+                            <Select value={driverPosition} onValueChange={setDriverPosition}>
+                              <SelectTrigger className="h-11 text-base border-2">
+                                <SelectValue placeholder="Select driver position..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Driver">Driver</SelectItem>
+                                <SelectItem value="Fleet Supervisor">Fleet Supervisor</SelectItem>
+                                <SelectItem value="Transport Manager">Transport Manager</SelectItem>
+                                <SelectItem value="Owner">Owner</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+
+                {/* General Description - Full Width */}
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-sm font-semibold text-gray-700">General Description</Label>
                   <Textarea
                     placeholder="Brief overview of the requested work..."
                     rows={2}
                     value={generalDescription}
                     onChange={(e) => setGeneralDescription(e.target.value)}
+                    className="resize-none"
                   />
                 </div>
 
@@ -1943,6 +2238,53 @@ export function WorkOrderForm({
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      Service Advisor
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {user?.email && employees.find(e => e.email === user.email) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[10px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => {
+                            const me = employees.find(e => e.email === user.email);
+                            if (me) setAssignedTo(me.id);
+                          }}
+                        >
+                          Set to Me
+                        </Button>
+                      )}
+                      {assignedTo && (
+                        <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                          Advisor Selected
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Select value={assignedTo} onValueChange={setAssignedTo}>
+                    <SelectTrigger className={!assignedTo ? "border-orange-500 bg-orange-50/30" : ""}>
+                      <SelectValue placeholder="Select Advisor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id}>
+                          {emp.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!assignedTo && (
+                    <p className="text-[10px] text-orange-600 font-medium italic">
+                      Please select the advisor for this work order
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -2635,6 +2977,28 @@ export function WorkOrderForm({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Duplicate Phone Dialog */}
+      {duplicatePhoneData && (
+        <DuplicatePhoneDialog
+          open={showDuplicateDialog}
+          onOpenChange={setShowDuplicateDialog}
+          duplicateData={duplicatePhoneData}
+          onContinue={() => {
+            // User wants to proceed with the existing driver
+            if (duplicatePhoneData.existingUser?.type === 'driver') {
+              setDriverName(duplicatePhoneData.existingUser.name);
+              setDriverContact(duplicatePhoneData.existingUser.phone);
+            }
+            setShowDuplicateDialog(false);
+          }}
+          onCancel={() => {
+            // Clear the phone number
+            setDriverContact('');
+            setShowDuplicateDialog(false);
+          }}
+        />
+      )}
     </div >
   )
 }

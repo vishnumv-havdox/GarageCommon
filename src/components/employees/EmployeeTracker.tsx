@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { format, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear, startOfDay, endOfDay } from "date-fns";
 import {
     Dialog,
     DialogContent,
@@ -25,7 +26,8 @@ import {
     Search,
     Filter,
     ExternalLink,
-    ListOrdered
+    ListOrdered,
+    Trash2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -98,6 +100,12 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [currentTime, setCurrentTime] = useState(Date.now());
+    const [timeRange, setTimeRange] = useState("month");
+    const [efficiency, setEfficiency] = useState<any>(null);
+    const [customDates, setCustomDates] = useState({
+        start: format(startOfMonth(new Date()), "yyyy-MM-dd"),
+        end: format(new Date(), "yyyy-MM-dd")
+    });
     const navigate = useNavigate();
 
     // Update current time every minute for live countdown
@@ -110,18 +118,113 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
         if (open && employee?.id) {
             fetchEmployeeData();
         }
-    }, [open, employee?.id]);
+    }, [open, employee?.id, timeRange, customDates]);
 
     const fetchEmployeeData = async () => {
         setLoading(true);
         try {
-            // 1. Fetch performance metrics
-            const { data: metricData } = await supabase
-                .from("employee_performance_metrics")
-                .select("*")
+            let startDate: Date;
+            let endDate = new Date();
+
+            switch (timeRange) {
+                case "day":
+                    startDate = startOfDay(new Date());
+                    endDate = endOfDay(new Date());
+                    break;
+                case "week":
+                    startDate = subDays(new Date(), 7);
+                    break;
+                case "month":
+                    startDate = startOfMonth(new Date());
+                    endDate = new Date(); // Cap at today for accurate "to date" calculation
+                    break;
+                case "year":
+                    startDate = startOfYear(new Date());
+                    endDate = new Date(); // Cap at today
+                    break;
+                case "custom":
+                    startDate = new Date(customDates.start);
+                    endDate = new Date(customDates.end);
+                    break;
+                default:
+                    startDate = startOfMonth(new Date());
+            }
+
+            const formattedStart = format(startDate, "yyyy-MM-dd");
+            const formattedEnd = format(endDate, "yyyy-MM-dd");
+
+            // 1. Fetch Efficiency Data (Manual Calculation to handle Approved/Completed status correctly)
+            // Fetch all approved/completed tasks for this employee within the date range
+            const { data: approvedTasks, error: approvedError } = await supabase
+                .from("work_order_service_employees")
+                .select(`
+                    id, 
+                    status, 
+                    created_at, 
+                    updated_at, 
+                    completed_at,
+                    service:work_order_services!inner(
+                        service_type, 
+                        estimated_cost
+                    )
+                `)
                 .eq("employee_id", employee.id)
-                .maybeSingle();
-            setMetrics(metricData);
+                .in("status", ["Approved", "Completed", "Done"]); // Handle all potential completion statuses
+
+            if (approvedError) {
+                console.error("Error fetching approved tasks:", approvedError);
+            }
+
+            // Fetch attendance for efficiency calculation (Worked Hours)
+            const { data: effAttendance } = await supabase
+                .from("attendance")
+                .select("total_hours, status")
+                .eq("employee_id", employee.id)
+                .gte("date", formattedStart)
+                .lte("date", formattedEnd);
+
+            // Calculate Metrics Locally
+            const totalWorkedHours = (effAttendance || []).reduce((sum, att) => sum + (att.total_hours || 0), 0);
+
+            // Filter tasks by date range using updated_at or completed_at
+            const relevantTasks = (approvedTasks || []).filter((t: any) => {
+                const completionDate = new Date(t.completed_at || t.updated_at);
+                return completionDate >= startDate && completionDate <= endDate;
+            });
+
+            // Benchmark: Use 1 hour per task as default.
+            const benchmarkPerTask = 1.0;
+            const earnedHours = relevantTasks.length * benchmarkPerTask;
+
+            const efficiencyScore = totalWorkedHours > 0 ? (earnedHours / totalWorkedHours) * 100 : 0;
+
+            // Availability: Days present / Total days in period
+            const daysPresent = (effAttendance || []).filter(a => ['present', 'overtime', 'half-day'].includes(a.status)).length;
+            const totalDaysInPeriod = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const availabilityScore = totalDaysInPeriod > 0 ? (daysPresent / totalDaysInPeriod) * 100 : 0;
+
+            let explanation = "";
+            if (totalWorkedHours === 0) {
+                explanation = "No attendance hours recorded in this period.";
+            } else if (relevantTasks.length === 0) {
+                explanation = "No completed tasks found in this period.";
+            } else {
+                const diff = (earnedHours - totalWorkedHours).toFixed(1);
+                const status = earnedHours >= totalWorkedHours ? "ahead of" : "behind";
+
+                explanation = `Completed ${relevantTasks.length} tasks (standard: ${earnedHours.toFixed(1)} hrs) in ${totalWorkedHours.toFixed(1)} actual working hours.`;
+            }
+
+            const effData = {
+                efficiency_score: efficiencyScore.toFixed(1),
+                availability_score: availabilityScore.toFixed(1),
+                total_hours_worked: totalWorkedHours.toFixed(1),
+                earned_hours: earnedHours.toFixed(1),
+                tasks_completed: relevantTasks.length,
+                days_present: daysPresent,
+                period_days: totalDaysInPeriod,
+                explanation: explanation
+            };
 
             // 2. Fetch work history with company info
             const { data: historyData } = await supabase
@@ -138,28 +241,70 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                         updated_at
                     )
                 `)
-                .eq("employee_id", employee.id);
+                .eq("employee_id", employee.id)
+                .gte("work_order.created_at", formattedStart)
+                .lte("work_order.created_at", formattedEnd);
 
             const sortedHistory = (historyData || []).sort((a: any, b: any) =>
                 new Date(b.work_order?.created_at).getTime() - new Date(a.work_order?.created_at).getTime()
             );
             setHistory(sortedHistory);
 
-            // 3. Fetch inventory usage
-            const { data: invData } = await supabase
+            // 3. Fetch inventory usage (Both Requested and Performed)
+            const { data: invData } = await (supabase as any)
                 .from("inventory_lifecycle_history")
                 .select("*")
-                .eq("performed_by_name", employee.name)
+                .or(`requested_by_name.eq."${employee.name}",performed_by_name.eq."${employee.name}"`)
+                .gte("transaction_date", formattedStart)
+                .lte("transaction_date", formattedEnd)
                 .order("transaction_date", { ascending: false });
             setInventory(invData || []);
+
+            // Aggregate metrics
+            const partsUsed = (invData || []).filter((i: any) => i.transaction_type === 'issue').length;
+            const partsReturned = (invData || []).filter((i: any) => i.transaction_type === 'return').length;
+
+            if (effData) {
+                setEfficiency(effData);
+
+                // Calculate actual average completion time from history data
+                const completedJobs = (historyData || []).filter((h: any) =>
+                    h.work_order?.status === 'Completed' || h.work_order?.status === 'delivered'
+                );
+                const totalActualHours = completedJobs.reduce((sum: number, h: any) => {
+                    const start = new Date(h.work_order.created_at).getTime();
+                    const end = new Date(h.work_order.updated_at).getTime();
+                    return sum + Math.max(0, (end - start) / (1000 * 60 * 60));
+                }, 0);
+                const actualAvg = completedJobs.length > 0 ? totalActualHours / completedJobs.length : 0;
+
+                setMetrics({
+                    total_jobs_completed: effData.tasks_completed,
+                    avg_completion_hours: actualAvg > 0 ? actualAvg : (Number(effData.earned_hours) / (Number(effData.tasks_completed) || 1)),
+                    total_parts_requested: partsUsed,
+                    total_parts_returned: partsReturned,
+                    days_present_30d: effData.days_present,
+                    overtime_hours_30d: 0
+                });
+            } else {
+                setMetrics({
+                    total_jobs_completed: 0,
+                    avg_completion_hours: 0,
+                    total_parts_requested: partsUsed,
+                    total_parts_returned: partsReturned,
+                    days_present_30d: 0,
+                    overtime_hours_30d: 0
+                });
+            }
 
             // 4. Fetch recent attendance
             const { data: attData } = await supabase
                 .from("attendance")
-                .select("*")
+                .select("*, auditor:profiles!attendance_marked_by_fkey(full_name)")
                 .eq("employee_id", employee.id)
-                .order("date", { ascending: false })
-                .limit(30);
+                .gte("date", formattedStart)
+                .lte("date", formattedEnd)
+                .order("date", { ascending: false });
             setAttendance(attData || []);
 
             // 5. Fetch active workload
@@ -185,8 +330,8 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
 
                 return {
                     ...wl,
-                    estimated_delivery_date: woData?.estimated_delivery_date,
-                    company_name: woData?.vehicles?.customers?.company_name
+                    estimated_delivery_date: (woData as any)?.estimated_delivery_date || null,
+                    company_name: (woData as any)?.vehicles?.customers?.company_name || null
                 };
             }));
 
@@ -197,7 +342,6 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                 const workOrderIds = Array.from(new Set(enrichedWorkload.map((w: any) => w.work_order_id)));
 
                 // Use work_order_tasks (singular, WO-level)
-                // Note: 'work_order_tasks' is the table name found in migration
                 const { data: tasksData } = await supabase
                     .from('work_order_tasks')
                     .select('*')
@@ -220,9 +364,23 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
         }
     };
 
-    const handleUpdatePosition = async (assignmentId: string, newPosition: number) => {
+    const handleDeleteAttendance = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this attendance record?")) return;
         try {
             const { error } = await supabase
+                .from("attendance")
+                .delete()
+                .eq("id", id);
+            if (error) throw error;
+            fetchEmployeeData();
+        } catch (error: any) {
+            console.error("Error deleting attendance:", error);
+        }
+    };
+
+    const handleUpdatePosition = async (assignmentId: string, newPosition: number) => {
+        try {
+            const { error } = await (supabase as any)
                 .from('work_order_service_employees')
                 .update({ queue_position: newPosition } as any)
                 .eq('id', assignmentId);
@@ -256,101 +414,183 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-primary" />
-                        Employee Tracker: {employee?.name}
-                    </DialogTitle>
-                    <DialogDescription>
-                        Performance KPIs, Work History, and Inventory Accountability
-                    </DialogDescription>
-                </DialogHeader>
+            <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto p-0 gap-0">
+                {/* 1. Header Section */}
+                <div className="p-6 border-b bg-muted/10">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <DialogHeader className="p-0">
+                            <DialogTitle className="flex items-center gap-3 text-xl">
+                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                    <TrendingUp className="h-5 w-5" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>{employee?.name}</span>
+                                    <span className="text-xs font-normal text-muted-foreground uppercase tracking-wider">{employee?.role || 'Staff Member'}</span>
+                                </div>
+                            </DialogTitle>
+                        </DialogHeader>
 
-                {loading ? (
-                    <div className="py-20 text-center text-muted-foreground">Loading activity data...</div>
-                ) : (
-                    <div className="space-y-6">
-                        {/* Quick Metrics */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <Card className="bg-primary/5 border-primary/10">
-                                <CardContent className="pt-4 p-4 text-center">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Jobs Completed</p>
-                                    <h3 className="text-2xl font-bold">{metrics?.total_jobs_completed || 0}</h3>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-primary/5 border-primary/10">
-                                <CardContent className="pt-4 p-4 text-center">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Time (Hrs)</p>
-                                    <h3 className="text-2xl font-bold">{metrics?.avg_completion_hours?.toFixed(1) || 0}</h3>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-primary/5 border-primary/10">
-                                <CardContent className="pt-4 p-4 text-center">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Parts Used</p>
-                                    <h3 className="text-2xl font-bold">{metrics?.total_parts_requested || 0}</h3>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-primary/5 border-primary/10">
-                                <CardContent className="pt-4 p-4 text-center">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Returns</p>
-                                    <h3 className="text-2xl font-bold">{metrics?.total_parts_returned || 0}</h3>
-                                </CardContent>
-                            </Card>
+                        {/* Toolbar */}
+                        <div className="flex items-center gap-2 bg-background p-1.5 rounded-lg border shadow-sm">
+                            <Select value={timeRange} onValueChange={setTimeRange}>
+                                <SelectTrigger className="h-8 w-[140px] text-xs border-0 bg-transparent focus:ring-0">
+                                    <Filter className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                                    <SelectValue placeholder="Time Range" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="day">Today</SelectItem>
+                                    <SelectItem value="week">Past 7 Days</SelectItem>
+                                    <SelectItem value="month">This Month</SelectItem>
+                                    <SelectItem value="year">This Year</SelectItem>
+                                    <SelectItem value="custom">Custom Range</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {timeRange === 'custom' && (
+                                <div className="flex items-center gap-1 border-l pl-2">
+                                    <Input
+                                        type="date"
+                                        className="h-7 w-[110px] text-[10px] p-1 border-0 bg-muted/20"
+                                        value={customDates.start}
+                                        onChange={(e) => setCustomDates({ ...customDates, start: e.target.value })}
+                                    />
+                                    <span className="text-muted-foreground text-[10px]">-</span>
+                                    <Input
+                                        type="date"
+                                        className="h-7 w-[110px] text-[10px] p-1 border-0 bg-muted/20"
+                                        value={customDates.end}
+                                        onChange={(e) => setCustomDates({ ...customDates, end: e.target.value })}
+                                    />
+                                </div>
+                            )}
                         </div>
+                    </div>
 
-                        <Tabs defaultValue="activity" className="w-full">
-                            <TabsList className="grid w-full grid-cols-3">
-                                <TabsTrigger value="activity">Performance & Attendance</TabsTrigger>
-                                <TabsTrigger value="queue">Active Work Queue</TabsTrigger>
-                                <TabsTrigger value="inventory">Inventory Tracker</TabsTrigger>
-                                <TabsTrigger value="history">Work History</TabsTrigger>
+                    {/* 2. Key Metrics Row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                        <div className="flex flex-col gap-1 p-3 bg-background rounded-lg border shadow-sm">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Jobs Completed</span>
+                            <div className="flex items-end justify-between">
+                                <span className="text-2xl font-bold">{metrics?.total_jobs_completed || 0}</span>
+                                <CheckCircle2 className="h-4 w-4 text-emerald-500 mb-1" />
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1 p-3 bg-background rounded-lg border shadow-sm">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Avg Time (Hrs)</span>
+                            <div className="flex items-end justify-between">
+                                <span className="text-2xl font-bold">{metrics?.avg_completion_hours?.toFixed(1) || 0}</span>
+                                <Clock className="h-4 w-4 text-blue-500 mb-1" />
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1 p-3 bg-background rounded-lg border shadow-sm">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Parts Issued</span>
+                            <div className="flex items-end justify-between">
+                                <span className="text-2xl font-bold">{metrics?.total_parts_requested || 0}</span>
+                                <Package className="h-4 w-4 text-orange-500 mb-1" />
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1 p-3 bg-background rounded-lg border shadow-sm">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Returns</span>
+                            <div className="flex items-end justify-between">
+                                <span className="text-2xl font-bold">{metrics?.total_parts_returned || 0}</span>
+                                <ArrowLeftRight className="h-4 w-4 text-purple-500 mb-1" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6">
+                    {loading ? (
+                        <div className="py-20 text-center text-muted-foreground">Loading activity data...</div>
+                    ) : (
+                        <Tabs defaultValue="overview" className="w-full space-y-6">
+                            <TabsList className="grid w-full grid-cols-4 lg:w-[600px] h-9 p-1 bg-muted/20">
+                                <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
+                                <TabsTrigger value="queue" className="text-xs">Active Queue</TabsTrigger>
+                                <TabsTrigger value="history" className="text-xs">History & Logs</TabsTrigger>
+                                <TabsTrigger value="inventory" className="text-xs">Inventory</TabsTrigger>
                             </TabsList>
 
-                            <TabsContent value="activity" className="space-y-4 pt-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Card>
+                            {/* TAB: OVERVIEW */}
+                            <TabsContent value="overview" className="space-y-6 focus-visible:ring-0">
+                                {efficiency && (
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <Card className="col-span-1 border-indigo-100 bg-indigo-50/10 shadow-sm">
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="text-sm font-medium text-indigo-900 flex items-center gap-2">
+                                                    <TrendingUp className="h-4 w-4 text-indigo-500" />
+                                                    Efficiency Score
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="flex flex-col items-center justify-center py-4">
+                                                    <div className="relative flex items-center justify-center h-32 w-32 rounded-full border-8 border-indigo-100 mb-4">
+                                                        <span className="text-3xl font-black text-indigo-700">{efficiency.efficiency_score}%</span>
+                                                    </div>
+                                                    <div className="w-full space-y-2">
+                                                        <div className="flex justify-between text-xs">
+                                                            <span className="text-muted-foreground">Availability</span>
+                                                            <span className="font-bold">{efficiency.availability_score}%</span>
+                                                        </div>
+                                                        <Progress value={efficiency.availability_score} className="h-1.5" />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card className="col-span-1 lg:col-span-2 shadow-sm">
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                                    <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                                    Performance Analysis
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4">
+                                                <div className="p-4 bg-muted/20 rounded-lg text-sm leading-relaxed">
+                                                    {efficiency.explanation}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="p-3 border rounded bg-card">
+                                                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Earned Hours</span>
+                                                        <span className="text-xl font-bold">{efficiency.earned_hours}h</span>
+                                                        <p className="text-[10px] text-muted-foreground mt-1">Based on benchmarks</p>
+                                                    </div>
+                                                    <div className="p-3 border rounded bg-card">
+                                                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Actual Hours</span>
+                                                        <span className="text-xl font-bold">{efficiency.total_hours_worked}h</span>
+                                                        <p className="text-[10px] text-muted-foreground mt-1">Clocked time</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <Card className="shadow-sm">
                                         <CardHeader>
                                             <CardTitle className="text-sm font-medium">Monthly Output Trends</CardTitle>
                                         </CardHeader>
-                                        <CardContent className="h-[200px]">
+                                        <CardContent className="h-[250px]">
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <BarChart data={chartData}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                    <XAxis dataKey="name" fontSize={12} />
-                                                    <YAxis fontSize={12} />
-                                                    <Tooltip />
-                                                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                                    <XAxis dataKey="name" fontSize={11} axisLine={false} tickLine={false} />
+                                                    <YAxis fontSize={11} axisLine={false} tickLine={false} />
+                                                    <Tooltip
+                                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                                        cursor={{ fill: 'transparent' }}
+                                                    />
+                                                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={40} />
                                                 </BarChart>
                                             </ResponsiveContainer>
-                                        </CardContent>
-                                    </Card>
-
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="text-sm font-medium">Recent Attendance</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                                                {attendance.length === 0 ? (
-                                                    <div className="text-sm text-center py-4 text-muted-foreground">No attendance records</div>
-                                                ) : (
-                                                    attendance.map((att) => (
-                                                        <div key={att.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted/50">
-                                                            <span className="font-medium">{att.date}</span>
-                                                            <Badge variant={att.status === 'present' ? 'default' : 'secondary'} className="text-[10px] h-4">
-                                                                {att.status}
-                                                            </Badge>
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
                                         </CardContent>
                                     </Card>
                                 </div>
                             </TabsContent>
 
-                            <TabsContent value="queue" className="pt-4 space-y-4">
+                            {/* TAB: QUEUE */}
+                            <TabsContent value="queue" className="space-y-4 focus-visible:ring-0">
                                 <Card>
                                     <CardHeader>
                                         <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -406,7 +646,7 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                                                                             <Badge variant="outline" className="text-[10px] uppercase">Pos: {group.queue_position}</Badge>
                                                                             <Badge className={`text-[10px] border-blue-100 hover:bg-blue-50 ${displayStatus === 'Accepted' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700'
                                                                                 }`}>
-                                                                                {displayStatus}
+                                                                                {String(displayStatus)}
                                                                             </Badge>
                                                                         </div>
 
@@ -437,7 +677,7 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                                                                                             title={task.task_name}
                                                                                         >
                                                                                             <div className={`w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-green-500' : 'bg-red-500'}`} />
-                                                                                            <span className="truncate max-w-[150px]">{task.task_name}</span>
+                                                                                            <span className="truncate max-w-[150px]">{String(task.task_name)}</span>
                                                                                         </div>
                                                                                     ))
                                                                                 ) : (
@@ -604,7 +844,7 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                                                                                 <TableCell className="py-2 font-medium">{row.item_name}</TableCell>
                                                                                 <TableCell className="py-2">
                                                                                     <Badge variant="outline" className={`flex w-fit items-center gap-1 text-[10px] h-5 ${row.transaction_type === 'issue' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' :
-                                                                                            row.transaction_type === 'return' ? 'text-blue-600 bg-blue-50 border-blue-200' : ''
+                                                                                        row.transaction_type === 'return' ? 'text-blue-600 bg-blue-50 border-blue-200' : ''
                                                                                         }`}>
                                                                                         {row.transaction_type === 'issue' && <CheckCircle2 className="h-2.5 w-2.5" />}
                                                                                         {row.transaction_type === 'return' && <ArrowLeftRight className="h-2.5 w-2.5" />}
@@ -710,8 +950,8 @@ export function EmployeeTracker({ employee, open, onOpenChange }: EmployeeTracke
                                 </Card>
                             </TabsContent>
                         </Tabs>
-                    </div>
-                )}
+                    )}
+                </div>
             </DialogContent>
         </Dialog>
     );

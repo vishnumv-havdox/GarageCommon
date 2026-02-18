@@ -221,6 +221,13 @@ export const accessControlConfig: AccessRule[] = [
     description: "Staff dashboard",
     exact: true,
   },
+  {
+    path: "/staff/attendance",
+    allowedRoles: ["staff", "admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Staff self-service attendance",
+    exact: true,
+  },
 
   // Customer routes
   {
@@ -333,6 +340,7 @@ export const navConfig: NavItem[] = [
   { label: "Booking Catalog", path: "/admin/booking-catalog", icon: BookOpen, roles: ["admin", "manager"] },
   { label: "Access Control", path: "/admin/access-control", icon: Shield, roles: ["admin"] },
   { label: "Staff Portal", path: "/staff", icon: Briefcase, roles: ["staff"] },
+  { label: "Attendance", path: "/staff/attendance", icon: CalendarCheck, roles: ["staff"] },
   { label: "My Portal", path: "/customer", icon: User, roles: ["customer"] },
 ];
 

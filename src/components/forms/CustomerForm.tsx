@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Users, CheckCircle } from "lucide-react";
 import { createUser, getUserConfig } from "@/config/userCreation";
+import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 
 interface CustomerFormProps {
   onSuccess: () => void;
@@ -59,6 +60,19 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
         variant: "destructive"
       });
       return;
+    }
+
+    // Validate phone number format
+    if (formData.phone) {
+      const phoneValidation = validateIndianPhoneNumber(formData.phone);
+      if (!phoneValidation.isValid) {
+        toast({
+          title: "Invalid Phone Number",
+          description: phoneValidation.error || "Please enter a valid 10-digit Indian phone number",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -136,7 +150,7 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2"><Label htmlFor="name">Customer Name *</Label><Input id="name" placeholder="Enter name" value={formData.name} onChange={(e) => handleChange("name", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label htmlFor="phone">Phone Number *</Label><Input id="phone" type="tel" placeholder="Phone number" value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} disabled={isLoading} /></div>
+            <div className="space-y-2"><Label htmlFor="phone">Phone Number *</Label><Input id="phone" type="tel" placeholder="Phone number" value={formData.phone} onChange={(e) => { const value = e.target.value.replace(/\D/g, '').slice(0, 10); handleChange("phone", value); }} disabled={isLoading} maxLength={10} pattern="[0-9]*" inputMode="numeric" /></div>
             <div className="space-y-2"><Label htmlFor="email">Email *</Label><Input id="email" type="email" placeholder="Enter email" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} disabled={isLoading || !!initialData} /></div>
             <div className="space-y-2"><Label htmlFor="password">Password {initialData ? "(Leave blank to keep)" : "*"}</Label><Input id="password" type="password" placeholder={initialData ? "Unchanged" : "Min 6 characters"} value={formData.password} onChange={(e) => handleChange("password", e.target.value)} disabled={isLoading} /></div>
             <div className="space-y-2"><Label htmlFor="company">Company Name</Label><Input id="company" placeholder="Company name" value={formData.company_name} onChange={(e) => handleChange("company_name", e.target.value)} disabled={isLoading} /></div>

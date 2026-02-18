@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Save, Building2, FileText, Settings as SettingsIcon, QrCode, Trash2 } from "lucide-react";
+import { Loader2, Save, Building2, FileText, Settings as SettingsIcon, QrCode, Trash2, Clock } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 
 export default function Settings() {
@@ -22,6 +22,7 @@ export default function Settings() {
     const [profile, setProfile] = useState<any>({});
     const [workSlipSettings, setWorkSlipSettings] = useState<any>({});
     const [invoiceSettings, setInvoiceSettings] = useState<any>({});
+    const [workforceSettings, setWorkforceSettings] = useState<any>({});
 
     useEffect(() => {
         fetchSettings();
@@ -53,6 +54,22 @@ export default function Settings() {
                 setWorkSlipSettings(settingsData.find((s: any) => s.doc_type === 'work_slip') || { doc_type: 'work_slip' });
                 setInvoiceSettings(settingsData.find((s: any) => s.doc_type === 'invoice') || { doc_type: 'invoice' });
             }
+
+            // Fetch Workforce Settings
+            const { data: workforceData, error: workforceError } = await supabase
+                .from('workforce_settings')
+                .select('*')
+                .eq('is_active', true)
+                .maybeSingle();
+
+            if (workforceError) throw workforceError;
+            if (workforceData) setWorkforceSettings(workforceData);
+            else setWorkforceSettings({
+                standard_start_time: '09:00:00',
+                standard_end_time: '18:00:00',
+                late_threshold_mins: 15,
+                standard_daily_hours: 8
+            });
         } catch (error: any) {
             console.error("Error fetching settings:", error);
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -78,9 +95,9 @@ export default function Settings() {
                 .limit(1)
                 .maybeSingle();
 
-            if (existing?.id) {
+            if (existing && (existing as any).id) {
                 // Update existing
-                await supabase.from('company_profiles').update(payload).eq('id', existing.id);
+                await supabase.from('company_profiles').update(payload).eq('id', (existing as any).id);
             } else {
                 // Insert new
                 await supabase.from('company_profiles').insert(payload);
@@ -105,12 +122,38 @@ export default function Settings() {
             delete payload.updated_at;
 
             if (settings.id) {
-                await supabase.from('document_settings').update(payload).eq('id', settings.id);
+                await supabase.from('document_settings').update(payload as any).eq('id', settings.id);
             } else {
-                await supabase.from('document_settings').insert(payload);
+                await supabase.from('document_settings').insert(payload as any);
             }
 
             toast({ title: "Saved", description: `${type === 'work_slip' ? 'Work Slip' : 'Invoice'} settings updated.` });
+            fetchSettings();
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSaveWorkforce = async () => {
+        setSaving(true);
+        try {
+            const payload = { ...workforceSettings, is_active: true };
+            const id = payload.id;
+            delete payload.id;
+            delete payload.created_at;
+            delete payload.updated_at;
+
+            if (id) {
+                const { error } = await supabase.from('workforce_settings').update(payload as any).eq('id', id);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.from('workforce_settings').insert(payload as any);
+                if (error) throw error;
+            }
+
+            toast({ title: "Saved", description: "Workforce settings updated." });
             fetchSettings();
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -137,6 +180,7 @@ export default function Settings() {
                     <Tabs defaultValue="profile" className="space-y-4">
                         <TabsList>
                             <TabsTrigger value="profile">Company Profile</TabsTrigger>
+                            <TabsTrigger value="workforce">Workforce</TabsTrigger>
                             <TabsTrigger value="workslip">Work Slip Config</TabsTrigger>
                             <TabsTrigger value="invoice">Invoice Config</TabsTrigger>
                             <TabsTrigger value="payment">Payment Config</TabsTrigger>
@@ -565,6 +609,102 @@ export default function Settings() {
 
                                     <Button onClick={handleSaveProfile} disabled={saving}>
                                         {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Settings
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                        {/* Workforce Settings Tab */}
+                        <TabsContent value="workforce">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Clock className="h-5 w-5" /> Workforce & Attendance Rules
+                                    </CardTitle>
+                                    <CardDescription>Configure standard working hours and attendance policies.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-4">
+                                            <h3 className="font-semibold border-b pb-2">Working Hours</h3>
+                                            <div className="grid grid-cols-2 gap-6">
+                                                {/* Session 1 */}
+                                                <div className="space-y-4 bg-muted/20 p-4 rounded-lg">
+                                                    <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">Session 1 (Morning)</span>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[10px]">Start</Label>
+                                                            <Input
+                                                                type="time"
+                                                                className="h-8"
+                                                                value={workforceSettings.session_1_start_time || '09:00'}
+                                                                onChange={e => setWorkforceSettings({ ...workforceSettings, session_1_start_time: e.target.value })}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[10px]">End</Label>
+                                                            <Input
+                                                                type="time"
+                                                                className="h-8"
+                                                                value={workforceSettings.session_1_end_time || '13:00'}
+                                                                onChange={e => setWorkforceSettings({ ...workforceSettings, session_1_end_time: e.target.value })}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Session 2 */}
+                                                <div className="space-y-4 bg-muted/20 p-4 rounded-lg">
+                                                    <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">Session 2 (Afternoon)</span>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[10px]">Start</Label>
+                                                            <Input
+                                                                type="time"
+                                                                className="h-8"
+                                                                value={workforceSettings.session_2_start_time || '14:00'}
+                                                                onChange={e => setWorkforceSettings({ ...workforceSettings, session_2_start_time: e.target.value })}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[10px]">End</Label>
+                                                            <Input
+                                                                type="time"
+                                                                className="h-8"
+                                                                value={workforceSettings.session_2_end_time || '18:00'}
+                                                                onChange={e => setWorkforceSettings({ ...workforceSettings, session_2_end_time: e.target.value })}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2 pt-2">
+                                                <Label>Standard Daily Hours (for Overtime calculation)</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="0.5"
+                                                    value={workforceSettings.standard_daily_hours || 8}
+                                                    onChange={e => setWorkforceSettings({ ...workforceSettings, standard_daily_hours: parseFloat(e.target.value) })}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <h3 className="font-semibold border-b pb-2">Attendance Policies</h3>
+                                            <div className="space-y-2">
+                                                <Label>Late Threshold (Minutes)</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={workforceSettings.late_threshold_mins || 15}
+                                                    onChange={e => setWorkforceSettings({ ...workforceSettings, late_threshold_mins: parseInt(e.target.value) })}
+                                                />
+                                                <p className="text-[10px] text-muted-foreground">Clock-ins after this many minutes from start time will be marked as 'Late'.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <Button onClick={handleSaveWorkforce} disabled={saving}>
+                                        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Workforce Rules
                                     </Button>
                                 </CardContent>
                             </Card>

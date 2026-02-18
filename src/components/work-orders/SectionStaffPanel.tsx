@@ -317,11 +317,9 @@ export function SectionStaffPanel({
                                             <div className="bg-background/50 p-1.5 rounded border border-primary/10">
                                                 <p className="text-[8px] font-bold text-muted-foreground uppercase">Active Jobs</p>
                                                 <p className="text-xs font-black text-blue-600">
-                                                    <p className="text-xs font-black text-blue-600">
-                                                        {lastCheckedId === emp.id
-                                                            ? getGroupedWorkload(employeeWorkload).length
-                                                            : '...'}
-                                                    </p>
+                                                    {lastCheckedId === emp.id
+                                                        ? getGroupedWorkload(employeeWorkload).length
+                                                        : '...'}
                                                 </p>
                                             </div>
                                             <div className="bg-background/50 p-1.5 rounded border border-primary/10">

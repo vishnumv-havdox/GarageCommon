@@ -39,9 +39,19 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { format } from "date-fns";
+import { format, isPast, isToday } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useRequests } from "@/contexts/RequestsContext";
+
 import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Types
 interface WorkOrder {
@@ -163,6 +173,7 @@ export default function AdminWorkOrders() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { urgentAppointments } = useRequests();
 
   // State
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -204,6 +215,12 @@ export default function AdminWorkOrders() {
 
   useEffect(() => { fetchWorkOrders(); }, []);
 
+  const [activeTab, setActiveTab] = useState<"active" | "completed">("active");
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: "created_at",
+    direction: "desc",
+  });
+
   const fetchWorkOrders = async () => {
     setLoading(true);
     try {
@@ -216,6 +233,12 @@ export default function AdminWorkOrders() {
             model, 
             customer_id,
             customers(name, phone, company_name)
+          ),
+          driver:drivers(
+            id,
+            name,
+            contact_number,
+            driver_position
           )
         `)
         .order("created_at", { ascending: false });
@@ -358,6 +381,17 @@ export default function AdminWorkOrders() {
       });
     }
 
+    // Filter by Active/Completed Tab
+    if (activeTab === 'active') {
+      filtered = filtered.filter(o =>
+        !['completed', 'delivered', 'approved', 'cancelled', 'rejected'].includes(o.status.toLowerCase())
+      );
+    } else {
+      filtered = filtered.filter(o =>
+        ['completed', 'delivered', 'approved', 'cancelled', 'rejected'].includes(o.status.toLowerCase())
+      );
+    }
+
     // Then filter by delivery date
     if (deliveryFilter !== 'all') {
       const now = currentTime;
@@ -391,14 +425,38 @@ export default function AdminWorkOrders() {
       });
     }
 
-    // Sort by delivery date (earliest first)
+    // Sort Logic
     return filtered.sort((a, b) => {
-      if (!a.estimated_delivery_date && !b.estimated_delivery_date) return 0;
-      if (!a.estimated_delivery_date) return 1;
-      if (!b.estimated_delivery_date) return -1;
-      return new Date(a.estimated_delivery_date).getTime() - new Date(b.estimated_delivery_date).getTime();
+      let comparison = 0;
+
+      switch (sortConfig.key) {
+        case 'priority':
+          const priorityOrder = { 'Urgent': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
+          const pA = priorityOrder[a.priority as keyof typeof priorityOrder] ?? 99;
+          const pB = priorityOrder[b.priority as keyof typeof priorityOrder] ?? 99;
+          comparison = pA - pB;
+          break;
+        case 'delivery':
+          if (!a.estimated_delivery_date && !b.estimated_delivery_date) comparison = 0;
+          else if (!a.estimated_delivery_date) comparison = 1;
+          else if (!b.estimated_delivery_date) comparison = -1;
+          else comparison = new Date(a.estimated_delivery_date).getTime() - new Date(b.estimated_delivery_date).getTime();
+          break;
+        case 'progress':
+          const stageOrder = ['Brief', 'Inspection', 'Estimation', 'Approval', 'Repair', 'Review', 'Quality Check', 'Delivery', 'Completed'];
+          const sA = stageOrder.indexOf(a.current_stage || '') !== -1 ? stageOrder.indexOf(a.current_stage || '') : 99;
+          const sB = stageOrder.indexOf(b.current_stage || '') !== -1 ? stageOrder.indexOf(b.current_stage || '') : 99;
+          comparison = sA - sB;
+          break;
+        case 'created_at':
+        default:
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+      }
+
+      return sortConfig.direction === 'asc' ? comparison : -comparison;
     });
-  }, [workOrders, searchTerm, deliveryFilter, currentTime]);
+  }, [workOrders, searchTerm, deliveryFilter, currentTime, activeTab, sortConfig]);
 
   const suggestions = useMemo(() => {
     const sets = [
@@ -499,6 +557,31 @@ export default function AdminWorkOrders() {
           </div>
 
 
+          {urgentAppointments > 0 && (
+            <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-center justify-between animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-full">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-red-800">Urgent: {urgentAppointments} Confirmed Appointment(s) Awaiting Job Card</h3>
+                  <p className="text-sm text-red-600">These vehicles have arrived or are arriving today. Please open job cards immediately.</p>
+                </div>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="font-bold"
+                onClick={() => {
+                  const el = document.getElementById('scheduled-arrivals');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                View Arrivals
+              </Button>
+            </div>
+          )}
+
           {showForm && (
             <div className="mb-8 p-6 bg-card rounded-xl border-2 border-primary/20 shadow-xl animate-in slide-in-from-top-4 duration-300">
               <div className="flex justify-between items-center mb-6">
@@ -527,111 +610,159 @@ export default function AdminWorkOrders() {
 
           {/* Scheduled Appointments Section */}
           {scheduledJobs.length > 0 && (
-            <div className="mb-8 space-y-4">
+            <div id="scheduled-arrivals" className="mb-8 space-y-4">
               <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
                 <Clock className="h-5 w-5" />
                 Next Scheduled Arrivals (Appointments)
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {scheduledJobs.map(job => (
-                  <Card key={job.id} className="bg-primary/5 border-primary/20 hover:shadow-md transition-shadow border-l-4 border-l-primary pb-2">
-                    <CardContent className="p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <Badge className="bg-primary text-white">Confirmed</Badge>
-                        <span className="text-xs font-bold text-primary flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {format(new Date(job.scheduled_at), 'MMM d, h:mm a')}
-                        </span>
-                      </div>
-                      <h4 className="font-bold text-lg">{job.vehicle?.vehicle_number || "N/A"}</h4>
-                      <p className="text-sm text-muted-foreground mb-3">{job.customer?.name || "Unknown Customer"}</p>
+                {scheduledJobs.map(job => {
+                  const isUrgent = isToday(new Date(job.scheduled_at)) || isPast(new Date(job.scheduled_at));
+                  return (
+                    <Card key={job.id} className={cn(
+                      "border-primary/20 hover:shadow-md transition-shadow border-l-4 pb-2",
+                      isUrgent ? "bg-red-50/50 border-l-red-500 shadow-sm" : "bg-primary/5 border-l-primary"
+                    )}>
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <Badge className={isUrgent ? "bg-red-600 text-white" : "bg-primary text-white"}>
+                            {isUrgent ? 'URGENT ARRIVAL' : 'Confirmed'}
+                          </Badge>
+                          <span className="text-xs font-bold text-primary flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {format(new Date(job.scheduled_at), 'MMM d, h:mm a')}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-lg">{job.vehicle?.vehicle_number || "N/A"}</h4>
+                        <div className="mb-3">
+                          <p className="text-sm font-semibold text-foreground">{job.customer?.name || "Unknown Customer"}</p>
+                          {job.customer?.company_name && (
+                            <p className="text-xs text-primary font-bold">{job.customer.company_name}</p>
+                          )}
+                        </div>
 
-                      <div className="flex flex-col gap-2">
-                        <Button size="sm" className="h-8 bg-primary hover:bg-primary/90 text-white font-bold" onClick={() => handleOpenJobCard(job)}>
-                          CREATE JOB CARD NOW
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => navigate('/admin/appointments')}>
-                          Process in Appointments <ArrowLeft className="h-3 w-3 ml-1 rotate-180" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <div className="flex flex-col gap-2">
+                          <Button size="sm" className="h-8 bg-primary hover:bg-primary/90 text-white font-bold" onClick={() => handleOpenJobCard(job)}>
+                            CREATE JOB CARD NOW
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => navigate('/admin/appointments')}>
+                            Process in Appointments <ArrowLeft className="h-3 w-3 ml-1 rotate-180" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
               <Separator className="mt-6" />
             </div>
           )}
 
           <div className="mb-6 space-y-4">
-            <div className="relative max-w-md flex-1">
-              <SearchInput
-                placeholder="Search work orders by type, vehicle, or customer..."
-                value={searchTerm}
-                onChange={setSearchTerm}
-                suggestions={suggestions}
-              />
-            </div>
+            <div className="flex flex-col md:flex-row gap-4 items-end md:items-center justify-between">
+              <div className="relative max-w-md flex-1 w-full">
+                <SearchInput
+                  placeholder="Search work orders..."
+                  value={searchTerm}
+                  onChange={setSearchTerm}
+                  suggestions={suggestions}
+                />
+              </div>
 
-            {/* Delivery Filter Tabs */}
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                variant={deliveryFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setDeliveryFilter('all')}
-                className="text-xs"
-              >
-                All Orders
-              </Button>
-              <Button
-                variant={deliveryFilter === 'overdue' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setDeliveryFilter('overdue')}
-                className={deliveryFilter === 'overdue' ? 'bg-red-600 hover:bg-red-700' : 'text-xs'}
-              >
-                <AlertTriangle className="h-3 w-3 mr-1" />
-                Overdue
-              </Button>
-              <Button
-                variant={deliveryFilter === 'completed' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setDeliveryFilter('completed')}
-                className={deliveryFilter === 'completed' ? 'bg-green-600 hover:bg-green-700' : 'text-xs'}
-              >
-                <CheckCircle2 className="h-3 w-3 mr-1" />
-                Completed
-              </Button>
-              <Button
-                variant={deliveryFilter === 'today' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setDeliveryFilter('today')}
-                className={deliveryFilter === 'today' ? 'bg-orange-600 hover:bg-orange-700' : 'text-xs'}
-              >
-                <Clock5 className="h-3 w-3 mr-1" />
-                Due Today
-              </Button>
-              <Button
-                variant={deliveryFilter === 'week' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setDeliveryFilter('week')}
-                className="text-xs"
-              >
-                <Calendar className="h-3 w-3 mr-1" />
-                Due This Week
-              </Button>
-              <Button
-                variant={deliveryFilter === 'none' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setDeliveryFilter('none')}
-                className="text-xs"
-              >
-                No Date Set
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={sortConfig.key}
+                  onValueChange={(value) => setSortConfig(prev => ({ ...prev, key: value }))}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="priority">Priority</SelectItem>
+                    <SelectItem value="delivery">Delivery Date</SelectItem>
+                    <SelectItem value="progress">Progress Stage</SelectItem>
+                    <SelectItem value="created_at">Created Date</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                  title={sortConfig.direction === 'asc' ? "Ascending" : "Descending"}
+                >
+                  {sortConfig.direction === 'asc' ? <ArrowLeft className="h-4 w-4 rotate-90" /> : <ArrowLeft className="h-4 w-4 -rotate-90" />}
+                </Button>
+              </div>
             </div>
           </div>
 
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="active" className="relative">
+                Active Orders
+                <Badge variant="secondary" className="ml-2 h-5 px-1.5 min-w-[20px]">{stats.pending + stats.inProgress + stats.pendingApproval}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="completed">
+                Completed / History
+                <Badge variant="secondary" className="ml-2 h-5 px-1.5 min-w-[20px]">{stats.completed}</Badge>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="active" className="space-y-4">
+              {/* Delivery Filter Tabs - Only custom ones for active */}
+              <div className="flex gap-2 flex-wrap mb-4">
+                <Button
+                  variant={deliveryFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setDeliveryFilter('all')}
+                  className="text-xs"
+                >
+                  All Active
+                </Button>
+                <Button
+                  variant={deliveryFilter === 'overdue' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setDeliveryFilter('overdue')}
+                  className={deliveryFilter === 'overdue' ? 'bg-red-600 hover:bg-red-700' : 'text-xs'}
+                >
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Overdue
+                </Button>
+                <Button
+                  variant={deliveryFilter === 'today' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setDeliveryFilter('today')}
+                  className={deliveryFilter === 'today' ? 'bg-orange-600 hover:bg-orange-700' : 'text-xs'}
+                >
+                  <Clock5 className="h-3 w-3 mr-1" />
+                  Due Today
+                </Button>
+                <Button
+                  variant={deliveryFilter === 'week' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setDeliveryFilter('week')}
+                  className="text-xs"
+                >
+                  <Calendar className="h-3 w-3 mr-1" />
+                  Due This Week
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="completed">
+              {/* No specific sub-filters for completed yet, maybe date range later */}
+            </TabsContent>
+          </Tabs>
+
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Work Orders ({filteredOrders.length})</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between py-4">
+              <div className="flex flex-col gap-1">
+                <CardTitle>Work Orders ({filteredOrders.length})</CardTitle>
+                <CardDescription>
+                  {activeTab === 'active' ? 'Manage ongoing service requests' : 'View past service history'}
+                </CardDescription>
+              </div>
               {urlFilter && (
                 <Button
                   variant="ghost"
@@ -698,6 +829,15 @@ export default function AdminWorkOrders() {
                               <span>
                                 <Truck className="h-3 w-3 inline mr-1" /> {order.vehicle?.vehicle_number}
                               </span>
+                              {(order as any).driver && (
+                                <span className="flex items-center gap-1">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                  <span className="font-medium text-foreground">{(order as any).driver.name}</span>
+                                  {(order as any).driver.driver_position && (
+                                    <span className="text-xs">({(order as any).driver.driver_position})</span>
+                                  )}
+                                </span>
+                              )}
                               {!['completed', 'approved', 'delivered'].includes(order.status.toLowerCase()) && order.estimated_delivery_date && (
                                 <span className={`flex items-center gap-1 font-semibold ${deliveryInfo.color}`}>
                                   <Clock5 className="h-3 w-3" />
@@ -793,7 +933,7 @@ export default function AdminWorkOrders() {
           </Card>
 
           {/* Reopen Dialog */}
-          <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+          < Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen} >
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">

@@ -44,11 +44,13 @@ import {
 } from 'recharts';
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { useRequests } from "@/contexts/RequestsContext";
 
 export default function AdminDashboard() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const { urgentAppointments } = useRequests();
 
   // Analytics State
   const [finData, setFinData] = useState<any>(null);
@@ -286,8 +288,16 @@ export default function AdminDashboard() {
                         <Wrench className="h-6 w-6" />
                       </div>
                     </div>
-                    <div className="mt-4 flex items-center gap-2 text-xs text-blue-100 font-medium">
-                      <Activity className="h-3 w-3" /> Vehicles currently on the floor
+                    <div className="mt-4 flex flex-col gap-2">
+                      <div className="flex items-center gap-2 text-xs text-blue-100 font-medium">
+                        <Activity className="h-3 w-3" /> Vehicles currently on the floor
+                      </div>
+                      {urgentAppointments > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-red-200 font-black animate-pulse bg-red-950/20 p-1.5 rounded-md border border-red-500/30">
+                          <AlertTriangle className="h-4 w-4 text-red-400" />
+                          {urgentAppointments} APPOINTMENTS NEED JOB CARDS
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

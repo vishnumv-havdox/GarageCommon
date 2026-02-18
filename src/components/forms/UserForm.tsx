@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Shield, CheckCircle } from "lucide-react";
 import { createUser, getUserConfig } from "@/config/userCreation";
+import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 
 interface UserFormProps {
   onSuccess: () => void;
@@ -34,6 +35,19 @@ export function UserForm({ onSuccess, onCancel }: UserFormProps) {
     if (formData.password.length < 6) {
       toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" });
       return;
+    }
+
+    // Validate phone number if provided
+    if (formData.phone) {
+      const phoneValidation = validateIndianPhoneNumber(formData.phone);
+      if (!phoneValidation.isValid) {
+        toast({
+          title: "Invalid Phone Number",
+          description: phoneValidation.error || "Please enter a valid 10-digit Indian phone number",
+          variant: "destructive"
+        });
+        return;
+      }
     }
     setIsLoading(true);
     const result = await createUser(USER_TYPE, {
@@ -66,7 +80,7 @@ export function UserForm({ onSuccess, onCancel }: UserFormProps) {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2"><Label htmlFor="fullName">Full Name *</Label><Input id="fullName" placeholder="Enter full name" value={formData.fullName} onChange={(e) => handleChange("fullName", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label htmlFor="phone">Phone Number</Label><Input id="phone" type="tel" placeholder="Phone number" value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} disabled={isLoading} /></div>
+            <div className="space-y-2"><Label htmlFor="phone">Phone Number</Label><Input id="phone" type="tel" placeholder="Phone number" value={formData.phone} onChange={(e) => { const value = e.target.value.replace(/\D/g, '').slice(0, 10); handleChange("phone", value); }} disabled={isLoading} maxLength={10} pattern="[0-9]*" inputMode="numeric" /></div>
             <div className="space-y-2"><Label htmlFor="email">Email *</Label><Input id="email" type="email" placeholder="Enter email address" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} disabled={isLoading} /></div>
             <div className="space-y-2"><Label htmlFor="password">Password *</Label><Input id="password" type="password" placeholder="Min 6 characters" value={formData.password} onChange={(e) => handleChange("password", e.target.value)} disabled={isLoading} /></div>
           </div>

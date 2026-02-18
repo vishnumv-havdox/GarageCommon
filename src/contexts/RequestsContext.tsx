@@ -7,6 +7,7 @@ interface RequestsContextType {
     pendingPartRequests: number;
     pendingWorkApprovals: number;
     pendingAppointments: number;
+    urgentAppointments: number;
     totalPending: number;
     refreshCounts: () => Promise<void>;
 }
@@ -18,6 +19,7 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
     const [pendingPartRequests, setPendingPartRequests] = useState(0);
     const [pendingWorkApprovals, setPendingWorkApprovals] = useState(0);
     const [pendingAppointments, setPendingAppointments] = useState(0);
+    const [urgentAppointments, setUrgentAppointments] = useState(0);
     const { toast } = useToast();
 
     const fetchCounts = useCallback(async () => {
@@ -53,6 +55,19 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
 
             if (appError) console.error("Error fetching appointments count:", appError);
             setPendingAppointments(appCount || 0);
+
+            // 4. Urgent Appointments (confirmed but no job card, scheduled <= today)
+            const today = new Date();
+            today.setHours(23, 59, 59, 999);
+
+            const { count: urgentCount, error: urgentError } = await supabase
+                .from("appointments")
+                .select("*", { count: 'exact', head: true })
+                .eq("status", "confirmed")
+                .lte("scheduled_at", today.toISOString());
+
+            if (urgentError) console.error("Error fetching urgent appointments count:", urgentError);
+            setUrgentAppointments(urgentCount || 0);
 
         } catch (error) {
             console.error("Error fetching request counts:", error);
@@ -103,15 +118,16 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
                 {
                     event: "*",
                     schema: "public",
-                    table: "appointments",
-                    filter: "status=eq.pending"
+                    table: "appointments"
                 },
-                () => {
+                (payload) => {
                     fetchCounts();
-                    toast({
-                        title: "New Appointment Request",
-                        description: "A new appointment has been requested.",
-                    });
+                    if (payload.eventType === 'INSERT' && (payload.new as any).status === 'pending') {
+                        toast({
+                            title: "New Appointment Request",
+                            description: "A new appointment has been requested.",
+                        });
+                    }
                 }
             )
             .subscribe();
@@ -125,7 +141,8 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
         pendingPartRequests,
         pendingWorkApprovals,
         pendingAppointments,
-        totalPending: pendingPartRequests + pendingWorkApprovals + pendingAppointments,
+        urgentAppointments,
+        totalPending: pendingPartRequests + pendingWorkApprovals + pendingAppointments + urgentAppointments,
         refreshCounts: fetchCounts
     };
 

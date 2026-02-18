@@ -78,13 +78,40 @@ interface VehicleData {
         phone: string;
         address: string;
         gst_number?: string;
+        company_name?: string;
     };
+}
+
+interface DriverData {
+    name: string;
+    contact_number?: string;
+}
+
+interface EmployeeAssignment {
+    id: string;
+    service_id: string;
+    employee: {
+        name: string;
+        position?: { name: string };
+    };
+    status: string;
 }
 
 interface WorkOrder {
     id: string;
     estimated_delivery_date?: string;
     vehicle: VehicleData;
+    driver?: DriverData;
+    service_type?: string;
+    description: string;
+    estimated_cost?: number;
+    advisor?: {
+        name: string;
+        phone?: string;
+    } | Array<{
+        name: string;
+        phone?: string;
+    }>;
 }
 
 interface InvoiceData {
@@ -98,6 +125,7 @@ interface InvoiceData {
 }
 
 interface LineItem {
+    id?: string;
     description: string;
     taxable_value: number;
     total: number;
@@ -115,8 +143,8 @@ interface SectionTotals {
     total: number;
 }
 
-export const generateWorkSlipPDF = async (workOrderId: string, action: 'save' | 'preview' = 'preview') => {
-    return generateDocument(workOrderId, 'work_slip', action);
+export const generateWorkSlipPDF = async (workOrderId: string, copyType: 'customer' | 'workshop' = 'customer', action: 'save' | 'preview' = 'preview') => {
+    return generateDocument(workOrderId, 'work_slip', action, copyType);
 };
 
 export const generateInvoicePDF = async (workOrderId: string, action: 'save' | 'preview' = 'preview') => {
@@ -130,17 +158,25 @@ class PDFGenerator {
     private currentY: number = 0;
     private isNewPage: boolean = false;
     private logoBase64: string = '';
+    private copyType: 'customer' | 'workshop' = 'customer';
+    private docType: 'work_slip' | 'invoice' = 'invoice';
 
-    constructor() {
+    constructor(copyType: 'customer' | 'workshop' = 'customer', docType: 'work_slip' | 'invoice' = 'invoice') {
         this.doc = new jsPDF();
         this.pageWidth = this.doc.internal.pageSize.width;
         this.pageHeight = this.doc.internal.pageSize.height;
+        this.copyType = copyType;
+        this.docType = docType;
     }
 
     private setStyle(fontSize: number, isBold: boolean = false, color: number[] = COLORS.darkText) {
         this.doc.setFont(FONTS.primary, isBold ? 'bold' : 'normal');
         this.doc.setFontSize(fontSize);
         this.doc.setTextColor(color[0], color[1], color[2]);
+    }
+
+    public getCurrentY(): number {
+        return this.currentY;
     }
 
     private drawRoundedRect(x: number, y: number, w: number, h: number, r: number = 3, fill: boolean = false) {
@@ -180,34 +216,35 @@ class PDFGenerator {
         // this.doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
         // this.doc.rect(0, 0, this.pageWidth, headerHeight, 'F');
 
-        const headerY = this.isNewPage ? 10 : 20;
+        const headerY = this.isNewPage ? 10 : 15;
 
         // Add logo if available and not continuation page
         let nameX = 15;
         if (this.logoBase64 && !this.isNewPage) {
             try {
-                this.doc.addImage(this.logoBase64, 'PNG', 15, headerY - 5, 15, 15);
-                nameX = 35;
+                this.doc.addImage(this.logoBase64, 'PNG', 15, headerY - 5, 12, 12);
+                nameX = 32;
             } catch (error) {
                 console.error('Failed to add logo:', error);
             }
         }
 
         // Company name (Left)
-        this.setStyle(this.isNewPage ? 16 : 22, true, COLORS.primary);
-        this.doc.text(company.company_name.toUpperCase(), nameX, headerY + 5);
+        this.setStyle(this.isNewPage ? 14 : 18, true, COLORS.primary);
+        this.doc.text(company.company_name.toUpperCase(), nameX, headerY + 2);
 
         // Document title (Left, below name, smaller)
-        this.setStyle(10, false, COLORS.secondary);
-        this.doc.text(isQuotation ? 'Quotation / Estimate' : 'Tax Invoice', nameX, headerY + 11);
+        this.setStyle(9, false, COLORS.secondary);
+        const docTitle = settings.title || (isQuotation ? 'Quotation / Estimate' : (type === 'invoice' ? 'Tax Invoice' : 'Work Slip'));
+        this.doc.text(docTitle, nameX, headerY + 7);
 
         // Company details (Left)
         if (!this.isNewPage) {
-            this.setStyle(9, false, COLORS.accent);
-            let detailY = headerY + 17;
+            this.setStyle(8, false, COLORS.accent);
+            let detailY = headerY + 12;
             if (company.address) {
                 this.doc.text(company.address, nameX, detailY);
-                detailY += 5;
+                detailY += 4;
             }
 
             const mainPhone = company.phone || '';
@@ -221,83 +258,156 @@ class PDFGenerator {
             this.doc.text(contactLine, nameX, detailY);
 
             if (ownerName) {
-                detailY += 5;
-                this.doc.text(`Owner: ${ownerName}`, nameX, detailY);
+                detailY += 4;
+                this.doc.text(`Proprietor: ${ownerName}`, nameX, detailY);
             }
         }
 
         // Right Side Info (Invoice No, Date)
         const rightX = this.pageWidth - 15;
-        let rightY = headerY + 5;
+        let rightY = headerY + 2;
 
         // Number Label
-        this.setStyle(8, true, COLORS.secondary);
-        this.doc.text(isQuotation ? 'QUOTATION NO' : 'INVOICE NO', rightX, rightY, { align: 'right' });
+        this.setStyle(7, true, COLORS.secondary);
+        this.doc.text(isQuotation ? 'QUOTATION NO' : (type === 'invoice' ? 'INVOICE NO' : 'SLIP NO'), rightX, rightY, { align: 'right' });
 
         // Number Value
-        this.setStyle(14, true, COLORS.primary);
-        this.doc.text(billNumberDisplay, rightX, rightY + 6, { align: 'right' });
+        this.setStyle(12, true, COLORS.primary);
+        this.doc.text(billNumberDisplay, rightX, rightY + 5, { align: 'right' });
 
-        rightY += 15;
+        rightY += 12;
 
         // Date Label
-        this.setStyle(8, true, COLORS.secondary);
+        this.setStyle(7, true, COLORS.secondary);
         this.doc.text('DATE', rightX, rightY, { align: 'right' });
 
         // Date Value
-        this.setStyle(10, true, COLORS.primary);
-        this.doc.text(format(new Date(), "d MMM yyyy"), rightX, rightY + 5, { align: 'right' });
+        this.setStyle(9, true, COLORS.primary);
+        this.doc.text(format(new Date(), "d MMM yyyy"), rightX, rightY + 4, { align: 'right' });
 
         // Bottom Border for Header
-        const lineY = headerY + 35;
+        const lineY = headerY + (this.isNewPage ? 10 : 25);
         this.doc.setDrawColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-        this.doc.setLineWidth(0.5);
+        this.doc.setLineWidth(0.3);
         this.doc.line(15, lineY, this.pageWidth - 15, lineY);
 
-        if (this.isNewPage) {
-            this.currentY = lineY + 10;
-        } else {
-            this.currentY = lineY + 10;
-        }
+        this.currentY = lineY + 8;
     }
 
     drawCustomerVehicleInfo(workOrder: WorkOrder) {
-        const boxWidth = (this.pageWidth / 2) - 20;
-        const boxHeight = 40;
+        const hasIntake = !!((workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person);
+        const boxHeight = hasIntake ? 32 : 28;
 
         // Draw Container Box (Light BG like Payslip)
         this.doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
         this.doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-        this.doc.roundedRect(15, this.currentY, this.pageWidth - 30, boxHeight + 10, 3, 3, 'FD');
+        this.doc.roundedRect(15, this.currentY, this.pageWidth - 30, boxHeight, 2, 2, 'FD');
 
-        // Customer Info (Left)
-        let contentY = this.currentY + 8;
-        this.setStyle(9, true, COLORS.accent);
-        this.doc.text("BILLED TO", 25, contentY);
+        // Column Widths (3-Column Layout)
+        const colWidth = (this.pageWidth - 40) / 3;
+        let contentY = this.currentY + 6;
 
-        this.setStyle(12, true, COLORS.primary);
-        this.doc.text(workOrder.vehicle?.customers?.name || 'N/A', 25, contentY + 6);
-
-        this.setStyle(9, false, COLORS.secondary);
-        if (workOrder.vehicle?.customers?.address) {
-            const lines = this.doc.splitTextToSize(workOrder.vehicle.customers.address, boxWidth);
-            this.doc.text(lines, 25, contentY + 11);
+        // Column 1: Customer Info
+        this.setStyle(7, true, COLORS.accent);
+        this.doc.text("BILLED TO", 20, contentY);
+        this.setStyle(9, true, COLORS.primary);
+        this.doc.text(workOrder.vehicle?.customers?.name || 'N/A', 20, contentY + 5);
+        this.setStyle(8, false, COLORS.secondary);
+        let currentRY = contentY + 9;
+        if (workOrder.vehicle?.customers?.company_name) {
+            this.doc.text(workOrder.vehicle.customers.company_name, 20, currentRY);
+            currentRY += 4;
+        }
+        if (workOrder.vehicle?.customers?.phone) {
+            this.doc.text(`Ph: ${workOrder.vehicle.customers.phone}`, 20, currentRY);
         }
 
-        // Vehicle Info (Right)
-        const vX = (this.pageWidth / 2) + 20;
-
-        this.setStyle(9, true, COLORS.accent);
+        // Column 2: Vehicle Details
+        const vX = 20 + colWidth;
+        this.setStyle(7, true, COLORS.accent);
         this.doc.text("VEHICLE DETAILS", vX, contentY);
+        this.setStyle(9, true, COLORS.primary);
+        this.doc.text(workOrder.vehicle?.vehicle_number || 'N/A', vX, contentY + 5);
+        this.setStyle(8, false, COLORS.secondary);
+        this.doc.text(`${workOrder.vehicle?.model || ''}`, vX, contentY + 9);
+        this.doc.text(`KM: ${workOrder.vehicle?.kilometers_driven || 'N/A'}`, vX, contentY + 13);
 
-        this.setStyle(12, true, COLORS.primary);
-        this.doc.text(workOrder.vehicle?.vehicle_number || 'N/A', vX, contentY + 6);
+        // Column 3: Order Info (Intake & Delivery)
+        const oX = 20 + (colWidth * 2);
+        this.setStyle(7, true, COLORS.accent);
+        this.doc.text("ORDER INFO", oX, contentY);
 
-        this.setStyle(9, false, COLORS.secondary);
-        this.doc.text(workOrder.vehicle?.model || '', vX, contentY + 11);
-        this.doc.text(`KM: ${workOrder.vehicle?.kilometers_driven || 'N/A'}`, vX, contentY + 16);
+        this.setStyle(8, true, COLORS.primary);
+        let currentOY = contentY + 5;
+        const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
+        const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
 
-        this.currentY += boxHeight + 20;
+        if (intake && intake.name) {
+            let assignedText = `Assigned By: ${intake.name}`;
+            if (intake.phone) {
+                assignedText += ` (${intake.phone})`;
+            }
+            this.doc.text(assignedText, oX, currentOY);
+            currentOY += 4;
+        } else if ((workOrder as any).assigned_to) {
+            // Fallback: If we have ID but no joined record, try to show the ID or just a placeholder
+            // This suggests a join/RLS issue
+            this.doc.text(`Assigned By ID: ${(workOrder as any).assigned_to.slice(0, 8)}`, oX, currentOY);
+            currentOY += 4;
+        }
+
+        this.setStyle(7, false, COLORS.secondary);
+        if (workOrder.estimated_delivery_date) {
+            this.doc.text(`Delivery: ${format(new Date(workOrder.estimated_delivery_date), "PPp")}`, oX, currentOY);
+            currentOY += 4;
+        }
+
+        if (workOrder.driver?.name) {
+            let driverText = `Driver: ${workOrder.driver.name}`;
+            if (workOrder.driver.contact_number) {
+                driverText += ` (${workOrder.driver.contact_number})`;
+            }
+            this.doc.text(driverText, oX, currentOY);
+        }
+
+        this.currentY += boxHeight + 8;
+    }
+
+    drawMainWorkTable(workOrder: WorkOrder) {
+        const isWorkshop = this.copyType === 'workshop';
+        const headers = [isWorkshop ? ['GENERAL WORK DESCRIPTION'] : ['GENERAL WORK DESCRIPTION', 'ESTIMATED TOTAL COST']];
+        const data = [isWorkshop ? [workOrder.description || 'General Service'] : [
+            workOrder.description || 'General Service',
+            `Rs. ${(workOrder.estimated_cost || 0).toLocaleString()}`
+        ]];
+
+        autoTable(this.doc, {
+            startY: this.currentY,
+            head: headers,
+            body: data,
+            theme: 'grid',
+            headStyles: {
+                fillColor: COLORS.primary,
+                textColor: COLORS.accent,
+                fontSize: 8,
+                fontStyle: 'bold',
+                halign: 'left'
+            },
+            bodyStyles: {
+                fontSize: 9,
+                textColor: COLORS.darkText,
+                cellPadding: 3
+            },
+            columnStyles: isWorkshop ? {
+                0: { cellWidth: 'auto' }
+            } : {
+                0: { cellWidth: 'auto' },
+                1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' }
+            },
+            margin: { left: 15, right: 15 }
+        });
+
+        this.currentY = (this.doc as any).lastAutoTable.finalY + 8;
     }
 
     drawSectionHeader(title: string, sectionNumber: string = '') {
@@ -312,65 +422,102 @@ class PDFGenerator {
         this.currentY += 8;
     }
 
-    drawItemsTable(items: LineItem[], sectionTitle: string, sectionNumber: string = 'I') {
+    drawItemsTable(items: LineItem[], sectionTitle: string, sectionNumber: string = 'I', assignments: EmployeeAssignment[] = []) {
         this.drawSectionHeader(sectionTitle, sectionNumber);
 
-        const startPage = this.doc.getNumberOfPages();
+        const isWorkshop = this.copyType === 'workshop';
+        const isCustomerSlip = this.copyType === 'customer' && this.docType === 'work_slip';
 
-        autoTable(this.doc, {
-            head: [['#', 'Description', 'HSN', 'Taxable Value', 'GST%', 'CGST', 'SGST', 'Total']],
-            body: items.map((item, index) => [
-                (index + 1).toString(),
-                item.description || 'Item',
-                item.hsn_code || '-',
-                `Rs. ${(item.taxable_value || 0).toFixed(2)}`,
-                `${item.gst_rate || 18}%`,
-                `Rs. ${(item.cgst_amount || 0).toFixed(2)}`,
-                `Rs. ${(item.sgst_amount || 0).toFixed(2)}`,
-                `Rs. ${(item.total || 0).toFixed(2)}`
-            ]),
-            startY: this.currentY,
-            theme: 'grid',
-            headStyles: {
-                fillColor: COLORS.white,
-                textColor: COLORS.secondary,
-                fontStyle: 'bold',
-                fontSize: 8,
-                lineWidth: 0,
-            },
-            bodyStyles: {
-                fontSize: 9,
-                textColor: COLORS.darkText,
-                cellPadding: 4,
-                lineWidth: 0
-            },
-            alternateRowStyles: {
-                fillColor: COLORS.white
-            },
-            margin: { top: 45 },
-            didDrawPage: (data) => {
-                if (data.pageNumber > startPage) {
-                    this.isNewPage = true;
-                    // You might want to redraw header here if needed
-                }
-            },
-            columnStyles: {
-                0: { cellWidth: 12, halign: 'center' },
-                3: { halign: 'right' },
-                5: { halign: 'right' },
-                6: { halign: 'right' },
-                7: { halign: 'right' }
-            },
-            styles: {
-                overflow: 'linebreak',
-                cellWidth: 'wrap'
+        let head: string[][];
+        if (isWorkshop) {
+            head = [['#', 'Service', 'Work Description', 'Assigned Staff', 'Status']];
+        } else if (isCustomerSlip) {
+            head = [['#', 'Description', 'Amount']];
+        } else {
+            head = [['#', 'Description', 'HSN', 'Taxable Value', 'GST%', 'CGST', 'SGST', 'Total']];
+        }
+
+        const body = items.map((item, index) => {
+            if (isWorkshop) {
+                const assignedStaff = assignments && assignments.length > 0
+                    ? assignments.map(a => (a.employee?.name || 'Staff').split(' ')[0]).join(", ")
+                    : 'General';
+
+                return [
+                    (index + 1).toString(),
+                    sectionTitle,
+                    item.description || 'Task',
+                    assignedStaff,
+                    "[ ] Done  [ ] Pending"
+                ];
+            } else if (isCustomerSlip) {
+                return [
+                    (index + 1).toString(),
+                    item.description || 'Item',
+                    `Rs. ${(item.total || 0).toFixed(2)}`
+                ];
+            } else {
+                return [
+                    (index + 1).toString(),
+                    item.description || 'Item',
+                    item.hsn_code || '-',
+                    `Rs. ${(item.taxable_value || 0).toFixed(2)}`,
+                    `${item.gst_rate || 18}%`,
+                    `Rs. ${(item.cgst_amount || 0).toFixed(2)}`,
+                    `Rs. ${(item.sgst_amount || 0).toFixed(2)}`,
+                    `Rs. ${(item.total || 0).toFixed(2)}`
+                ];
             }
         });
 
-        this.currentY = (this.doc as any).lastAutoTable.finalY + 12;
+        autoTable(this.doc, {
+            startY: this.currentY,
+            head: head,
+            body: body,
+            theme: 'grid',
+            headStyles: {
+                fillColor: COLORS.primary,
+                textColor: COLORS.accent,
+                fontSize: isWorkshop ? 7.5 : 8,
+                fontStyle: 'bold'
+            },
+            bodyStyles: {
+                fontSize: isWorkshop ? 7.5 : 8.5,
+                textColor: COLORS.darkText,
+                cellPadding: isWorkshop ? 1.5 : 2.5
+            },
+            columnStyles: isWorkshop ? {
+                0: { cellWidth: 10 },
+                1: { cellWidth: 30 },
+                2: { cellWidth: 'auto' },
+                3: { cellWidth: 30 },
+                4: { cellWidth: 35 }
+            } : isCustomerSlip ? {
+                0: { cellWidth: 15 },
+                1: { cellWidth: 'auto' },
+                2: { cellWidth: 40, halign: 'right' }
+            } : {
+                0: { cellWidth: 10 },
+                1: { cellWidth: 'auto' },
+                2: { cellWidth: 20 },
+                3: { cellWidth: 25 },
+                4: { cellWidth: 15 },
+                5: { cellWidth: 20 },
+                6: { cellWidth: 20 },
+                7: { cellWidth: 25 }
+            },
+            margin: { left: 15, right: 15 },
+            didDrawPage: (data) => {
+                this.currentY = data.cursor?.y || this.currentY;
+            }
+        });
+
+        this.currentY = (this.doc as any).lastAutoTable.finalY + 5;
     }
 
     drawSectionSummary(totals: SectionTotals, title: string) {
+        if (this.copyType === 'workshop' || (this.copyType === 'customer' && this.docType === 'work_slip')) return;
+
         const startX = this.pageWidth - 100;
 
         // Summary box
@@ -401,155 +548,127 @@ class PDFGenerator {
         showTaxes: boolean,
         isQuotation: boolean
     ) {
-        // Section title
-        this.setStyle(16, true, COLORS.primary);
-        this.doc.text("SUMMARY & FINAL SETTLEMENT", 15, this.currentY);
-        this.currentY += 20;
+        const isWorkshop = this.copyType === 'workshop';
+        const isCustomerSlip = this.copyType === 'customer' && this.docType === 'work_slip';
 
-        // Breakdown
-        this.setStyle(10, false, COLORS.darkText);
-        this.doc.text("Service Charges:", 15, this.currentY);
-        this.doc.text(`Rs. ${serviceTotals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY, { align: 'right' });
-        this.currentY += 8;
+        // Minimum space needed from bottom
+        const footerSpace = 45; // Terms and Signatures
+        const summarySpace = (isWorkshop || isCustomerSlip) ? 25 : 65;
+        const taxBankSpace = (showTaxes && !isQuotation && !isWorkshop && !isCustomerSlip) ? 35 : 0;
 
-        this.doc.text("Parts & Materials:", 15, this.currentY);
-        this.doc.text(`Rs. ${partTotals.total.toFixed(2)}`, this.pageWidth - 15, this.currentY, { align: 'right' });
-        this.currentY += 12;
+        const totalNeeded = footerSpace + summarySpace + taxBankSpace;
+        const targetStartY = this.pageHeight - totalNeeded;
 
-        // Divider
-        this.doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-        this.doc.line(15, this.currentY, this.pageWidth - 15, this.currentY);
-        this.currentY += 12;
+        // Push to bottom if there's room, otherwise draw where we are
+        if (this.currentY < targetStartY) {
+            this.currentY = targetStartY;
+        }
 
-        // Grand total box
-        this.doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-        this.doc.roundedRect(this.pageWidth - 85, this.currentY, 70, 20, 2, 2, 'F');
+        // --- Summary Line ---
+        this.setStyle(12, true, COLORS.primary);
+        this.doc.text(isWorkshop ? "WORK ORDER SUMMARY" : "SUMMARY & FINAL SETTLEMENT", 15, this.currentY);
+        this.currentY += 6;
 
-        this.setStyle(10, true, COLORS.accent); // Slate-400 equivalent
-        this.doc.text("NET PAYABLE", this.pageWidth - 80, this.currentY + 8);
+        if (!isWorkshop && !isCustomerSlip) {
+            // Horizontal Breakdown for Invoice
+            this.setStyle(9, false, COLORS.darkText);
+            const breakdownText = `Service: Rs. ${serviceTotals.total.toFixed(2)} | Parts: Rs. ${partTotals.total.toFixed(2)}`;
+            this.doc.text(breakdownText, 15, this.currentY);
 
-        this.setStyle(16, true, COLORS.white);
-        this.doc.text(`Rs. ${finalTotal.toFixed(0)}`, this.pageWidth - 20, this.currentY + 14, { align: 'right' });
+            // Grand total box (Right aligned)
+            this.doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+            this.doc.roundedRect(this.pageWidth - 75, this.currentY - 5, 60, 12, 2, 2, 'F');
 
-        this.currentY += 35;
+            this.setStyle(9, true, COLORS.accent);
+            this.doc.text("NET PAYABLE", this.pageWidth - 70, this.currentY + 1.5);
 
-        // Amount in words
-        this.setStyle(9, true, COLORS.darkText);
-        const amountInWords = toWords.convert(finalTotal);
-        const wordsLines = this.doc.splitTextToSize(
-            `Amount in Words: Rupees ${amountInWords}`,
-            this.pageWidth - 30
-        );
-        this.doc.text(wordsLines, 15, this.currentY);
-        this.currentY += (wordsLines.length * 5) + 15;
+            this.setStyle(11, true, COLORS.white);
+            this.doc.text(`Rs. ${finalTotal.toFixed(0)}`, this.pageWidth - 20, this.currentY + 1.5, { align: 'right' });
 
-        if (showTaxes && !isQuotation) {
-            this.drawTaxSummary(serviceTotals, partTotals);
-            this.drawBankDetails(company);
+            this.currentY += 10;
+
+            // Amount in words (Smaller)
+            this.setStyle(8, true, COLORS.darkText);
+            const amountInWords = toWords.convert(finalTotal);
+            const wordsLines = this.doc.splitTextToSize(`Rupees ${amountInWords} Only`, this.pageWidth - 90);
+            this.doc.text(wordsLines, 15, this.currentY);
+            this.currentY += (wordsLines.length * 4) + 4;
+
+            if (showTaxes && !isQuotation) {
+                this.drawSplitTaxAndBank(serviceTotals, partTotals, company);
+            }
+        } else if (isCustomerSlip) {
+            // Simplified total ONLY - Professional Centered Alignment
+            this.doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+            this.doc.roundedRect(this.pageWidth - 75, this.currentY - 5, 60, 10, 1, 1, 'F');
+
+            this.setStyle(9, true, COLORS.accent);
+            this.doc.text("FINAL TOTAL", this.pageWidth - 70, this.currentY + 1.5);
+
+            this.setStyle(11, true, COLORS.white);
+            this.doc.text(`Rs. ${finalTotal.toFixed(0)}`, this.pageWidth - 20, this.currentY + 1.5, { align: 'right' });
+
+            this.currentY += 12;
+        } else if (isWorkshop) {
+            this.setStyle(9, false, COLORS.secondary);
+            this.doc.text("Note: Pricing is hidden for workshop copy.", 15, this.currentY);
+            this.currentY += 10;
         }
     }
 
-    private drawTaxSummary(serviceTotals: SectionTotals, partTotals: SectionTotals) {
-        this.setStyle(10, true, COLORS.darkText);
-        this.doc.text("TAX SUMMARY", 15, this.currentY);
-        this.currentY += 8;
+    private drawSplitTaxAndBank(serviceTotals: SectionTotals, partTotals: SectionTotals, company: CompanyProfile) {
+        const boxY = this.currentY;
 
-        const totalTaxable = serviceTotals.taxable + partTotals.taxable;
-        const totalCGST = serviceTotals.cgst + partTotals.cgst;
-        const totalSGST = serviceTotals.sgst + partTotals.sgst;
-
-        autoTable(this.doc, {
-            head: [['Tax Component', 'Amount (Rs. )']],
-            body: [
-                ['Total Taxable Value', totalTaxable.toFixed(2)],
-                ['Total CGST (9%)', totalCGST.toFixed(2)],
-                ['Total SGST (9%)', totalSGST.toFixed(2)],
-                ['Total GST (18%)', (totalCGST + totalSGST).toFixed(2)]
-            ],
-            startY: this.currentY,
-            theme: 'grid',
-            headStyles: {
-                fillColor: [COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]],
-                textColor: COLORS.darkText,
-                fontStyle: 'bold'
-            },
-            bodyStyles: {
-                fontSize: 9
-            },
-            columnStyles: {
-                0: { cellWidth: 60, fontStyle: 'bold' },
-                1: { halign: 'right' }
-            },
-            margin: { left: this.pageWidth - 100 },
-            tableWidth: 85
-        });
-
-        this.currentY = (this.doc as any).lastAutoTable.finalY + 20;
-    }
-
-    private drawBankDetails(company: CompanyProfile) {
-        this.setStyle(10, true, COLORS.darkText);
-        this.doc.text("BANKING DETAILS", 15, this.currentY);
-        this.currentY += 8;
-
-        this.setStyle(9, false, COLORS.darkText);
-        if (company.acc_name) {
-            this.doc.text(`Account Name: ${company.acc_name}`, 15, this.currentY);
-            this.currentY += 6;
-        }
+        // Left Column: Bank Details
+        this.setStyle(8, true, COLORS.primary);
+        this.doc.text("BANKING DETAILS", 15, boxY);
+        this.setStyle(7.5, false, COLORS.darkText);
+        let bY = boxY + 5;
         if (company.acc_number) {
-            this.doc.text(`Account Number: ${company.acc_number}`, 15, this.currentY);
-            this.currentY += 6;
-        }
-        if (company.bank_name) {
-            this.doc.text(`Bank: ${company.bank_name}`, 15, this.currentY);
-            this.currentY += 6;
-        }
-        if (company.ifsc) {
-            this.doc.text(`IFSC: ${company.ifsc}`, 15, this.currentY);
-            this.currentY += 6;
-        }
-        if (company.upi_id) {
-            this.doc.text(`UPI ID: ${company.upi_id}`, 15, this.currentY);
-            this.currentY += 6;
+            this.doc.text(`A/C: ${company.acc_number} | IFSC: ${company.ifsc}`, 15, bY);
+            bY += 4;
+            this.doc.text(`Bank: ${company.bank_name} | UPI: ${company.upi_id || 'N/A'}`, 15, bY);
         }
 
-        this.currentY += 10;
+        // Right Column: Tax Summary (Mini Table)
+        const totalTaxable = serviceTotals.taxable + partTotals.taxable;
+        const totalGST = serviceTotals.cgst + partTotals.cgst + serviceTotals.sgst + partTotals.sgst;
+
+        this.setStyle(8, true, COLORS.primary);
+        this.doc.text("TAX SUMMARY", this.pageWidth / 2 + 10, boxY);
+        this.setStyle(7.5, false, COLORS.darkText);
+        this.doc.text(`Taxable Value: Rs. ${totalTaxable.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 5);
+        this.doc.text(`Total GST (18%): Rs. ${totalGST.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 9);
+
+        this.currentY += 15;
     }
 
     drawFooter(settings: DocumentSettings, type: 'work_slip' | 'invoice') {
-        const footerY = this.pageHeight - 60;
+        const footerY = this.pageHeight - 35;
 
-        // Terms and Conditions
+        // Terms and Conditions (Very small, one line if short)
         if (settings.terms_and_conditions) {
-            this.setStyle(8, true, COLORS.lightText);
-            this.doc.text("Terms & Conditions:", 15, footerY - 15);
-
-            this.setStyle(7, false, COLORS.lightText);
-            const termsLines = this.doc.splitTextToSize(settings.terms_and_conditions, this.pageWidth - 30);
+            this.setStyle(7, true, COLORS.lightText);
+            const termsLines = this.doc.splitTextToSize(`Terms: ${settings.terms_and_conditions}`, this.pageWidth - 30);
             this.doc.text(termsLines, 15, footerY - 10);
         }
 
         // Signatures
-        const signatureY = footerY + 10;
+        const signatureY = footerY + 8;
 
         // Customer signature
         this.doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-        this.doc.line(15, signatureY, 70, signatureY);
-        this.setStyle(8, false, COLORS.lightText);
-        this.doc.text("Customer Signature", 15, signatureY + 5);
+        this.doc.line(15, signatureY, 60, signatureY);
+        this.setStyle(7, false, COLORS.lightText);
+        this.doc.text("Customer Signature", 15, signatureY + 4);
 
         // Company signature
-        this.doc.line(this.pageWidth - 70, signatureY, this.pageWidth - 15, signatureY);
-        this.doc.text("Authorized Signature", this.pageWidth - 15, signatureY + 5, { align: 'right' });
-
-        // Footer bar (Simple line instead of filled rect)
-        this.doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-        this.doc.line(15, this.pageHeight - 15, this.pageWidth - 15, this.pageHeight - 15);
+        this.doc.line(this.pageWidth - 60, signatureY, this.pageWidth - 15, signatureY);
+        this.doc.text("Authorized Signature", this.pageWidth - 15, signatureY + 4, { align: 'right' });
 
         // Footer text
         if (settings.footer_text) {
-            this.setStyle(8, false, COLORS.white);
+            this.setStyle(7, false, COLORS.lightText);
             this.doc.text(
                 settings.footer_text,
                 this.pageWidth / 2,
@@ -559,7 +678,7 @@ class PDFGenerator {
         }
 
         // Page number
-        this.setStyle(8, false, COLORS.lightText);
+        this.setStyle(7, false, COLORS.lightText);
         this.doc.text(
             `Page ${this.doc.getNumberOfPages()} of ${this.doc.getNumberOfPages()}`,
             this.pageWidth - 15,
@@ -590,39 +709,73 @@ class PDFGenerator {
 const generateDocument = async (
     workOrderId: string,
     type: 'work_slip' | 'invoice',
-    action: 'save' | 'preview' = 'preview'
+    action: 'save' | 'preview' = 'preview',
+    copyType: 'customer' | 'workshop' = 'customer'
 ) => {
     try {
         // Fetch all required data
         const [
-            { data: profile },
-            { data: settingsData },
-            { data: workOrder },
-            { data: services },
-            { data: invoiceData },
-            { data: tasksData }
+            profileRes,
+            settingsRes,
+            workOrderRes,
+            servicesRes,
+            invoiceRes,
+            tasksRes
         ] = await Promise.all([
             supabase.from('company_profiles').select('*').limit(1).single(),
             supabase.from('document_settings').select('*').eq('doc_type', type).single(),
             supabase.from('work_orders').select(`
-        *,
-        vehicle:vehicles!vehicle_id(
-          vehicle_number, model, kilometers_driven, next_service_km, fc_expiry_date,
-          customers(name, phone, address, gst_number)
-        )
-      `).eq('id', workOrderId).single(),
-            supabase.from('work_order_services').select('*').eq('work_order_id', workOrderId),
-            supabase.from('invoices').select('*').eq('work_order_id', workOrderId).single(),
-            supabase.from('invoices').select('*').eq('work_order_id', workOrderId).single(),
+                *,
+                driver:drivers(name, contact_number),
+                advisor:employees!assigned_to(name, phone),
+                vehicle:vehicles!vehicle_id(
+                  vehicle_number, model, kilometers_driven, next_service_km, fc_expiry_date,
+                  customers(id, name, phone, address, company_name)
+                )
+            `).eq('id', workOrderId).single(),
+            supabase.from('work_order_services').select(`
+                *,
+                employees:work_order_service_employees(
+                    id, 
+                    employee_id, 
+                    status,
+                    employee:employees(name, position:positions(name))
+                )
+            `).eq('work_order_id', workOrderId),
+            supabase.from('invoices').select('*').eq('work_order_id', workOrderId).maybeSingle(),
             supabase.from('work_order_tasks').select('*').eq('work_order_id', workOrderId)
         ]);
 
-        if (!workOrder) {
+        const profile = profileRes.data as any;
+        const settingsData = settingsRes.data as any;
+        const workOrderData = workOrderRes.data;
+        const services = servicesRes.data;
+        const invoiceData = invoiceRes.data;
+        const tasksData = tasksRes.data;
+
+        if (!workOrderData) {
             throw new Error("Work Order not found");
         }
 
+        const workOrder = workOrderData as any;
+
+        // Flatten assignments from services
+        const assignments: EmployeeAssignment[] = [];
+        (services || []).forEach((s: any) => {
+            if (s.employees) {
+                s.employees.forEach((ae: any) => {
+                    assignments.push({
+                        id: ae.id,
+                        service_id: s.id,
+                        employee: ae.employee,
+                        status: ae.status
+                    });
+                });
+            }
+        });
+
         // Initialize PDF generator
-        const pdfGen = new PDFGenerator();
+        const pdfGen = new PDFGenerator(copyType, type);
         if (profile?.logo_url) {
             await pdfGen.loadLogo(profile.logo_url);
         }
@@ -632,11 +785,17 @@ const generateDocument = async (
         const invoice: any = invoiceData; // Cast to avoid 'never' type inference on invoiceData properties
 
         const settings: DocumentSettings = settingsData || {
-            title: type === 'invoice' ? 'TAX INVOICE' : 'WORK SLIP',
+            title: copyType === 'workshop' ? 'WORK SLIP (Workshop Copy)' : (type === 'invoice' ? 'TAX INVOICE' : 'WORK SLIP'),
             prefix: type === 'invoice' ? 'INV-' : 'WS-',
-            show_rates: true,
-            show_taxes: true
+            show_rates: copyType !== 'workshop',
+            show_taxes: copyType !== 'workshop'
         };
+
+        if (copyType === 'workshop') {
+            settings.title = 'WORK SLIP (Workshop Copy)';
+        } else if (type === 'work_slip') {
+            settings.title = 'WORK SLIP (Customer Copy)';
+        }
 
         const company: CompanyProfile = profile || {
             company_name: 'Service Center',
@@ -646,32 +805,33 @@ const generateDocument = async (
         };
 
         let finalItems: LineItem[] = [];
-        let billNumberDisplay = `${type === 'invoice' ? 'INV' : 'WS'}-${workOrder.id.slice(0, 8).toUpperCase()}`;
+        let billNumberDisplay = `${type === 'invoice' ? 'INV' : 'WS'}-${workOrder.id?.slice(0, 8).toUpperCase() || 'UNKNOWN'}`;
         let isQuotation = false;
         let finalTotal = 0;
 
         // Determine items and totals based on document type
         // Determine items and totals based on document type
         if (type === 'invoice' && invoice) {
-            isQuotation = invoice.type === 'quotation';
+            const inv = invoice as any;
+            isQuotation = inv.type === 'quotation';
             const { data: invItems } = await supabase
                 .from('invoice_items')
                 .select('*')
-                .eq('invoice_id', invoice.id);
+                .eq('invoice_id', inv.id);
 
             finalItems = (invItems || []) as LineItem[];
-            finalItems = (invItems || []) as LineItem[];
-            finalTotal = invoice.total || 0;
+            finalTotal = inv.total || 0;
 
-            if (isQuotation && invoice.quotation_number) {
-                billNumberDisplay = `QTN-${invoice.quotation_number}`;
-            } else if (invoice.bill_number) {
-                billNumberDisplay = `BILL-${invoice.bill_number}`;
+            if (isQuotation && inv.quotation_number) {
+                billNumberDisplay = `QTN-${inv.quotation_number}`;
+            } else if (inv.bill_number) {
+                billNumberDisplay = `BILL-${inv.bill_number}`;
             }
         } else {
             // For work slip or new invoice
             if (tasks.length > 0) {
                 finalItems = tasks.map((t: any) => ({
+                    id: t.id,
                     description: t.task_name || 'Task',
                     taxable_value: t.price || 0,
                     total: t.price || 0,
@@ -718,21 +878,32 @@ const generateDocument = async (
         pdfGen.drawCustomerVehicleInfo(workOrder);
 
         if (serviceItems.length > 0) {
-            pdfGen.drawItemsTable(serviceItems, 'Service Bill', 'I');
+            const serviceAssignments = assignments.filter(a => services?.some((s: any) => s.id === a.service_id));
+            pdfGen.drawItemsTable(serviceItems, 'Service Bill', 'I', serviceAssignments);
             pdfGen.drawSectionSummary(serviceTotals, 'Service');
         }
 
-        // --- PAGE 2: INVENTORY BILL ---
+        // --- INVENTORY BILL (No forced page break) ---
         if (partItems.length > 0) {
-            pdfGen.addPage();
-            pdfGen.drawHeader(company, settings, workOrder, isQuotation, billNumberDisplay, type);
+            // Only add page if less than 60 units of space left
+            if (pdfGen.getCurrentY() > 240) {
+                pdfGen.addPage();
+                pdfGen.drawHeader(company, settings, workOrder, isQuotation, billNumberDisplay, type);
+            } else {
+                pdfGen.setCurrentY(pdfGen.getCurrentY() + 5);
+            }
             pdfGen.drawItemsTable(partItems, 'Inventory Bill', 'II');
             pdfGen.drawSectionSummary(partTotals, 'Parts');
         }
 
-        // --- PAGE 3: FINAL SUMMARY ---
-        pdfGen.addPage();
-        pdfGen.drawHeader(company, settings, workOrder, isQuotation, billNumberDisplay, type);
+        // --- FINAL SUMMARY (No forced page break) ---
+        // Only add page if less than 80 units of space left for summary
+        if (pdfGen.getCurrentY() > 220) {
+            pdfGen.addPage();
+            pdfGen.drawHeader(company, settings, workOrder, isQuotation, billNumberDisplay, type);
+        } else {
+            pdfGen.setCurrentY(pdfGen.getCurrentY() + 5);
+        }
         pdfGen.drawFinalSummary(
             serviceTotals,
             partTotals,

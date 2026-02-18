@@ -33,6 +33,7 @@ import Appointments from "./pages/admin/Appointments";
 import InventoryLogin from "./pages/inventory/Login";
 import InventoryRoom from "./pages/inventory/InventoryRoom";
 import StaffDashboard from "./pages/staff/Dashboard";
+import StaffAttendance from "./pages/staff/StaffAttendance";
 import CustomerPortal from "./pages/customer/Portal";
 import NotFound from "./pages/NotFound";
 import RequestsInbox from "./pages/admin/RequestsInbox";
@@ -75,6 +76,7 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/inventory/login": InventoryLogin,
   "/inventory/room": InventoryRoom,
   "/staff": StaffDashboard,
+  "/staff/attendance": StaffAttendance,
   "/customer": CustomerPortal,
 };
 

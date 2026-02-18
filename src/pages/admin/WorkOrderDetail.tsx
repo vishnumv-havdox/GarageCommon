@@ -12,17 +12,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
-    ArrowLeft, Wrench, Users, ClipboardList, IndianRupee,
     CheckCircle2, XCircle, Clock, Trash2, Shield, User,
     Truck, AlertTriangle, RefreshCw, ChevronRight, Plus, X, Edit, Play,
     Bell, ShieldCheck, FileText, Calendar as CalendarIcon,
-    ListOrdered, Search, TrendingUp, Info, Loader2, RotateCcw
+    ListOrdered, Search, TrendingUp, Info, Loader2, RotateCcw,
+    Wrench, ArrowLeft, Users, ClipboardList, IndianRupee
 } from "lucide-react";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
 import { PartRequestList } from "@/components/inventory/PartRequestList";
@@ -127,6 +127,20 @@ interface WorkOrder {
     reopen_reason?: string;
     reopened_at?: string;
     reopened_by?: string;
+    driver?: {
+        id: string;
+        name: string;
+        contact_number?: string;
+        driver_position?: string;
+    } | null;
+    advisor?: {
+        name: string;
+        phone?: string;
+    } | Array<{
+        name: string;
+        phone?: string;
+    }> | null;
+    assigned_to?: string | null;
 }
 
 interface Employee {
@@ -167,6 +181,7 @@ export default function WorkOrderDetail() {
     // Extension: Assignment stats and workload
     const [assignmentPosition, setAssignmentPosition] = useState("0");
     const [employeeWorkload, setEmployeeWorkload] = useState<any[]>([]);
+    const [slipDialogOpen, setSlipDialogOpen] = useState(false);
 
     // Rejection & Reopen states
     const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
@@ -174,6 +189,8 @@ export default function WorkOrderDetail() {
     const [rejectionReason, setRejectionReason] = useState("");
     const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
     const [reopenReason, setReopenReason] = useState("");
+    const [advisorDialogOpen, setAdvisorDialogOpen] = useState(false);
+    const [isUpdatingAdvisor, setIsUpdatingAdvisor] = useState(false);
 
     // Add Task State
     const [addingTaskToServiceId, setAddingTaskToServiceId] = useState<string | null>(null);
@@ -243,7 +260,6 @@ export default function WorkOrderDetail() {
                             category_id
                         )
                     `)
-                    .eq('id', modelId)
                     .single();
 
                 if (vModelData) {
@@ -341,9 +357,7 @@ export default function WorkOrderDetail() {
             const { data: woData, error: woError } = await supabase
                 .from("work_orders")
                 .select(`
-          *, 
-          *, 
-          *, 
+          *,
           vehicle:vehicles(
             vehicle_number, 
             model, 
@@ -351,7 +365,14 @@ export default function WorkOrderDetail() {
             customer_id, 
             model_id,
             customers(id, name, company_name, phone, email, address)
-          )
+          ),
+          driver:drivers(
+            id,
+            name,
+            contact_number,
+            driver_position
+          ),
+          advisor:employees!assigned_to(id, name, phone)
         `)
                 .eq("id", id)
                 .single();
@@ -363,19 +384,15 @@ export default function WorkOrderDetail() {
 
             const vehicle = woDataRaw.vehicle;
             const customer = vehicle?.customers;
-            setWorkOrder({
+            const woWithCustomer = {
                 ...woDataRaw,
                 customer: customer || { id: "", name: "Unknown", company_name: "", phone: "", email: "", address: "" }
-            } as any);
+            };
 
             // Fetch Services, Tasks, and Employees
             const { data: servicesData, error: sError } = await supabase
                 .from("work_order_services")
                 .select(`
-          id,
-          service_type,
-          status,
-          estimated_cost,
           id,
           service_type,
           status,
@@ -392,7 +409,9 @@ export default function WorkOrderDetail() {
                 .eq("work_order_id", id);
 
             if (sError) throw sError;
-            setDetails((servicesData as any) || []);
+            // No direct setDetails here, will be set in the final combined setWorkOrder call or separately if needed
+            // But we keep setDetails for the formatted services later.
+            const rawServices = (servicesData as any) || [];
 
             // Fetch Stages
             const { data: stagesData, error: stagesError } = await supabase
@@ -433,21 +452,17 @@ export default function WorkOrderDetail() {
             const { data: empData, error: empError } = await supabase
                 .from("employees")
                 .select(`
-                    id, name, email,
+                    id, name, email, phone,
                     position:positions(id, name, department)
                 `)
                 .eq("status", "active");
 
             if (empError) throw empError;
-            setEmployees((empData as any) || []);
-
-            setWorkOrder(prev => prev ? {
-                ...prev,
-                stages: stagesData as any,
-                tasks: tasksData as any
-            } : null);
+            const availableEmployees = (empData as any) || [];
+            setEmployees(availableEmployees);
 
             // 5. Fetch Billing Info
+            let billingInfo: any = { totalInvoiced: 0, totalPaid: 0, totalDeductions: 0, balance: 0, status: 'N/A' };
             const { data: invoices, error: invError } = await supabase
                 .from('invoices')
                 .select(`
@@ -479,8 +494,19 @@ export default function WorkOrderDetail() {
                 else if (totalPaid > 0 || totalDeductions > 0) status = 'Partial';
                 else if (totalInvoiced === 0) status = 'N/A';
 
-                setBillingInfo({ totalInvoiced, totalPaid, totalDeductions, balance, status });
+                billingInfo = { totalInvoiced, totalPaid, totalDeductions, balance, status };
+                setBillingInfo(billingInfo);
             }
+
+            // FINAL STATE UPDATE - Restore setWorkOrder
+            setWorkOrder({
+                ...woWithCustomer,
+                stages: (stagesData as any) || [],
+                tasks: (tasksData as any) || [],
+                billingInfo: billingInfo
+            } as any);
+
+            setDetails(formattedServices);
         } catch (error: any) {
             console.error("Fetch error:", error);
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -787,6 +813,34 @@ export default function WorkOrderDetail() {
         }
     };
 
+    const handleUpdateAdvisor = async (newAdvisorId: string) => {
+        if (!id) return;
+        setIsUpdatingAdvisor(true);
+        try {
+            const { error } = await supabase
+                .from("work_orders")
+                .update({ assigned_to: newAdvisorId })
+                .eq("id", id);
+
+            if (error) throw error;
+
+            toast({
+                title: "Advisor Updated",
+                description: "The service advisor for this work order has been updated."
+            });
+            setAdvisorDialogOpen(false);
+            fetchDetails();
+        } catch (error: any) {
+            toast({
+                title: "Error updating advisor",
+                description: error.message,
+                variant: "destructive"
+            });
+        } finally {
+            setIsUpdatingAdvisor(false);
+        }
+    };
+
     // Handle Mark Delivered
     const handleMarkDelivered = async () => {
         if (!id) return;
@@ -1008,17 +1062,43 @@ export default function WorkOrderDetail() {
                                     <Info className="h-3 w-3" /> Reason: {workOrder.reopen_reason}
                                 </div>
                             )}
-                            <p className="text-sm text-muted-foreground">
-                                {workOrder.vehicle?.vehicle_number} • {workOrder.vehicle?.model}
-                            </p>
+                            <div className="flex items-center gap-3 mt-1">
+                                <p className="text-sm text-muted-foreground">
+                                    {workOrder.vehicle?.vehicle_number} • {workOrder.vehicle?.model}
+                                </p>
+                                <Separator orientation="vertical" className="h-4" />
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 rounded-full border border-blue-100 dark:border-blue-800">
+                                    <User className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                                    <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                                        Advisor: {(() => {
+                                            const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
+                                            const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
+                                            return intake?.name || (workOrder.assigned_to ? `ID: ${workOrder.assigned_to.slice(0, 8)}` : 'N/A');
+                                        })()}
+                                    </span>
+                                    {(() => {
+                                        const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
+                                        const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
+                                        return intake?.phone && <span className="text-[10px] text-blue-500/70 ml-1">({intake.phone})</span>;
+                                    })()}
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-4 w-4 ml-1 hover:bg-blue-100 hover:text-blue-600 rounded-full"
+                                        onClick={() => setAdvisorDialogOpen(true)}
+                                    >
+                                        <Edit className="h-2.5 w-2.5" />
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
                         <Button variant="outline" size="icon" onClick={() => fetchDetails()} title="Refresh Details">
                             <RefreshCw className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" onClick={() => generateWorkSlipPDF(workOrder.id)} title="Download Work Slip">
-                            <FileText className="h-4 w-4 mr-2" /> Slip
+                        <Button variant="outline" onClick={() => setSlipDialogOpen(true)} title="Slip Print">
+                            <FileText className="h-4 w-4 mr-2" /> Slip Print
                         </Button>
                         <Button variant="outline" onClick={() => generateInvoicePDF(workOrder.id)} title="Download Tax Invoice">
                             <IndianRupee className="h-4 w-4 mr-2" /> Invoice
@@ -1469,6 +1549,67 @@ export default function WorkOrderDetail() {
                                         <p className="text-sm text-muted-foreground">{workOrder.vehicle?.model}</p>
                                     </div>
                                 </div>
+                                {(workOrder.advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person) && (
+                                    <>
+                                        <Separator />
+                                        <div className="flex items-start gap-3">
+                                            <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 dark:text-blue-400">
+                                                <User className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Service Advisor</p>
+                                                <h4 className="font-bold">
+                                                    {(() => {
+                                                        const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
+                                                        const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
+                                                        return intake?.name || 'Assigned';
+                                                    })()}
+                                                </h4>
+                                                {(() => {
+                                                    const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
+                                                    const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
+                                                    return intake?.phone && (
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Ph: {intake.phone}
+                                                        </p>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                {!(workOrder.advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person) && workOrder.assigned_to && (
+                                    <>
+                                        <Separator />
+                                        <div className="flex items-start gap-3 opacity-50">
+                                            <div className="p-2 bg-slate-100 rounded-lg text-slate-400">
+                                                <User className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Service Advisor</p>
+                                                <h4 className="font-bold">ID: {workOrder.assigned_to.slice(0, 8)}</h4>
+                                                <p className="text-[10px] text-destructive italic">Join Failed - Check Employee Record</p>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                {workOrder.driver && (
+                                    <>
+                                        <Separator />
+                                        <div className="flex items-start gap-3">
+                                            <div className="p-2 bg-indigo-100 rounded-lg"><User className="h-5 w-5 text-indigo-600" /></div>
+                                            <div>
+                                                <h4 className="font-bold flex items-center gap-2">
+                                                    {workOrder.driver.name}
+                                                    <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+                                                        {workOrder.driver.driver_position || 'Driver'}
+                                                    </Badge>
+                                                </h4>
+                                                <p className="text-sm text-muted-foreground">{workOrder.driver.contact_number || 'No contact number'}</p>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </CardContent>
                         </Card>
 
@@ -1976,6 +2117,60 @@ export default function WorkOrderDetail() {
             </div>
 
             {/* Approval/Rejection Dialog */}
+            {/* Advisor Edit Dialog */}
+            <Dialog open={advisorDialogOpen} onOpenChange={setAdvisorDialogOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Update Service Advisor</DialogTitle>
+                        <DialogDescription>
+                            Select the advisor responsible for this work order.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Select Employee</Label>
+                            <Select
+                                value={selectedEmployeeId || (workOrder?.assigned_to || "")}
+                                onValueChange={setSelectedEmployeeId}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Advisor" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {employees.map((emp) => (
+                                        <SelectItem key={emp.id} value={emp.id}>
+                                            {emp.name} {emp.email === user?.email ? "(Me)" : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {user?.email && employees.find(e => e.email === user.email) && (
+                            <Button
+                                variant="outline"
+                                className="w-full text-xs"
+                                onClick={() => {
+                                    const me = employees.find(e => e.email === user.email);
+                                    if (me) handleUpdateAdvisor(me.id);
+                                }}
+                                disabled={isUpdatingAdvisor}
+                            >
+                                Assign to Me
+                            </Button>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAdvisorDialogOpen(false)}>Cancel</Button>
+                        <Button
+                            onClick={() => handleUpdateAdvisor(selectedEmployeeId)}
+                            disabled={!selectedEmployeeId || isUpdatingAdvisor}
+                        >
+                            {isUpdatingAdvisor ? "Updating..." : "Update Advisor"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
@@ -2457,6 +2652,52 @@ export default function WorkOrderDetail() {
                             Add Task
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Slip Copy Selection Dialog */}
+            <Dialog open={slipDialogOpen} onOpenChange={setSlipDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Generate Slip Print</DialogTitle>
+                        <DialogDescription>
+                            Choose the type of slip copy you want to generate.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-2 gap-4 py-4">
+                        <Button
+                            variant="outline"
+                            className="flex flex-col items-center gap-4 h-auto py-8 hover:border-primary hover:bg-primary/5 transition-all group"
+                            onClick={() => {
+                                generateWorkSlipPDF(workOrder.id, 'customer');
+                                setSlipDialogOpen(false);
+                            }}
+                        >
+                            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                                <User className="h-6 w-6 text-primary" />
+                            </div>
+                            <div className="text-center">
+                                <div className="font-bold">Customer Copy</div>
+                                <div className="text-[10px] text-muted-foreground mt-1 px-2">Includes pricing details and company information</div>
+                            </div>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="flex flex-col items-center gap-4 h-auto py-8 hover:border-primary hover:bg-primary/5 transition-all group"
+                            onClick={() => {
+                                generateWorkSlipPDF(workOrder.id, 'workshop');
+                                setSlipDialogOpen(false);
+                            }}
+                        >
+                            <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                                <Wrench className="h-6 w-6 text-blue-600" />
+                            </div>
+                            <div className="text-center">
+                                <div className="font-bold">Workshop Copy</div>
+                                <div className="text-[10px] text-muted-foreground mt-1 px-2">Job card with driver & staff info, no pricing</div>
+                            </div>
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div >

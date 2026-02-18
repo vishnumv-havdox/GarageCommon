@@ -47,35 +47,29 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
             const [
                 { data: customer },
                 { data: vehicles },
-                { data: workOrders },
                 { data: invoices }
             ]: any[] = await Promise.all([
                 // Customer Details
                 supabase.from('customers').select('*').eq('id', companyId).single(),
                 // Associated Vehicles
                 supabase.from('vehicles').select('*').eq('customer_id', companyId),
-                // History of Work Orders for these vehicles
-                // History of Work Orders for these vehicles
-                // History of Work Orders (Fetched properly below via vehicle IDs)
-                supabase.from('work_orders').select('id').limit(1),
-                // The original line 53 was: .eq('vehicle:vehicles.customer_id', companyId). 
-                // Let's fix the explicit FK in line 67 specifically.
                 // History of Invoices
-                supabase.from('invoices').select('id, status, total, total_deductions, created_at').eq('customer_id', companyId),
-                // Payment Links (to calculate collected amount)
-                supabase.from('payment_links').select('*, payment:payments(*)').eq('invoice:invoices.customer_id', companyId)
+                supabase.from('invoices').select('id, status, total, total_deductions, created_at').eq('customer_id', companyId)
             ]);
 
-            // Fix for payment links query if the nested join fails
-            const { data: pLinks } = await supabase
-                .from('payment_links')
-                .select('*, payment:payments(*), invoice:invoices(customer_id)')
-                .eq('invoice.customer_id', companyId);
+            // 2. Fetch Payment Links using Invoice IDs (Avoids complex join filter error)
+            const invoiceIds = (invoices || []).map((inv: any) => inv.id);
+            let effectiveLinks: any[] = [];
 
-            const effectiveLinks = (pLinks || []) as any[];
+            if (invoiceIds.length > 0) {
+                const { data: pLinks } = await supabase
+                    .from('payment_links')
+                    .select('*, payment:payments(*)')
+                    .in('invoice_id', invoiceIds);
+                effectiveLinks = pLinks || [];
+            }
 
-            // Refetch work orders properly if the deep filter fails (Supabase sometimes needs explicit filter on joined table)
-            // Safer approach: Get vehicle IDs first
+            // 3. Fetch Work Orders using Vehicle IDs
             const vList = (vehicles || []) as any[];
             const vehicleIds = vList.map((v: any) => v.id);
             let allWorkOrders: any[] = [];
@@ -269,7 +263,11 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
                                         onClick={() => onVehicleClick?.(vehicle.id, vehicle.vehicle_number)}
                                     >
                                         <TableCell className="font-medium text-primary hover:underline">{vehicle.vehicle_number}</TableCell>
-                                        <TableCell>{vehicle.model}</TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {vehicle.vehicle_type || 'Vehicle'}
+                                            {vehicle.model && ` • ${vehicle.model}`}
+                                            {activeWO?.service_type && ` • ${activeWO.service_type}`}
+                                        </TableCell>
                                         <TableCell>
                                             {activeWO ? (
                                                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 animate-pulse">

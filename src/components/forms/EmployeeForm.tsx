@@ -11,10 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Briefcase, X, CheckCircle } from "lucide-react";
 import { createUser, updateUser, getUserConfig } from "@/config/userCreation";
+import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 
 interface Position {
   id: string;
@@ -48,7 +50,8 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
     aadhaar_number: "",
     pan_number: "",
     date_of_birth: "",
-    blood_group: ""
+    blood_group: "",
+    attendance_self_service: false
   });
   const [showPositionForm, setShowPositionForm] = useState(false);
   const [newPosition, setNewPosition] = useState({ name: "", department: "", access_level: "staff" });
@@ -73,13 +76,28 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
         aadhaar_number: editingEmployee.aadhaar_number || "",
         pan_number: editingEmployee.pan_number || "",
         date_of_birth: editingEmployee.date_of_birth || "",
-        blood_group: editingEmployee.blood_group || ""
+        blood_group: editingEmployee.blood_group || "",
+        attendance_self_service: editingEmployee.attendance_self_service || false,
       });
     }
   }, [editingEmployee]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate phone number if provided
+    if (formData.phone) {
+      const phoneValidation = validateIndianPhoneNumber(formData.phone);
+      if (!phoneValidation.isValid) {
+        toast({
+          title: "Invalid Phone Number",
+          description: phoneValidation.error || "Please enter a valid 10-digit Indian phone number",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     if (editingEmployee) {
@@ -99,6 +117,7 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
         dateOfBirth: formData.date_of_birth,
         bloodGroup: formData.blood_group,
         payType: formData.pay_type,
+        attendanceSelfService: formData.attendance_self_service,
       }, supabaseAdmin);
 
       if (!result.success) {
@@ -134,6 +153,7 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
         positionId: formData.position_id,
         accessLevel: formData.access_level as "admin" | "manager" | "staff",
         salary: formData.salary ? parseFloat(formData.salary) : undefined,
+        attendanceSelfService: formData.attendance_self_service,
       }, supabaseAdmin);
 
       if (!result.success) {
@@ -179,7 +199,7 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
     setIsSavingPosition(false);
   };
 
-  const handleChange = (field: string, value: string) => setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleChange = (field: string, value: any) => setFormData((prev) => ({ ...prev, [field]: value }));
   const departments = ["Service", "Sales", "Administration", "Parts", "Finance", "HR"];
   const accessLevels = [{ value: "staff", label: "Staff" }, { value: "manager", label: "Manager" }];
 
@@ -199,7 +219,7 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2"><Label htmlFor="name">Full Name *</Label><Input id="name" placeholder="Enter name" value={formData.name} onChange={(e) => handleChange("name", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" placeholder="Phone number" value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} disabled={isLoading} /></div>
+            <div className="space-y-2"><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" placeholder="Phone number" value={formData.phone} onChange={(e) => { const value = e.target.value.replace(/\D/g, '').slice(0, 10); handleChange("phone", value); }} disabled={isLoading} maxLength={10} pattern="[0-9]*" inputMode="numeric" /></div>
             <div className="space-y-2"><Label htmlFor="email">Email *</Label><Input id="email" type="email" placeholder="Enter email" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} disabled={isLoading} /></div>
             <div className="space-y-2"><Label htmlFor="password">Password {editingEmployee ? "(Leave blank to keep same)" : "*"}</Label><Input id="password" type="password" placeholder="Min 6 characters" value={formData.password} onChange={(e) => handleChange("password", e.target.value)} disabled={isLoading} /></div>
             <div className="space-y-2"><Label>Position *</Label><div className="flex gap-2"><Select value={formData.position_id} onValueChange={(v) => handleChange("position_id", v)}><SelectTrigger className="flex-1"><SelectValue placeholder="Select position" /></SelectTrigger><SelectContent>{positions.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name} - {p.department}</SelectItem>))}</SelectContent></Select><Button type="button" variant="outline" size="icon" onClick={() => setShowPositionForm(!showPositionForm)}><Briefcase className="h-4 w-4" /></Button></div></div>
@@ -227,6 +247,17 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
             <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={formData.date_of_birth} onChange={(e) => handleChange("date_of_birth", e.target.value)} disabled={isLoading} /></div>
             <div className="space-y-2"><Label>Blood Group</Label><Input placeholder="e.g., A+ve" value={formData.blood_group} onChange={(e) => handleChange("blood_group", e.target.value)} disabled={isLoading} /></div>
             <div className="md:col-span-2 space-y-2"><Label>Address</Label><Input placeholder="Full residential address" value={formData.address} onChange={(e) => handleChange("address", e.target.value)} disabled={isLoading} /></div>
+            <div className="md:col-span-2 flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+              <div className="space-y-0.5">
+                <Label>Attendance Self-Service</Label>
+                <p className="text-xs text-muted-foreground">Allow employee to clock in/out and request leaves from their dashboard.</p>
+              </div>
+              <Switch
+                checked={formData.attendance_self_service}
+                onCheckedChange={(checked) => handleChange("attendance_self_service", checked)}
+                disabled={isLoading}
+              />
+            </div>
           </div>
           {showPositionForm && (
             <div className="border rounded-lg p-4 bg-muted/50 space-y-4">

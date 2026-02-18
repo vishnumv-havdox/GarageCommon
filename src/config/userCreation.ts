@@ -146,6 +146,7 @@ export async function createUser(
     // Customer-specific
     companyName?: string;
     address?: string;
+    attendanceSelfService?: boolean;
   },
   supabaseAdmin: any
 ): Promise<CreateUserResult> {
@@ -208,6 +209,7 @@ export async function createUser(
           access_level: data.accessLevel || "staff",
           salary: data.salary || null,
           status: "active",
+          attendance_self_service: data.attendanceSelfService || false,
         }, { onConflict: 'user_id' });
 
       if (employeeError) {
@@ -262,6 +264,7 @@ export async function updateUser(
     // Customer-specific
     companyName?: string;
     address_customer?: string;
+    attendanceSelfService?: boolean;
   },
   supabaseAdmin: any
 ): Promise<CreateUserResult> {
@@ -317,6 +320,7 @@ export async function updateUser(
           date_of_birth: data.dateOfBirth,
           blood_group: data.bloodGroup,
           pay_type: data.payType,
+          attendance_self_service: data.attendanceSelfService,
         })
         .eq("user_id", userId);
 

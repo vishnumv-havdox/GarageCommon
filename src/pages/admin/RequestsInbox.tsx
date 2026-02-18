@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequests } from "@/contexts/RequestsContext";
@@ -29,6 +29,7 @@ export default function RequestsInbox() {
     const [appointments, setAppointments] = useState<any[]>([]);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [payments, setPayments] = useState<any[]>([]);
+    const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
 
     const fetchRequests = async () => {
         setLoading(true);
@@ -98,6 +99,9 @@ export default function RequestsInbox() {
             if (payError) throw payError;
             setPayments(payData || []);
 
+            const today = new Date();
+            today.setHours(23, 59, 59, 999);
+
             const { data: appData, error: appError } = await supabase
                 .from("appointments")
                 .select(`
@@ -106,11 +110,24 @@ export default function RequestsInbox() {
                     vehicle:vehicles(vehicle_number, model),
                     services:appointment_services(service_name)
                 `)
-                .eq("status", "pending")
+                .or(`status.eq.pending,and(status.eq.confirmed,scheduled_at.lte.${today.toISOString()})`)
                 .order("created_at", { ascending: false });
 
             if (appError) throw appError;
             setAppointments(appData || []);
+
+            // Fetch leave requests
+            const { data: leaveData, error: leaveError } = await supabase
+                .from("leave_requests")
+                .select(`
+                    *,
+                    employee:employees(name)
+                `)
+                .eq("status", "pending")
+                .order("created_at", { ascending: false });
+
+            if (leaveError) throw leaveError;
+            setLeaveRequests(leaveData || []);
 
         } catch (error: any) {
             console.error("Error fetching requests:", error);
@@ -123,6 +140,15 @@ export default function RequestsInbox() {
             setLoading(false);
         }
     };
+
+    const location = useLocation();
+    const queryTab = new URLSearchParams(location.search).get("tab");
+
+    useEffect(() => {
+        if (queryTab) {
+            setActiveTab(queryTab);
+        }
+    }, [queryTab]);
 
     useEffect(() => {
         fetchRequests();
@@ -306,6 +332,36 @@ export default function RequestsInbox() {
         }
     };
 
+    const handleApproveLeave = async (request: any) => {
+        setProcessingId(request.id);
+        try {
+            const { error } = await (supabase.from("leave_requests") as any).update({ status: 'approved' }).eq("id", request.id);
+            if (error) throw error;
+            toast({ title: "Leave Approved", description: `Leave for ${request.employee?.name} has been approved.` });
+            await refreshCounts();
+            fetchRequests();
+            setProcessingId(null);
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+            setProcessingId(null);
+        }
+    };
+
+    const handleRejectLeave = async (request: any) => {
+        setProcessingId(request.id);
+        try {
+            const { error } = await (supabase.from("leave_requests") as any).update({ status: 'rejected' }).eq("id", request.id);
+            if (error) throw error;
+            toast({ title: "Leave Rejected", description: "The leave request has been rejected." });
+            await refreshCounts();
+            fetchRequests();
+            setProcessingId(null);
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message });
+            setProcessingId(null);
+        }
+    };
+
     return (
         <div className="flex flex-col lg:flex-row min-h-screen bg-[#f8fafc] dark:bg-[#020617]">
             <AdminSidebar />
@@ -349,7 +405,7 @@ export default function RequestsInbox() {
                             >
                                 Work Orders
                                 {workApprovals.length > 0 && (
-                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                    <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'work-approvals' ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'}`}>
                                         {workApprovals.length}
                                     </Badge>
                                 )}
@@ -360,7 +416,7 @@ export default function RequestsInbox() {
                             >
                                 Appointments
                                 {appointments.length > 0 && (
-                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                    <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'appointments' ? 'bg-white/20 text-white' : 'bg-yellow-600/10 text-yellow-600'}`}>
                                         {appointments.length}
                                     </Badge>
                                 )}
@@ -371,7 +427,7 @@ export default function RequestsInbox() {
                             >
                                 Part Requests
                                 {partRequests.length > 0 && (
-                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                    <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'part-requests' ? 'bg-white/20 text-white' : 'bg-blue-600/10 text-blue-600'}`}>
                                         {partRequests.length}
                                     </Badge>
                                 )}
@@ -382,8 +438,19 @@ export default function RequestsInbox() {
                             >
                                 Payments
                                 {payments.length > 0 && (
-                                    <Badge className="ml-2 bg-white/20 text-white border-none rounded-md px-1.5 py-0.5 text-[10px]">
+                                    <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'payment-requests' ? 'bg-white/20 text-white' : 'bg-emerald-600/10 text-emerald-600'}`}>
                                         {payments.length}
+                                    </Badge>
+                                )}
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="leave-requests"
+                                className="px-6 py-2.5 rounded-xl data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all"
+                            >
+                                Leave
+                                {leaveRequests.length > 0 && (
+                                    <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'leave-requests' ? 'bg-white/20 text-white' : 'bg-indigo-600/10 text-indigo-600'}`}>
+                                        {leaveRequests.length}
                                     </Badge>
                                 )}
                             </TabsTrigger>
@@ -425,18 +492,20 @@ export default function RequestsInbox() {
                                         {appointments.map((app) => (
                                             <RequestCard
                                                 key={app.id}
-                                                accent="orange"
+                                                accent={app.status === 'confirmed' ? "emerald" : "orange"}
                                                 id={app.id}
                                                 title={app.customer?.name || "New Customer"}
                                                 subtitle={`${app.vehicle?.vehicle_number || "New Vehicle"} • ${app.vehicle?.model || ""}`}
-                                                description={app.notes}
+                                                description={app.status === 'confirmed' ? "CONFIRMED: Waiting for Job Card" : app.notes}
+                                                badge={app.status === 'confirmed' ? "NEEDS JOB CARD" : "PENDING"}
                                                 meta={`Scheduled: ${format(new Date(app.scheduled_at), "MMM d, h:mm a")}`}
                                                 subMeta={app.customer?.company_name ? `Company: ${app.customer.company_name}` : undefined}
                                                 extraInfo={app.services?.map((s: any) => s.service_name).join(", ")}
                                                 date={app.created_at}
-                                                onApprove={() => handleApproveAppointment(app)}
+                                                onApprove={app.status === 'confirmed' ? () => navigate('/admin/work-orders') : () => handleApproveAppointment(app)}
                                                 onReject={() => handleRejectAppointment(app)}
-                                                onView={() => navigate(`/admin/appointments`)}
+                                                onView={() => navigate(app.status === 'confirmed' ? `/admin/work-orders` : `/admin/appointments`)}
+                                                approveLabel={app.status === 'confirmed' ? "OPEN JOB CARD" : "CONFIRM"}
                                                 loading={processingId === app.id}
                                             />
                                         ))}
@@ -498,6 +567,33 @@ export default function RequestsInbox() {
                                     </div>
                                 )}
                             </TabsContent>
+
+                            {/* Leave Requests Content */}
+                            <TabsContent value="leave-requests" className="animate-in fade-in slide-in-from-left-4 duration-500 mt-0">
+                                {leaveRequests.length === 0 ? (
+                                    <EmptyState icon={<Calendar className="w-10 h-10" />} title="All Clear" description="No pending leave requests to review." />
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {leaveRequests.map((req) => (
+                                            <RequestCard
+                                                key={req.id}
+                                                accent="indigo"
+                                                id={req.id}
+                                                title={req.employee?.name || "Unknown Staff"}
+                                                subtitle={`${req.leave_type.toUpperCase()} LEAVE`}
+                                                description={req.reason}
+                                                meta={`From: ${format(new Date(req.start_date), "MMM d")}`}
+                                                subMeta={`To: ${format(new Date(req.end_date), "MMM d")}`}
+                                                date={req.created_at}
+                                                onApprove={() => handleApproveLeave(req)}
+                                                onReject={() => handleRejectLeave(req)}
+                                                approveLabel="APPROVE"
+                                                loading={processingId === req.id}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
                         </div>
                     </Tabs>
                 </main>
@@ -527,13 +623,15 @@ function RequestCard({
     const accentColors: any = {
         orange: "border-orange-500 bg-orange-500/5 text-orange-600",
         blue: "border-blue-500 bg-blue-500/5 text-blue-600",
-        emerald: "border-emerald-500 bg-emerald-500/5 text-emerald-600"
+        emerald: "border-emerald-500 bg-emerald-500/5 text-emerald-600",
+        indigo: "border-indigo-500 bg-indigo-500/5 text-indigo-600"
     };
 
     const btnColors: any = {
         orange: "bg-orange-600 hover:bg-orange-700 shadow-orange-500/20",
         blue: "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20",
-        emerald: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20"
+        emerald: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20",
+        indigo: "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20"
     };
 
     return (

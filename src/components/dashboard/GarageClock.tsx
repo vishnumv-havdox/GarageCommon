@@ -370,11 +370,14 @@ export const GarageClock: React.FC = () => {
                                                         <div className="space-y-1.5 pt-1">
                                                             <div className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
                                                                 <User className="h-3 w-3 text-slate-400" />
-                                                                {app.customer?.name || 'Unknown Customer'}
-                                                            </div>
-                                                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
-                                                                <Building2 className="h-3 w-3 text-slate-400 opacity-70" />
-                                                                {app.customer?.company_name || 'Individual'}
+                                                                <div className="flex flex-col">
+                                                                    <span>{app.customer?.name || 'Unknown Customer'}</span>
+                                                                    {app.customer?.company_name && (
+                                                                        <span className="text-[10px] text-primary font-semibold">
+                                                                            {app.customer.company_name}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium italic">
                                                                 <Car className="h-3 w-3 text-slate-400 opacity-70" />

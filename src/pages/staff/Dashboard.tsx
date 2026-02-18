@@ -18,7 +18,7 @@ import {
   LogOut, CheckCircle2, Clock, AlertTriangle,
   Briefcase, User, RefreshCw, Eye, EyeOff,
   Wrench, Shield, Lock, LockOpen, Activity, QrCode,
-  Package, ChevronRight, XCircle, Archive, Zap
+  Package, ChevronRight, XCircle, Archive, Zap, Calendar
 } from "lucide-react"
 import { format } from "date-fns"
 import logo from "@/assets/logo.png"
@@ -30,6 +30,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { useNavigate } from "react-router-dom"
 
 // Delivery Status Types and Utilities
 type DeliveryStatus = 'overdue' | 'urgent' | 'soon' | 'normal' | 'none';
@@ -151,6 +152,7 @@ interface VehicleWork {
 export default function StaffDashboard() {
   const { user, signOut } = useAuth()
   const { toast } = useToast()
+  const navigate = useNavigate()
   const [workItems, setWorkItems] = useState<VehicleWork[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("active")
@@ -596,6 +598,17 @@ export default function StaffDashboard() {
                 </span>
               )}
             </Button>
+
+            {employeeProfile?.attendance_self_service && (
+              <Button
+                variant="outline"
+                className="hidden sm:flex h-10 px-4 rounded-xl border-border bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 transition-all font-bold uppercase tracking-tight gap-2 shadow-sm"
+                onClick={() => navigate("/staff/attendance")}
+              >
+                <Calendar className="h-4 w-4" />
+                <span>Attendance</span>
+              </Button>
+            )}
 
             <Button
               variant="outline"

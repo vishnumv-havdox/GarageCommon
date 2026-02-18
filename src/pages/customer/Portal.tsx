@@ -16,6 +16,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   CheckCircle2,
   XCircle,
+  X,
   Clock,
   FileText,
   Package,
@@ -85,6 +86,7 @@ import {
 
 // Import ProgressTracker component
 import { CompactProgressTracker } from "@/components/work-orders/ProgressTracker";
+import { DriverHistoryDialog } from "@/components/drivers/DriverHistoryDialog";
 
 // Service History interface
 interface ServiceHistory {
@@ -154,6 +156,10 @@ interface WorkOrderProgress {
     customer_id: string;
   };
   customer?: { name: string; phone?: string };
+  driver?: {
+    name: string;
+    contact_number?: string;
+  };
   stages: WorkOrderStage[];
   customer_notified?: boolean;
   tasks: RepairTask[];
@@ -217,6 +223,12 @@ export default function CustomerPortal() {
   const [rescheduleAppointment, setRescheduleAppointment] = useState<any | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>(undefined);
   const [rescheduleReason, setRescheduleReason] = useState("");
+
+  // Driver History State
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [viewingDriverHistory, setViewingDriverHistory] = useState<{ id: string, name: string } | null>(null);
+
+
 
   // Sync payment amount when paying invoices change
   useEffect(() => {
@@ -421,6 +433,17 @@ export default function CustomerPortal() {
         debug += `Appointments found: ${processedAppointments.length}\n`;
       }
 
+      // Fetch company drivers
+      const driversQuery = await supabase
+        .from("drivers")
+        .select("*")
+        .eq("company_id", customerId)
+        .eq("is_active", true);
+
+      if (driversQuery.data) {
+        setDrivers(driversQuery.data);
+      }
+
       debug += `\n-- - Fetching Work Orders-- -\n`;
 
       let allWorkOrders: any[] = [];
@@ -431,7 +454,8 @@ export default function CustomerPortal() {
           .from("work_orders")
           .select(`
   *,
-  vehicle: vehicles(id, vehicle_number, model, customer_id)
+  vehicle: vehicles(id, vehicle_number, model, customer_id),
+  driver: drivers(name, contact_number)
           `)
           .in("vehicle_id", customerVehicleIds)
           .order("created_at", { ascending: false });
@@ -450,7 +474,8 @@ export default function CustomerPortal() {
           .from("work_orders")
           .select(`
   *,
-  vehicle: vehicles(id, vehicle_number, model, customer_id)
+  vehicle: vehicles(id, vehicle_number, model, customer_id),
+  driver: drivers(name, contact_number)
           `)
           .order("created_at", { ascending: false });
 
@@ -1267,6 +1292,10 @@ export default function CustomerPortal() {
             <TabsTrigger value="quotations" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider col-span-2 md:col-span-1">
               <Zap className="h-3.5 w-3.5" /> Estimates
             </TabsTrigger>
+            <TabsTrigger value="drivers" className="rounded-xl py-2 md:py-1.5 flex items-center justify-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-foreground transition-all uppercase text-[10px] font-bold tracking-wider col-span-2 md:col-span-1">
+              <User className="h-3.5 w-3.5" /> Drivers
+            </TabsTrigger>
+
           </TabsList>
 
           <TabsContent value="vehicles" className="space-y-4">
@@ -1417,16 +1446,31 @@ export default function CustomerPortal() {
                               <h3 className="text-2xl font-bold text-foreground tracking-tight mb-2 uppercase">
                                 {order.combined_service_types ? Array.from(order.combined_service_types).join(" + ") : order.service_type}
                               </h3>
-                              <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
-                                <div className="flex items-center gap-2">
-                                  <Car className="h-4 w-4 text-primary" />
-                                  <span>{order.vehicle?.vehicle_number}</span>
+                              <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
+                                  <div className="flex items-center gap-2">
+                                    <Car className="h-4 w-4 text-primary" />
+                                    <span>{order.vehicle?.vehicle_number}</span>
+                                  </div>
+                                  <div className="h-1 w-1 rounded-full bg-muted-foreground" />
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-primary" />
+                                    <span>Started {formatDateTime(order.created_at)}</span>
+                                  </div>
                                 </div>
-                                <div className="h-1 w-1 rounded-full bg-muted-foreground" />
-                                <div className="flex items-center gap-2">
-                                  <Clock className="h-4 w-4 text-primary" />
-                                  <span>Started {formatDateTime(order.created_at)}</span>
-                                </div>
+
+                                {order.driver && (
+                                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground bg-primary/5 px-2 py-1 rounded-md w-fit border border-primary/10">
+                                    <User className="h-3.5 w-3.5 text-primary" />
+                                    <span>{order.driver.name}</span>
+                                    {order.driver.contact_number && (
+                                      <>
+                                        <div className="h-3 w-[1px] bg-primary/20 mx-1" />
+                                        <span className="text-xs text-primary/80 font-mono">{order.driver.contact_number}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1791,6 +1835,71 @@ export default function CustomerPortal() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="drivers" className="space-y-4">
+            <Card className="border-border bg-card/50 backdrop-blur-md">
+              <CardHeader>
+                <CardTitle>My Drivers</CardTitle>
+                <CardDescription>Manage and view history of your company drivers</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                {drivers.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground bg-background/30 rounded-xl border border-dashed">
+                    <User className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                    <p>No drivers found for your company.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {drivers.map((driver) => (
+                      <Card key={driver.id} className="bg-background/40 hover:bg-accent/10 transition-colors border-border">
+                        <CardContent className="p-5">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                              <User className="h-5 w-5" />
+                            </div>
+                            <Badge variant={driver.is_active ? "default" : "secondary"} className="uppercase text-[10px]">
+                              {driver.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          </div>
+
+                          <h3 className="font-bold text-lg mb-1">{driver.name}</h3>
+                          <div className="space-y-1 text-sm text-muted-foreground mb-4">
+                            <p className="flex items-center gap-2">
+                              <span className="opacity-70">Role:</span>
+                              <span className="font-medium text-foreground">{driver.driver_position || "Driver"}</span>
+                            </p>
+                            {driver.contact_number && (
+                              <p className="flex items-center gap-2">
+                                <span className="opacity-70">Phone:</span>
+                                <span className="font-medium text-foreground">{driver.contact_number}</span>
+                              </p>
+                            )}
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => setViewingDriverHistory({ id: driver.id, name: driver.name })}
+                          >
+                            <History className="h-4 w-4 mr-2" />
+                            View History
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <DriverHistoryDialog
+              isOpen={!!viewingDriverHistory}
+              onClose={() => setViewingDriverHistory(null)}
+              driverId={viewingDriverHistory?.id || null}
+              driverName={viewingDriverHistory?.name || null}
+            />
+          </TabsContent>
+
           <TabsContent value="history" className="space-y-6">
             <Tabs defaultValue="service_history" className="w-full">
               <div className="flex justify-center mb-6">
@@ -1843,6 +1952,12 @@ export default function CustomerPortal() {
                             <div>
                               <h4 className="text-foreground font-bold uppercase tracking-tight">{order.vehicle?.vehicle_number}</h4>
                               <p className="text-xs text-muted-foreground font-medium">{order.vehicle?.model}</p>
+                              {order.driver && (
+                                <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  <span className="font-medium">Driver:</span> {order.driver.name}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <h3 className="text-foreground font-bold mb-4 flex items-center gap-2">
@@ -1850,12 +1965,43 @@ export default function CustomerPortal() {
                             {order.service_type}
                           </h3>
 
-                          <div className="flex flex-wrap gap-2 mb-6">
-                            {order.services?.map((s: any, i: number) => (
-                              <Badge key={i} variant="secondary" className="bg-background text-muted-foreground border-border text-[10px] py-1">
-                                {s.service_type}
-                              </Badge>
-                            ))}
+                          <div className="space-y-3 mb-6">
+                            {order.services?.map((s: any, i: number) => {
+                              const serviceTasks = order.tasks?.filter((t: any) => t.service_id === s.id) || [];
+                              return (
+                                <div key={i} className="bg-background/20 p-2.5 rounded-2xl border border-border/30">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center">
+                                      <Wrench className="h-3 w-3 text-primary" />
+                                    </div>
+                                    <span className="text-xs font-bold text-foreground/90">{s.service_type}</span>
+                                  </div>
+                                  {serviceTasks.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 ml-8">
+                                      {serviceTasks.map((t: any, ti: number) => (
+                                        <Badge key={ti} variant="secondary" className="text-[9px] bg-background/50 text-muted-foreground font-medium border-none px-2 py-0">
+                                          {t.task_name}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* Standalone Tasks */}
+                            {order.tasks?.filter((t: any) => !t.service_id).length > 0 && (
+                              <div className="mt-3 bg-secondary/10 p-2.5 rounded-2xl border border-dashed border-border/50">
+                                <p className="text-[9px] text-muted-foreground uppercase font-bold mb-2 tracking-wider ml-1">General Tasks</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {order.tasks.filter((t: any) => !t.service_id).map((t: any, ti: number) => (
+                                    <Badge key={ti} variant="outline" className="text-[9px] border-border/50 text-muted-foreground font-medium px-2 py-0">
+                                      {t.task_name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center justify-between border-t border-border pt-4">

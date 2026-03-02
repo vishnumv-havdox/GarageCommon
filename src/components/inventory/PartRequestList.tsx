@@ -40,7 +40,7 @@ import { Combobox } from "@/components/ui/combobox";
 interface PartRequest {
     id: string;
     item_id: string;
-    inventory: { item_name: string; sku: string; unit_price: number } | null;
+    inventory: { item_name: string; brand_name: string | null; sku: string; unit_price: number } | null;
     requested_qty: number;
     approved_qty: number;
     issued_qty: number;
@@ -156,7 +156,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                 .from("part_requests")
                 .select(`
           *,
-          inventory:inventory(item_name, sku, unit_price),
+          inventory:inventory(item_name, brand_name, sku, unit_price),
           employee:employees!requested_by(name)
         `)
                 .eq("work_order_id", workOrderId)
@@ -169,7 +169,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                 .from("inventory_returns")
                 .select(`
                     *,
-                    inventory:inventory(item_name, sku, unit_price),
+                    inventory:inventory(item_name, brand_name, sku, unit_price),
                     employee:employees!requested_by(name)
                 `)
                 .eq("work_order_id", workOrderId)
@@ -186,7 +186,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
 
     const fetchInventoryAndEmployees = async () => {
         try {
-            const { data: inv } = await supabase.from("inventory").select("id, item_name, sku, available_qty").gt("available_qty", 0);
+            const { data: inv } = await supabase.from("inventory").select("id, item_name, brand_name, sku, available_qty").gt("available_qty", 0);
             const { data: emp } = await supabase.from("employees").select("id, name").eq("status", "active");
             setInventoryItems(inv || []);
             setEmployees(emp || []);
@@ -432,7 +432,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                             <Combobox
                                                 items={inventoryItems.map((item) => ({
                                                     value: item.id,
-                                                    label: `${item.item_name} (${item.sku}) - ${item.available_qty} left`
+                                                    label: `${item.brand_name ? `[${item.brand_name}] ` : ''}${item.item_name} (${item.sku}) - ${item.available_qty} left`
                                                 }))}
                                                 value={selectedItemId}
                                                 onSelect={setSelectedItemId}
@@ -518,7 +518,10 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                 requests.map((req) => (
                                     <TableRow key={req.id}>
                                         <TableCell>
-                                            <div className="font-medium">{req.inventory?.item_name || 'Deleted Item'}</div>
+                                            <div className="font-medium">
+                                                {req.inventory?.brand_name && <span className="text-blue-600 mr-2 text-xs font-bold uppercase">[{req.inventory.brand_name}]</span>}
+                                                {req.inventory?.item_name || 'Deleted Item'}
+                                            </div>
                                             <div className="text-xs text-muted-foreground">{req.inventory?.sku || 'N/A'}</div>
                                         </TableCell>
                                         <TableCell>
@@ -734,7 +737,10 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                 {returns.map((ret) => (
                                     <TableRow key={ret.id} className="bg-transparent hover:bg-muted/50 border-b border-muted/20">
                                         <TableCell className="py-2">
-                                            <div className="text-sm font-medium">{ret.inventory?.item_name}</div>
+                                            <div className="text-sm font-medium">
+                                                {ret.inventory?.brand_name && <span className="text-blue-600 mr-1">[{ret.inventory.brand_name}]</span>}
+                                                {ret.inventory?.item_name}
+                                            </div>
                                             <div className="text-[10px] text-muted-foreground">Qty: {ret.quantity} • {ret.condition}</div>
                                         </TableCell>
                                         <TableCell className="py-2 text-xs italic text-muted-foreground max-w-[200px] truncate" title={ret.reason}>

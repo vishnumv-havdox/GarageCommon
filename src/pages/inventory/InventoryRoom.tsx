@@ -81,7 +81,7 @@ export default function InventoryRoom() {
                 .from("part_requests")
                 .select(`
           *,
-          inventory:inventory(item_name, sku, qr_code)
+          inventory:inventory(item_name, brand_name, sku, qr_code)
         `)
                 .eq("work_order_id", woId)
                 .eq("status", "approved");
@@ -192,6 +192,7 @@ export default function InventoryRoom() {
                 setScannedSessionItems(prev => [{
                     id: Math.random().toString(),
                     item_name: unitResult.item_name,
+                    brand: unitResult.brand_name, // Assuming the RPC might return this eventually, or it will be undefined for now
                     sku: decodedText.split('-')[0], // Extract SKU if possible
                     qr: decodedText,
                     time: new Date().toLocaleTimeString()
@@ -215,6 +216,7 @@ export default function InventoryRoom() {
                     setScannedSessionItems(prev => [{
                         id: Math.random().toString(),
                         item_name: part.inventory?.item_name || "Unknown Item",
+                        brand: part.inventory?.brand_name,
                         sku: decodedText,
                         qr: decodedText,
                         time: new Date().toLocaleTimeString()
@@ -397,7 +399,10 @@ export default function InventoryRoom() {
                                     <div key={part.id} className="py-3 flex items-center justify-between">
                                         <div>
                                             <p className="font-medium text-foreground">{part.inventory?.item_name}</p>
-                                            <p className="text-xs text-muted-foreground font-mono">SKU: {part.inventory?.sku}</p>
+                                            <p className="text-xs text-muted-foreground font-mono">
+                                                {part.inventory?.brand_name && <span className="text-blue-400 mr-2">{part.inventory.brand_name}</span>}
+                                                SKU: {part.inventory?.sku}
+                                            </p>
                                         </div>
                                         <div className="text-right">
                                             <span className="text-xs text-muted-foreground block mb-1">Approved Qty</span>
@@ -461,7 +466,10 @@ export default function InventoryRoom() {
                                 {scannedSessionItems.map((item) => (
                                     <div key={item.id} className="p-3 flex items-center justify-between animate-in slide-in-from-left duration-300">
                                         <div>
-                                            <p className="font-medium text-foreground text-sm">{item.item_name}</p>
+                                            <p className="font-medium text-foreground text-sm">
+                                                {item.brand && <span className="text-blue-400 mr-1">[{item.brand}]</span>}
+                                                {item.item_name}
+                                            </p>
                                             <p className="text-[10px] text-muted-foreground font-mono italic">{item.qr}</p>
                                         </div>
                                         <div className="text-right">

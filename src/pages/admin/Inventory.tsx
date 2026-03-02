@@ -55,6 +55,7 @@ import { renderToString } from "react-dom/server";
 interface InventoryItem {
   id: string;
   item_name: string;
+  brand_name?: string | null;
   category: string;
   quantity: number;
   available_qty: number;
@@ -362,7 +363,8 @@ export default function AdminInventory() {
         doc.text(item.item_name.substring(0, 20), x, y - 2);
         doc.addImage(qrDataUrl, 'PNG', x, y, size, size);
         doc.setFontSize(7);
-        doc.text(`SKU: ${item.sku}`, x, y + size + 4);
+        doc.text(`Brand: ${item.brand_name || 'N/A'}`, x, y + size + 3);
+        doc.text(`SKU: ${item.sku}`, x, y + size + 6);
 
         x += size + margin + 5;
       }
@@ -414,12 +416,16 @@ export default function AdminInventory() {
         doc.setFont("helvetica", "bold");
         doc.text(item.item_name.substring(0, 25), x, y);
 
-        doc.addImage(qrDataUrl, 'PNG', x + (labelWidth / 2) - (qrSize / 2) - 2, y + 4, qrSize, qrSize);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text(item.brand_name || '', x, y + 4);
+
+        doc.addImage(qrDataUrl, 'PNG', x + (labelWidth / 2) - (qrSize / 2) - 2, y + 6, qrSize, qrSize);
 
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
-        doc.text(`SKU: ${item.sku}`, x, y + qrSize + 8);
-        doc.text(`Price: Rs.${item.unit_price}`, x, y + qrSize + 12);
+        doc.text(`SKU: ${item.sku}`, x, y + qrSize + 10);
+        doc.text(`Price: Rs.${item.unit_price}`, x, y + qrSize + 14);
       }
 
       doc.save(`Label_${item.sku}.pdf`);
@@ -731,6 +737,7 @@ export default function AdminInventory() {
                       <TableRow>
                         <TableHead>Product Details</TableHead>
                         <TableHead>Category</TableHead>
+                        <TableHead>Brand</TableHead>
                         <TableHead className="text-right">Stock (Avail/Tot/Res)</TableHead>
                         <TableHead className="text-right">Unit Price</TableHead>
                         <TableHead>Location</TableHead>
@@ -758,6 +765,9 @@ export default function AdminInventory() {
                             </TableCell>
                             <TableCell>
                               <Badge variant="outline">{item.category}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm">{item.brand_name || '-'}</span>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex flex-col items-end">

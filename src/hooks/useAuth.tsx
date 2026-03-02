@@ -3,7 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 
-export type UserRole = "admin" | "manager" | "staff" | "customer";
+export type UserRole = "admin" | "staff" | "customer";
 
 export interface AuthUser extends User {
   role?: UserRole;
@@ -23,7 +23,7 @@ export function useAuth() {
         setSession(session);
         const authUser = session?.user ? { ...session.user } as AuthUser : null;
         setUser(authUser);
-        
+
         // Fetch user role after auth state changes
         if (session?.user) {
           setTimeout(() => {
@@ -40,7 +40,7 @@ export function useAuth() {
       setSession(session);
       const authUser = session?.user ? { ...session.user } as AuthUser : null;
       setUser(authUser);
-      
+
       if (session?.user) {
         fetchUserRole(session.user.id);
       } else {
@@ -88,8 +88,12 @@ export function useAuth() {
         role: userRole,
         full_name: profileData?.full_name,
       }));
-    } catch (error) {
-      console.error("Error fetching user role:", error);
+    } catch (error: any) {
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.error("Supabase connection error: The backend is unreachable. This might be due to the project being paused or a network issue.", error);
+      } else {
+        console.error("Error in auth flow:", error);
+      }
     } finally {
       setLoading(false);
     }

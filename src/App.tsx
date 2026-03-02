@@ -11,6 +11,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import AdminEmployees from "./pages/admin/Employees";
 import AdminCustomers from "./pages/admin/Customers";
 import AdminVehicles from "./pages/admin/Vehicles";
+import AdminVehicleDetail from "./pages/admin/VehicleDetail";
 import AdminWorkOrders from "./pages/admin/WorkOrders";
 import AdminWorkOrderDetail from "./pages/admin/WorkOrderDetail";
 import AdminAnalytics from "./pages/admin/Analytics";
@@ -51,6 +52,7 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/employees": AdminEmployees,
   "/admin/customers": AdminCustomers,
   "/admin/vehicles": AdminVehicles,
+  "/admin/vehicles/:id": AdminVehicleDetail,
   "/admin/work-orders": AdminWorkOrders,
   "/admin/work-orders/:id": AdminWorkOrderDetail,
   "/admin/analytics": AdminAnalytics,

@@ -260,6 +260,7 @@ export default function WorkOrderDetail() {
                             category_id
                         )
                     `)
+                    .eq('id', modelId)
                     .single();
 
                 if (vModelData) {
@@ -905,10 +906,12 @@ export default function WorkOrderDetail() {
         try {
             const price = parseFloat(newTaskPrice) || 0;
             const { error } = await supabase.from("work_order_tasks").insert({
-                work_order_service_id: addingTaskToServiceId,
+                work_order_id: id,
+                service_id: addingTaskToServiceId,
                 task_name: newTaskName,
                 price: price,
-                status: 'pending'
+                task_type: 'repair',
+                completed: false
             });
 
             if (error) throw error;

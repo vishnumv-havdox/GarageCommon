@@ -43,6 +43,7 @@ export function InventoryForm({ initialData, onSubmit, onCancel, onPrintLabels, 
     const form = useForm({
         defaultValues: initialData || {
             item_name: "",
+            brand_name: "",
             sku: "",
             category: "Mechanical",
             quantity: 0,
@@ -132,6 +133,20 @@ export function InventoryForm({ initialData, onSubmit, onCancel, onPrintLabels, 
                                 <FormLabel>Product Name</FormLabel>
                                 <FormControl>
                                     <Input placeholder="e.g. Engine Oil 5W-30" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+
+                    <FormField
+                        control={form.control}
+                        name="brand_name"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Brand Name</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="e.g. Shell, Castrol..." {...field} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { NavLink, useSearchParams } from "react-router-dom";
+import { NavLink, useSearchParams, Link } from "react-router-dom";
 import { LogOut, Users, Shield, Plus, Search, Truck } from "lucide-react";
 import { VehicleForm } from "@/components/forms/VehicleForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -222,7 +222,9 @@ export default function AdminVehicles() {
                         </div>
 
                         <div className="flex items-center gap-2 w-full lg:w-auto">
-                          <Button variant="outline" size="sm" onClick={() => setViewingVehicle(vehicle)} className="flex-1 lg:flex-none">View</Button>
+                          <Link to={`/admin/vehicles/${vehicle.id}`} className="flex-1 lg:flex-none">
+                            <Button variant="outline" size="sm" className="w-full">View</Button>
+                          </Link>
                           <Button variant="outline" size="sm" onClick={() => { setEditingVehicle(vehicle); setShowForm(true); }} className="flex-1 lg:flex-none">Edit</Button>
                           <Button variant="destructive" size="sm" onClick={() => setDeletingVehicle(vehicle)} className="flex-1 lg:flex-none">Delete</Button>
                         </div>

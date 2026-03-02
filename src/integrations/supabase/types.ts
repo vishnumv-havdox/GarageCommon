@@ -377,6 +377,7 @@ export interface Database {
         Row: {
           id: string
           item_name: string
+          brand_name: string | null
           category: string
           quantity: number
           unit_price: number
@@ -389,6 +390,7 @@ export interface Database {
         Insert: {
           id?: string
           item_name: string
+          brand_name?: string | null
           category: string
           quantity?: number
           unit_price: number
@@ -401,6 +403,7 @@ export interface Database {
         Update: {
           id?: string
           item_name?: string
+          brand_name?: string | null
           category?: string
           quantity?: number
           unit_price?: number

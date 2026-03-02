@@ -375,7 +375,7 @@ export default function InvoiceEditor() {
     });
 
     const fetchCompanyProfile = async () => {
-        const { data: profile } = await supabase.from('company_profiles').select('*').single();
+        const { data: profile } = await supabase.from('company_profiles').select('*').limit(1).maybeSingle();
         setCompanyProfile(profile);
 
         const { data: settings } = await supabase.from('document_settings').select('*').eq('doc_type', 'invoice').single();
@@ -395,7 +395,7 @@ export default function InvoiceEditor() {
         if (ttError) console.error("Error fetching task templates:", ttError);
         setTaskTemplates(tt || []);
 
-        const { data: inv, error: invError } = await supabase.from('inventory').select('id, item_name, unit_price, sku, hsn_code').gt('quantity', 0);
+        const { data: inv, error: invError } = await supabase.from('inventory').select('id, item_name, brand_name, unit_price, sku, hsn_code').gt('quantity', 0);
         if (invError) console.error("Error fetching inventory:", invError);
         setInventoryItems(inv || []);
     };
@@ -921,7 +921,13 @@ export default function InvoiceEditor() {
                                                         onChange={handleItemChange}
                                                         onRemove={handleRemoveItem}
                                                         isReadOnly={isFinalized}
-                                                        taskTemplates={inventoryItems.map(i => ({ id: i.id, name: i.item_name, price: i.unit_price, hsn_code: i.hsn_code, service_type_id: 'spare' }))}
+                                                        taskTemplates={inventoryItems.map(i => ({
+                                                            id: i.id,
+                                                            name: `${i.brand_name ? `[${i.brand_name}] ` : ''}${i.item_name}`,
+                                                            price: i.unit_price,
+                                                            hsn_code: i.hsn_code,
+                                                            service_type_id: 'spare'
+                                                        }))}
                                                         itemType="part"
                                                     />
                                                 );

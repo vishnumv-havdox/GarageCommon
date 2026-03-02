@@ -80,6 +80,12 @@ export const accessControlConfig: AccessRule[] = [
     description: "Vehicle management - admin and manager only",
   },
   {
+    path: "/admin/vehicles/:id",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Vehicle detail view",
+  },
+  {
     path: "/admin/work-orders",
     allowedRoles: ["admin", "manager"],
     redirectTo: "/dashboard",

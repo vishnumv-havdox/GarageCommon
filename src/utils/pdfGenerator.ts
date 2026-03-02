@@ -151,6 +151,242 @@ export const generateInvoicePDF = async (workOrderId: string, action: 'save' | '
     return generateDocument(workOrderId, 'invoice', action);
 };
 
+export const parseNotes = (notes: any): string => {
+    if (!notes) return 'N/A';
+    if (typeof notes === 'string') {
+        try {
+            // Check if it's JSON
+            if (notes.startsWith('{') || notes.startsWith('[')) {
+                const parsed = JSON.parse(notes);
+                return parseNotes(parsed);
+            }
+            return notes;
+        } catch (e) {
+            return notes;
+        }
+    }
+    if (typeof notes === 'object') {
+        // Handle the specific structure reported by user
+        let parts = [];
+        if (notes.service_types) parts.push(`Services: ${notes.service_types.join(', ')}`);
+        if (notes.reopened_at) parts.push(`Reopened: ${format(new Date(notes.reopened_at), 'PPp')}`);
+        if (notes.original_reopen_reason) parts.push(`Reopen Reason: ${notes.original_reopen_reason}`);
+        if (notes.total_sections) parts.push(`Sections: ${notes.total_sections}`);
+
+        if (parts.length > 0) return parts.join(' | ');
+        return JSON.stringify(notes);
+    }
+    return String(notes);
+};
+
+export const generateVehicleHistoryPDF = async (vehicleId: string, action: 'save' | 'preview' = 'preview') => {
+    try {
+        const [profileRes, vehicleRes, historyRes] = await Promise.all([
+            supabase.from('company_profiles').select('*').limit(1).single(),
+            supabase.from('vehicles').select(`
+                *,
+                customers(*)
+            `).eq('id', vehicleId).single(),
+            supabase.from('work_orders').select(`
+                *,
+                advisor:employees!assigned_to(name, phone),
+                driver:drivers(name, contact_number),
+                services:work_order_services(
+                    id,
+                    service_type,
+                    tasks:work_order_tasks(id, task_name, price, completed)
+                ),
+                invoices(
+                    id,
+                    total,
+                    total_deductions,
+                    payment_links(amount_applied, payment:payments(id, amount, status))
+                )
+            `).eq('vehicle_id', vehicleId).order('created_at', { ascending: false })
+        ]);
+
+        const profile = profileRes.data;
+        const vehicle = vehicleRes.data;
+        const history = historyRes.data || [];
+
+        if (!vehicle) throw new Error("Vehicle not found");
+
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.width;
+        let currentY = 15;
+
+        // Load and Add Logo if exists
+        if ((profile as any)?.logo_url) {
+            try {
+                const logoBase64 = await fetch((profile as any).logo_url)
+                    .then(r => r.blob())
+                    .then(blob => new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                    }));
+                doc.addImage(logoBase64 as string, 'PNG', 15, currentY, 12, 12);
+            } catch (e) {
+                console.warn("Logo load failed for PDF", e);
+            }
+        }
+
+        // Header - Company Name
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text((profile as any)?.company_name?.toUpperCase() || "AMMA AUTO", (profile as any)?.logo_url ? 30 : 15, currentY + 5);
+
+        // Company Details (Address, Phone)
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        let companyDetailY = currentY + 10;
+        if ((profile as any)?.address) {
+            doc.text((profile as any).address, (profile as any)?.logo_url ? 30 : 15, companyDetailY);
+            companyDetailY += 4;
+        }
+        const contactInfo = `Ph: ${(profile as any)?.phone || 'N/A'} | Email: ${(profile as any)?.email || 'N/A'}`;
+        doc.text(contactInfo, (profile as any)?.logo_url ? 30 : 15, companyDetailY);
+
+        currentY = Math.max(currentY + 20, companyDetailY + 8);
+
+        // Document Title
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(15, 23, 42);
+        doc.text("VEHICLE SERVICE HISTORY REPORT", 15, currentY);
+        doc.setLineWidth(0.5);
+        doc.line(15, currentY + 1, 90, currentY + 1);
+        currentY += 10;
+
+        // Vehicle & Customer Info Box
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(15, currentY, pageWidth - 30, 35, 2, 2, 'FD');
+
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.text("VEHICLE DETAILS", 20, currentY + 6);
+        doc.text("CUSTOMER DETAILS", (pageWidth / 2) + 5, currentY + 6);
+
+        doc.setFontSize(9);
+        doc.setTextColor(15, 23, 42);
+        // Vehicle Col
+        doc.setFont('helvetica', 'bold');
+        doc.text(`REG: ${(vehicle as any).vehicle_number}`, 20, currentY + 12);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Model: ${(vehicle as any).model || 'N/A'}`, 20, currentY + 17);
+        doc.text(`KM Driven: ${(vehicle as any).kilometers_driven || 'N/A'}`, 20, currentY + 22);
+        doc.text(`Next Service: ${(vehicle as any).next_service_km || 'N/A'} km`, 20, currentY + 27);
+
+        // Customer Col
+        doc.setFont('helvetica', 'bold');
+        doc.text((vehicle as any).customers?.name || 'N/A', (pageWidth / 2) + 5, currentY + 12);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(`Ph: ${(vehicle as any).customers?.phone || 'N/A'}`, (pageWidth / 2) + 5, currentY + 17);
+        if ((vehicle as any).customers?.address) {
+            const addrLines = doc.splitTextToSize((vehicle as any).customers.address, (pageWidth / 2) - 15);
+            doc.text(addrLines, (pageWidth / 2) + 5, currentY + 22);
+        }
+
+        doc.setFontSize(8);
+        doc.text(`Date of Report: ${format(new Date(), 'PP')}`, pageWidth - 20, currentY + 6, { align: 'right' });
+        doc.text(`Total Records: ${history.length}`, pageWidth - 20, currentY + 12, { align: 'right' });
+        currentY += 45;
+
+        // History Timeline
+        for (const wo of history) {
+            if (currentY > 250) {
+                doc.addPage();
+                currentY = 20;
+            }
+
+            // Work Order Card Header
+            doc.setFillColor(241, 245, 249);
+            doc.rect(15, currentY, pageWidth - 30, 10, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text(`${format(new Date(wo.created_at), 'PPP')} - ${wo.service_type || 'General Service'}`, 20, currentY + 7);
+            doc.text(wo.status.toUpperCase(), pageWidth - 20, currentY + 7, { align: 'right' });
+            currentY += 15;
+
+            // Details
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            const descriptionText = parseNotes(wo.description);
+            const descriptionLines = doc.splitTextToSize(`Description: ${descriptionText}`, pageWidth - 40);
+            doc.text(descriptionLines, 20, currentY);
+            currentY += (descriptionLines.length * 4) + 1;
+
+            const advisorName = wo.advisor?.name || 'N/A';
+            const advisorPhone = wo.advisor?.phone ? `(${wo.advisor.phone})` : '';
+            const driverName = wo.driver?.name || 'N/A';
+            const driverPhone = wo.driver?.contact_number ? `(${wo.driver.contact_number})` : '';
+
+            doc.text(`Advisor: ${advisorName} ${advisorPhone} | Driver: ${driverName} ${driverPhone}`, 20, currentY);
+            currentY += 8;
+
+            // Tasks Table
+            const taskData = (wo.services || []).flatMap((s: any) =>
+                (s.tasks || []).map((t: any) => [
+                    s.service_type,
+                    t.task_name,
+                    t.completed ? 'Done' : 'Pending'
+                ])
+            );
+
+            if (taskData.length > 0) {
+                autoTable(doc, {
+                    startY: currentY,
+                    head: [['Category', 'Task', 'Status']],
+                    body: taskData,
+                    theme: 'grid',
+                    styles: { fontSize: 7 },
+                    headStyles: { fillColor: [15, 23, 42] },
+                    margin: { left: 20, right: 20 },
+                });
+                currentY = (doc as any).lastAutoTable.finalY + 5;
+            } else {
+                doc.text("No detailed tasks recorded.", 20, currentY);
+                currentY += 8;
+            }
+
+            // Financial Summary for Work Order
+            let billedTotal = 0;
+            let paidTotal = 0;
+            (wo.invoices || []).forEach((inv: any) => {
+                billedTotal += inv.total || 0;
+                inv.payment_links?.forEach((link: any) => {
+                    if (link.payment?.status === 'approved') {
+                        paidTotal += link.amount_applied || link.payment.amount;
+                    }
+                });
+            });
+
+            if (billedTotal > 0) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8);
+                doc.text(`BILLED TOTAL: Rs. ${billedTotal}`, 20, currentY);
+                doc.text(`RECEIVED (PAID): Rs. ${paidTotal}`, 70, currentY);
+                currentY += 10;
+            } else {
+                currentY += 5;
+            }
+        }
+
+        if (action === 'preview') {
+            window.open(doc.output('bloburl'), '_blank');
+        } else {
+            doc.save(`${(vehicle as any).vehicle_number}_History.pdf`);
+        }
+        return true;
+    } catch (error) {
+        console.error("PDF Generation failed:", error);
+        throw error;
+    }
+};
+
 class PDFGenerator {
     private doc: jsPDF;
     private pageWidth: number;

@@ -15,11 +15,23 @@ export default function InventoryLogin() {
     const [loginData, setLoginData] = useState({ email: "", password: "" });
 
     const [profile, setProfile] = useState<any>(null);
+    const [isBackendDown, setIsBackendDown] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
-            const { data } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
-            if (data) setProfile(data);
+            try {
+                const { data, error } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
+                if (error && error.message === 'Failed to fetch') {
+                    setIsBackendDown(true);
+                } else if (data) {
+                    setProfile(data);
+                }
+            } catch (error: any) {
+                if (error.message === 'Failed to fetch' || (error instanceof TypeError && error.message === 'Failed to fetch')) {
+                    setIsBackendDown(true);
+                }
+                console.error("Backend check failed:", error);
+            }
         };
         fetchProfile();
 
@@ -81,6 +93,11 @@ export default function InventoryLogin() {
                     </div>
                     <CardTitle className="text-3xl font-bold tracking-tight uppercase">{profile?.company_name || 'Inventory Room'}</CardTitle>
                     <CardDescription className="text-muted-foreground">Authorized Personnel Only</CardDescription>
+                    {isBackendDown && (
+                        <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm font-medium animate-pulse">
+                            Backend Unreachable. The Supabase project might be paused.
+                        </div>
+                    )}
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleLogin} className="space-y-6">

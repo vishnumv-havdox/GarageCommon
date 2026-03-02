@@ -52,26 +52,33 @@ END $$;
 
 -- Workforce Settings
 ALTER TABLE public.workforce_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Anyone can view workforce settings" ON public.workforce_settings;
 CREATE POLICY "Anyone can view workforce settings" ON public.workforce_settings
     FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admins manage workforce settings" ON public.workforce_settings;
 CREATE POLICY "Admins manage workforce settings" ON public.workforce_settings
     FOR ALL USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'manager')));
 
 -- Leave Requests
 ALTER TABLE public.leave_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Staff can view own leave requests" ON public.leave_requests;
 CREATE POLICY "Staff can view own leave requests" ON public.leave_requests
     FOR SELECT USING (employee_id IN (SELECT id FROM public.employees WHERE user_id = auth.uid()));
+DROP POLICY IF EXISTS "Staff can create own leave requests" ON public.leave_requests;
 CREATE POLICY "Staff can create own leave requests" ON public.leave_requests
     FOR INSERT WITH CHECK (employee_id IN (SELECT id FROM public.employees WHERE user_id = auth.uid()));
+DROP POLICY IF EXISTS "Admins manage all leave requests" ON public.leave_requests;
 CREATE POLICY "Admins manage all leave requests" ON public.leave_requests
     FOR ALL USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'manager')));
 
 -- Attendance updates (Self-service insert)
+DROP POLICY IF EXISTS "Staff can clock in/out" ON public.attendance;
 CREATE POLICY "Staff can clock in/out" ON public.attendance
     FOR INSERT WITH CHECK (
         employee_id IN (SELECT id FROM public.employees WHERE user_id = auth.uid() AND attendance_self_service = true)
         AND date = CURRENT_DATE
     );
+DROP POLICY IF EXISTS "Staff can update today's attendance" ON public.attendance;
 CREATE POLICY "Staff can update today's attendance" ON public.attendance
     FOR UPDATE USING (
         employee_id IN (SELECT id FROM public.employees WHERE user_id = auth.uid() AND attendance_self_service = true)

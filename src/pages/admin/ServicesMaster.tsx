@@ -721,7 +721,7 @@ export default function ServicesMaster() {
     };
 
     return (
-        <div className="flex min-h-screen bg-background">
+        <div className="flex flex-col lg:flex-row min-h-screen bg-background">
             <AdminSidebar />
             <main className="flex-1 p-8">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">

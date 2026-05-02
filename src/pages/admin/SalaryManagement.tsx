@@ -298,7 +298,7 @@ export default function SalaryManagementPage() {
     );
 
     return (
-        <div className="flex min-h-screen w-full bg-muted/40">
+        <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40">
             <AdminSidebar />
             <main className="flex-1 p-4 md:p-8 pt-6">
                 <div className="flex flex-col gap-6">

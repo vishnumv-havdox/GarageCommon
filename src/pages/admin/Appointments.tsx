@@ -269,7 +269,7 @@ export default function Appointments() {
 
     return (
         <>
-            <div className="flex h-screen bg-background">
+            <div className="flex flex-col lg:flex-row h-screen bg-background">
                 <AdminSidebar />
                 <main className="flex-1 overflow-y-auto bg-background/50">
                     <div className="flex flex-col gap-4 p-4 md:flex-row md:gap-8 lg:p-8 min-h-full">
@@ -359,28 +359,28 @@ export default function Appointments() {
                         {/* Main Content Area */}
                         <div className="flex-1 flex flex-col gap-6 min-w-0">
                             {/* Page Header */}
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div>
                                     <h1 className="text-2xl font-bold tracking-tight">Appointments</h1>
                                     <p className="text-muted-foreground text-sm">
                                         {date ? format(date, "EEEE, MMMM do, yyyy") : "All Appointments"}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="relative">
+                                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                                    <div className="relative flex-1 md:flex-none">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                         <Input
                                             placeholder="Search customer, vehicle..."
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="bg-background/50 border-border h-9 pl-9 w-64 text-sm"
+                                            className="bg-background/50 border-border h-9 pl-9 w-full md:w-64 text-sm"
                                         />
                                     </div>
-                                    <Button onClick={fetchAppointments} variant="outline" size="icon" className="h-9 w-9 bg-background/50 border-border hover:bg-primary/10 transition-colors">
+                                    <Button onClick={fetchAppointments} variant="outline" size="icon" className="h-9 w-9 bg-background/50 border-border hover:bg-primary/10 transition-colors shrink-0">
                                         <RefreshCw className={cn("h-4 w-4 text-primary", loading && "animate-spin")} />
                                     </Button>
                                     <Select value={filterStatus} onValueChange={setFilterStatus}>
-                                        <SelectTrigger className="w-[180px]">
+                                        <SelectTrigger className="w-full md:w-[180px] h-9">
                                             <SelectValue placeholder="Filter Status" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -510,7 +510,7 @@ export default function Appointments() {
                                                                     </Badge>
                                                                 </div>
                                                             </CardHeader>
-                                                            <CardContent className="p-0">
+                                                            <CardContent className="p-0 overflow-x-auto">
                                                                 <Table>
                                                                     <TableHeader className="bg-secondary/10">
                                                                         <TableRow className="hover:bg-transparent border-0">
@@ -711,7 +711,7 @@ function AppointmentCard({ app, onUpdateStatus, onDelete, onEditTime, onCreateJo
             <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row gap-6 justify-between">
                     {/* Left: Date, Time & Customer */}
-                    <div className="flex gap-4">
+                    <div className="flex flex-wrap md:flex-nowrap gap-4">
                         <div
                             className="group flex flex-col items-center justify-center min-w-[80px] h-20 rounded-xl bg-secondary text-secondary-foreground border border-border cursor-pointer hover:bg-primary/10 transition-colors relative"
                             onClick={() => onEditTime(app)}
@@ -794,9 +794,9 @@ function AppointmentCard({ app, onUpdateStatus, onDelete, onEditTime, onCreateJo
                     </div>
 
                     {/* Right: Services & Actions */}
-                    <div className="flex flex-col items-end gap-4 min-w-[200px]">
+                    <div className="flex flex-col items-start md:items-end gap-4 w-full md:min-w-[200px]">
                         {app.services && app.services.length > 0 && (
-                            <div className="flex flex-wrap justify-end gap-2 max-w-[300px]">
+                            <div className="flex flex-wrap justify-start md:justify-end gap-2 max-w-[300px]">
                                 {app.services.map((s: any, i: number) => (
                                     <Badge key={i} variant="secondary" className="text-xs">
                                         {s.service_name}
@@ -805,7 +805,7 @@ function AppointmentCard({ app, onUpdateStatus, onDelete, onEditTime, onCreateJo
                             </div>
                         )}
 
-                        <div className="flex items-center gap-2 mt-auto">
+                        <div className="flex flex-wrap items-center gap-2 mt-4 md:mt-auto">
                             {app.status === 'pending' && (
                                 <>
                                     <Button size="sm" variant="destructive" onClick={() => onUpdateStatus(app.id, 'rejected')}>

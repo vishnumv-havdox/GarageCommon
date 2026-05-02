@@ -578,7 +578,7 @@ export default function AdminInventory() {
   const lowStockItems = inventory.filter(item => item.available_qty <= item.reorder_level);
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-screen bg-background overflow-hidden">
       <AdminSidebar />
       <main className="flex-1 overflow-y-auto p-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">

@@ -93,7 +93,7 @@ export const accessControlConfig: AccessRule[] = [
   },
   {
     path: "/admin/work-orders/:id",
-    allowedRoles: ["admin", "manager"],
+    allowedRoles: ["admin", "manager", "staff"],
     redirectTo: "/dashboard",
     description: "Work order detail view",
   },

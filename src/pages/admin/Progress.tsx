@@ -234,7 +234,7 @@ export default function AdminProgress() {
   const realtimeStageCounts = realtimeData?.stage_counts || {};
 
   return (
-    <div className="flex min-h-screen w-full bg-muted/40">
+    <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40">
       <AdminSidebar />
       <main className="flex-1 p-8">
         <div className="flex items-center justify-between mb-8">

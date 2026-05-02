@@ -201,12 +201,16 @@ export function TaskSelector({
                                         {selectableTasks.map((task) => (
                                             <CommandItem
                                                 key={task.id}
-                                                value={task.name}
-                                                onSelect={() => handleAddPredefined(task.id)}
-                                                className="group flex items-center justify-between py-3"
+                                                // Combine name and ID for uniqueness, while keeping name for searchability
+                                                value={`${task.name}-${task.id}`}
+                                                onSelect={() => {
+                                                    console.log("Selected task ID:", task.id);
+                                                    handleAddPredefined(task.id);
+                                                }}
+                                                className="group flex items-center justify-between py-3 cursor-pointer"
                                             >
-                                                <div className="flex items-center gap-2">
-                                                    <span>{task.name}</span>
+                                                <div className="flex items-center gap-2 flex-1">
+                                                    <span className="font-medium">{task.name}</span>
                                                     <Badge variant="secondary" className="text-[10px] bg-blue-50 text-blue-700">₹{task.price || 0}</Badge>
                                                 </div>
                                                 <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">

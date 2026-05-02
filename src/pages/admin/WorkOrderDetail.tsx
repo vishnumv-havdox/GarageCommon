@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,7 @@ import {
     Truck, AlertTriangle, RefreshCw, ChevronRight, Plus, X, Edit, Play,
     Bell, ShieldCheck, FileText, Calendar as CalendarIcon,
     ListOrdered, Search, TrendingUp, Info, Loader2, RotateCcw,
-    Wrench, ArrowLeft, Users, ClipboardList, IndianRupee
+    Wrench, ArrowLeft, Users, ClipboardList, IndianRupee, Package, Camera
 } from "lucide-react";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
 import { PartRequestList } from "@/components/inventory/PartRequestList";
@@ -178,6 +178,12 @@ export default function WorkOrderDetail() {
     const [processingApproval, setProcessingApproval] = useState(false);
     const [noteType, setNoteType] = useState<"internal" | "customer" | "reach_out">("internal");
 
+    // Add Task States
+    const [addingTaskToServiceId, setAddingTaskToServiceId] = useState<string | null>(null);
+    const [newTaskName, setNewTaskName] = useState("");
+    const [newTaskPrice, setNewTaskPrice] = useState("");
+    const [isAddingTask, setIsAddingTask] = useState(false);
+
     // Extension: Assignment stats and workload
     const [assignmentPosition, setAssignmentPosition] = useState("0");
     const [employeeWorkload, setEmployeeWorkload] = useState<any[]>([]);
@@ -192,12 +198,14 @@ export default function WorkOrderDetail() {
     const [advisorDialogOpen, setAdvisorDialogOpen] = useState(false);
     const [isUpdatingAdvisor, setIsUpdatingAdvisor] = useState(false);
 
-    // Add Task State
-    const [addingTaskToServiceId, setAddingTaskToServiceId] = useState<string | null>(null);
-    const [newTaskName, setNewTaskName] = useState("");
-    const [newTaskPrice, setNewTaskPrice] = useState("");
-    const [isAddingTask, setIsAddingTask] = useState(false);
     const [predefinedTasks, setPredefinedTasks] = useState<any[]>([]);
+
+    // New Extension States
+    const [belongings, setBelongings] = useState<any[]>([]);
+    const [photos, setPhotos] = useState<any[]>([]);
+    const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
+    const [confirmedItems, setConfirmedItems] = useState<Record<string, boolean>>({});
+    const [isConfirmingBelongings, setIsConfirmingBelongings] = useState(false);
     const [billingInfo, setBillingInfo] = useState({
         totalInvoiced: 0,
         totalPaid: 0,
@@ -327,8 +335,9 @@ export default function WorkOrderDetail() {
         }
     };
 
-    const [showConfigForm, setShowConfigForm] = useState(false);
-    const [showAddServiceForm, setShowAddServiceForm] = useState(false);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const showConfigForm = searchParams.get('action') === 'configure';
+    const showAddServiceForm = searchParams.get('action') === 'add-service';
     const [bulkApproving, setBulkApproving] = useState(false);
     const [employeeAttendance, setEmployeeAttendance] = useState<any>(null);
     const [loadingEmployeeData, setLoadingEmployeeData] = useState(false);
@@ -349,6 +358,27 @@ export default function WorkOrderDetail() {
         setSelectedTrackerEmployee(formattedEmp);
         setTrackerOpen(true);
     };
+
+    const fetchExtensions = useCallback(async () => {
+        if (!id) return;
+        try {
+            const [pRes, bRes] = await Promise.all([
+                supabase.from('work_order_photos').select('*').eq('work_order_id', id),
+                supabase.from('work_order_belongings').select('*').eq('work_order_id', id)
+            ]);
+            if (pRes.data) setPhotos(pRes.data);
+            if (bRes.data) {
+                setBelongings(bRes.data);
+                const initialConfirmed = {};
+                bRes.data.forEach(item => {
+                    if (item.confirmed_at) initialConfirmed[item.id] = true;
+                });
+                setConfirmedItems(initialConfirmed);
+            }
+        } catch (error) {
+            console.error("Error fetching extensions:", error);
+        }
+    }, [id]);
 
     const fetchDetails = useCallback(async () => {
         if (!id) return;
@@ -508,10 +538,11 @@ export default function WorkOrderDetail() {
             } as any);
 
             setDetails(formattedServices);
+            fetchExtensions();
         } catch (error: any) {
             console.error("Fetch error:", error);
             toast({ variant: "destructive", title: "Error", description: error.message });
-            navigate("/admin/work-orders");
+            // Removed automatic navigate to allow seeing the error message
         } finally {
             setLoading(false);
         }
@@ -638,7 +669,7 @@ export default function WorkOrderDetail() {
             return;
         }
         setReopenDialogOpen(false);
-        setShowConfigForm(true);
+        setSearchParams({ action: 'configure' });
     };
 
     // Handle Bulk Approve All Pending Assignments
@@ -845,6 +876,14 @@ export default function WorkOrderDetail() {
     // Handle Mark Delivered
     const handleMarkDelivered = async () => {
         if (!id) return;
+
+        // Mandatory Confirmation Alert for Belongings
+        const unconfirmedBelonging = belongings.some(b => !confirmedItems[b.id]);
+        if (belongings.length > 0 && unconfirmedBelonging) {
+            setConfirmationDialogOpen(true);
+            return;
+        }
+
         try {
             const { error } = await supabase
                 .from("work_orders")
@@ -1219,6 +1258,74 @@ export default function WorkOrderDetail() {
                             Service Details
                         </h2>
 
+                        {/* Vehicle Condition & Belongings Section */}
+                        {(photos.length > 0 || belongings.length > 0) && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                {photos.length > 0 && (
+                                    <Card className="border-2 shadow-sm">
+                                        <CardHeader className="bg-muted/30 pb-3">
+                                            <CardTitle className="text-lg flex items-center gap-2">
+                                                <Camera className="h-5 w-5 text-primary" />
+                                                Vehicle Condition Photos
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="pt-4">
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                                {photos.map((photo) => (
+                                                    <div key={photo.id} className="group relative aspect-square rounded-lg overflow-hidden border bg-background shadow-sm hover:ring-2 hover:ring-primary/20 transition-all">
+                                                        <img
+                                                            src={photo.photo_url}
+                                                            className="w-full h-full object-cover cursor-pointer"
+                                                            alt={photo.photo_type}
+                                                            onClick={() => window.open(photo.photo_url, '_blank')}
+                                                        />
+                                                        <Badge className="absolute bottom-1 right-1 text-[8px] h-3 px-1 bg-black/60 text-white border-0 uppercase tracking-tighter">
+                                                            {photo.photo_type === 'arrival' ? 'Arrival' : 'Issue'}
+                                                        </Badge>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {belongings.length > 0 && (
+                                    <Card className="border-2 shadow-sm">
+                                        <CardHeader className="bg-muted/30 pb-3">
+                                            <CardTitle className="text-lg flex items-center gap-2">
+                                                <Package className="h-5 w-5 text-primary" />
+                                                Vehicle Belongings
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="pt-4">
+                                            <div className="space-y-2">
+                                                {belongings.map((item) => (
+                                                    <div key={item.id} className="flex items-center gap-3 p-2 bg-muted/20 border rounded-lg group">
+                                                        <div className="w-10 h-10 rounded border overflow-hidden bg-background">
+                                                            <img src={item.photo_url} className="w-full h-full object-cover" alt={item.item_name} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-bold truncate">{item.item_name}</p>
+                                                            <p className="text-[10px] text-muted-foreground truncate">{item.description || 'No description'}</p>
+                                                        </div>
+                                                        {item.confirmed_at ? (
+                                                            <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200 gap-1">
+                                                                <CheckCircle2 className="h-3 w-3" /> Returned
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="outline" className="text-[10px] bg-yellow-50 text-yellow-700 border-yellow-200">
+                                                                Pending Return
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            </div>
+                        )}
+
                         {/* Assignment Overview Container */}
                         <div className="mb-6">
                             <Card className="border-l-4 border-l-blue-500 bg-blue-50/10 shadow-sm">
@@ -1352,7 +1459,7 @@ export default function WorkOrderDetail() {
                                     size="sm"
                                     variant="outline"
                                     className="h-8 text-xs bg-primary/5 border-primary/20 hover:bg-primary/10"
-                                    onClick={() => setShowAddServiceForm(true)}
+                                    onClick={() => setSearchParams({ action: 'add-service' })}
                                 >
                                     <Plus className="h-3.5 w-3.5 mr-1" />
                                     Add Service
@@ -2528,11 +2635,11 @@ export default function WorkOrderDetail() {
                             isReopening={true}
                             reopenReason={reopenReason}
                             onSuccess={() => {
-                                setShowConfigForm(false);
+                                setSearchParams({});
                                 setReopenReason("");
                                 fetchDetails();
                             }}
-                            onCancel={() => setShowConfigForm(false)}
+                            onCancel={() => setSearchParams({})}
                         />
                     </div>
                 </DialogContent>
@@ -2549,10 +2656,10 @@ export default function WorkOrderDetail() {
                             initialWorkOrderId={id}
                             isReopening={false}
                             onSuccess={() => {
-                                setShowAddServiceForm(false);
+                                setSearchParams({});
                                 fetchDetails();
                             }}
-                            onCancel={() => setShowAddServiceForm(false)}
+                            onCancel={() => setSearchParams({})}
                         />
                     </div>
                 </DialogContent>
@@ -2701,6 +2808,74 @@ export default function WorkOrderDetail() {
                             </div>
                         </Button>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delivery Confirmation Dialog */}
+            <Dialog open={confirmationDialogOpen} onOpenChange={setConfirmationDialogOpen}>
+                <DialogContent className="max-w-md rounded-xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-xl">
+                            <Package className="h-6 w-6 text-primary" />
+                            Final Item Verification
+                        </DialogTitle>
+                        <DialogDescription>
+                            The following items must be verified and returned to the customer before the vehicle is released.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-4 space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+                        {belongings.map((item) => (
+                            <div key={item.id} className="flex items-center gap-3 p-3 border rounded-xl bg-muted/10">
+                                <div className="w-14 h-14 rounded-lg overflow-hidden border bg-background shadow-sm">
+                                    <img src={item.photo_url} className="w-full h-full object-cover" alt={item.item_name} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="font-bold text-sm truncate">{item.item_name}</h4>
+                                    <p className="text-[10px] text-muted-foreground truncate">{item.description}</p>
+                                </div>
+                                <div className="flex flex-col items-center gap-1">
+                                    <Checkbox
+                                        id={`confirm-modal-${item.id}`}
+                                        checked={!!confirmedItems[item.id]}
+                                        onCheckedChange={(checked) => {
+                                            setConfirmedItems(prev => ({ ...prev, [item.id]: !!checked }));
+                                        }}
+                                        className="h-5 w-5 rounded-md"
+                                    />
+                                    <Label htmlFor={`confirm-modal-${item.id}`} className="text-[9px] font-bold uppercase text-muted-foreground">Returned</Label>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <DialogFooter className="flex-col sm:flex-row gap-2">
+                        <Button variant="ghost" onClick={() => setConfirmationDialogOpen(false)} className="sm:flex-1">Discard</Button>
+                        <Button
+                            className="bg-primary text-primary-foreground sm:flex-[2]"
+                            disabled={!belongings.every(b => confirmedItems[b.id]) || isConfirmingBelongings}
+                            onClick={async () => {
+                                setIsConfirmingBelongings(true);
+                                try {
+                                    const { error } = await supabase
+                                        .from('work_order_belongings')
+                                        .update({ confirmed_at: new Date().toISOString() })
+                                        .in('id', belongings.map(b => b.id));
+
+                                    if (error) throw error;
+                                    setConfirmationDialogOpen(false);
+                                    handleMarkDelivered();
+                                } catch (error: any) {
+                                    toast({ variant: "destructive", title: "Error", description: error.message });
+                                } finally {
+                                    setIsConfirmingBelongings(false);
+                                }
+                            }}
+                        >
+                            {isConfirmingBelongings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                            Confirm & Complete Delivery
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div >

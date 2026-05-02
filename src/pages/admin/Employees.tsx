@@ -403,7 +403,7 @@ export default function AdminEmployees() {
   }
 
   return (
-    <div className="flex min-h-screen bg-muted/5">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-muted/5">
       <AdminSidebar />
       <div className="flex-1 p-6 md:p-8 space-y-8 overflow-y-auto h-screen">
 

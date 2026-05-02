@@ -274,7 +274,7 @@ export default function CustomerLedger() {
 
     if (loading) {
         return (
-            <div className="flex bg-background min-h-screen">
+            <div className="flex flex-col lg:flex-row bg-background min-h-screen">
                 <AdminSidebar />
                 <div className="flex-1 p-8 flex items-center justify-center">
                     <p className="text-muted-foreground animate-pulse">Loading Ledger...</p>
@@ -284,7 +284,7 @@ export default function CustomerLedger() {
     }
 
     return (
-        <div className="flex bg-background min-h-screen">
+        <div className="flex flex-col lg:flex-row bg-background min-h-screen">
             <AdminSidebar />
             <main className="flex-1 p-8 space-y-6 overflow-y-auto h-screen">
                 {/* Header */}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,30 +7,27 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Truck, Eye, EyeOff } from "lucide-react";
-
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [companyProfile, setCompanyProfile] = useState<any>(null);
 
   useEffect(() => {
-    // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
+    // If user is already logged in, redirect to the 'from' path or dashboard
+    if (user && !authLoading) {
+      const from = (location.state as any)?.from?.pathname || "/dashboard";
+      navigate(from, { replace: true });
+    }
+  }, [user, authLoading, navigate, location.state]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-
+  useEffect(() => {
     const fetchCompanyProfile = async () => {
       const { data, error } = await supabase
         .from('company_profiles')
@@ -43,9 +40,7 @@ export default function Login() {
     };
 
     fetchCompanyProfile();
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,15 +57,26 @@ export default function Login() {
         title: "Login failed",
         description: error.message,
       });
+      setLoading(false);
     } else {
       toast({
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
+      // Small delay to let the toast show before redirecting
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 500);
     }
-
-    setLoading(false);
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted p-4">
@@ -144,8 +150,6 @@ export default function Login() {
                 "Login"
               )}
             </Button>
-
-
           </form>
         </CardContent>
       </Card>

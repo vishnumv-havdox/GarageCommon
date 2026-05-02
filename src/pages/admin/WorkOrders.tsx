@@ -178,11 +178,13 @@ export default function AdminWorkOrders() {
   // State
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'overdue' | 'today' | 'week' | 'none' | 'completed'>('all');
   const [currentTime, setCurrentTime] = useState(Date.now());
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editId = searchParams.get('editId');
+  const isCreating = searchParams.get('create') === 'true';
+  const showForm = isCreating || !!editId;
   const urlFilter = searchParams.get('filter');
 
   // Scheduled Appointments (Upcoming)
@@ -341,7 +343,7 @@ export default function AdminWorkOrders() {
   };
 
   const handleFormSuccess = () => {
-    setShowForm(false);
+    setSearchParams({});
     setSelectedAppointment(null);
     fetchWorkOrders();
     toast({ title: "Success", description: "Work order created successfully" });
@@ -349,7 +351,7 @@ export default function AdminWorkOrders() {
 
   const handleOpenJobCard = (app: any) => {
     setSelectedAppointment(app);
-    setShowForm(true);
+    setSearchParams({ create: 'true' });
   };
 
   const filteredOrders = useMemo(() => {
@@ -504,7 +506,7 @@ export default function AdminWorkOrders() {
               <Button variant="outline" size="icon" onClick={fetchWorkOrders} title="Refresh List">
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
-              <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-2" />Create Work Order</Button>
+              <Button onClick={() => setSearchParams({ create: 'true' })}><Plus className="h-4 w-4 mr-2" />Create Work Order</Button>
             </div>
           </div>
 
@@ -589,13 +591,13 @@ export default function AdminWorkOrders() {
                   <Plus className="h-5 w-5" />
                   {selectedAppointment ? 'Convert Appointment to Work Order' : 'Create New Work Order'}
                 </h2>
-                <Button variant="ghost" size="sm" onClick={() => { setShowForm(false); setSelectedAppointment(null); }}>
+                <Button variant="ghost" size="sm" onClick={() => { setSearchParams({}); setSelectedAppointment(null); }}>
                   <XCircle className="h-4 w-4 mr-2" /> Cancel
                 </Button>
               </div>
               <WorkOrderForm
                 onSuccess={handleFormSuccess}
-                onCancel={() => { setShowForm(false); setSelectedAppointment(null); }}
+                onCancel={() => { setSearchParams({}); setSelectedAppointment(null); }}
                 initialData={selectedAppointment ? {
                   customerId: selectedAppointment.customer?.id || selectedAppointment.customer_id,
                   vehicleId: selectedAppointment.vehicle?.id || selectedAppointment.vehicle_id,

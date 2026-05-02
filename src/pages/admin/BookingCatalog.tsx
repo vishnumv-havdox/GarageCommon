@@ -188,7 +188,7 @@ export default function BookingCatalog() {
     );
 
     return (
-        <div className="flex min-h-screen bg-slate-50/50 dark:bg-background">
+        <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50/50 dark:bg-background">
             <AdminSidebar />
             <main className="flex-1 p-8">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">

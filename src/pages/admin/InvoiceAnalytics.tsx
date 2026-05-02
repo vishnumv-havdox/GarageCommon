@@ -652,7 +652,7 @@ export default function InvoiceAnalytics() {
     );
 
     return (
-        <div className="flex bg-background min-h-screen">
+        <div className="flex flex-col lg:flex-row bg-background min-h-screen">
             <AdminSidebar />
             <div className="flex-1 p-8 space-y-6 overflow-y-auto h-screen">
 

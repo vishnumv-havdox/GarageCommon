@@ -41,6 +41,7 @@ import RequestsInbox from "./pages/admin/RequestsInbox";
 import RequestConfirmation from "./pages/admin/RequestConfirmation";
 import { accessControlConfig } from "@/config/accessControl";
 import { RequestsProvider } from "@/contexts/RequestsContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { GlobalHUD } from "@/components/dashboard/GlobalHUD";
 
 const queryClient = new QueryClient();
@@ -86,35 +87,37 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <BrowserRouter>
-        <RequestsProvider>
-          <Toaster />
-          <Sonner />
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/auth" element={<Login />} />
-            <Route path="/inventory/login" element={<InventoryLogin />} />
+        <AuthProvider>
+          <RequestsProvider>
+            <Toaster />
+            <Sonner />
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/auth" element={<Login />} />
+              <Route path="/inventory/login" element={<InventoryLogin />} />
 
-            {/* Generate routes from centralized access control config */}
-            {accessControlConfig
-              .filter(rule => rule.path !== "*" && rule.path !== "/inventory/login" && routeComponents[rule.path])
-              .map(rule => (
-                <Route
-                  key={rule.path}
-                  path={rule.path}
-                  element={
-                    <ProtectedRoute allowedRoles={rule.allowedRoles}>
-                      <GlobalHUD>
-                        {React.createElement(routeComponents[rule.path])}
-                      </GlobalHUD>
-                    </ProtectedRoute>
-                  }
-                />
-              ))}
+              {/* Generate routes from centralized access control config */}
+              {accessControlConfig
+                .filter(rule => rule.path !== "*" && rule.path !== "/inventory/login" && routeComponents[rule.path])
+                .map(rule => (
+                  <Route
+                    key={rule.path}
+                    path={rule.path}
+                    element={
+                      <ProtectedRoute allowedRoles={rule.allowedRoles}>
+                        <GlobalHUD>
+                          {React.createElement(routeComponents[rule.path])}
+                        </GlobalHUD>
+                      </ProtectedRoute>
+                    }
+                  />
+                ))}
 
-            {/* Catch-all route */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </RequestsProvider>
+              {/* Catch-all route */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </RequestsProvider>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

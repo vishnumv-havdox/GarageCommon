@@ -323,18 +323,18 @@ export default function StaffAttendance() {
                                 <CardDescription>Record your working hours for today.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
-                                <div className="grid grid-cols-2 gap-8 py-4">
-                                    <div className="space-y-2 text-center border-r">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 py-4">
+                                    <div className="space-y-2 text-center border-b sm:border-b-0 sm:border-r pb-4 sm:pb-0">
                                         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Clock In</p>
                                         <div className="text-3xl font-black">{todayAttendance?.check_in ? format(new Date(todayAttendance.check_in), 'hh:mm a') : "--:--"}</div>
                                     </div>
-                                    <div className="space-y-2 text-center">
+                                    <div className="space-y-2 text-center pt-4 sm:pt-0">
                                         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Clock Out</p>
                                         <div className="text-3xl font-black">{todayAttendance?.check_out ? format(new Date(todayAttendance.check_out), 'hh:mm a') : "--:--"}</div>
                                     </div>
                                 </div>
 
-                                <div className="flex gap-4 pt-4">
+                                <div className="flex flex-col sm:flex-row gap-4 pt-4">
                                     <Button
                                         className="flex-1 h-14 text-lg font-bold shadow-lg shadow-primary/20"
                                         onClick={handleClockIn}
@@ -440,56 +440,58 @@ export default function StaffAttendance() {
                             <CardDescription>Your records for the current month.</CardDescription>
                         </CardHeader>
                         <CardContent className="p-0">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-[150px]">Date</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Check In</TableHead>
-                                        <TableHead>Check Out</TableHead>
-                                        <TableHead>Hours</TableHead>
-                                        <TableHead>Notes</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {history.length === 0 ? (
+                            <div className="overflow-x-auto -mx-6 sm:mx-0">
+                                <Table>
+                                    <TableHeader>
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No records found for this month.</TableCell>
+                                            <TableHead className="w-[150px]">Date</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>Check In</TableHead>
+                                            <TableHead>Check Out</TableHead>
+                                            <TableHead>Hours</TableHead>
+                                            <TableHead>Notes</TableHead>
                                         </TableRow>
-                                    ) : (
-                                        history.map((row) => (
-                                            <TableRow key={row.id}>
-                                                <TableCell className="font-bold">{format(new Date(row.date), 'MMM dd, EEE')}</TableCell>
-                                                <TableCell>
-                                                    <Badge className={`text-[10px] uppercase font-bold border-none ${row.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
-                                                        row.status === 'absent' ? 'bg-rose-100 text-rose-700' :
-                                                            row.status === 'half-day' ? 'bg-amber-100 text-amber-700' :
-                                                                row.status === 'leave' ? 'bg-blue-100 text-blue-700' :
-                                                                    row.status === 'holiday' ? 'bg-slate-100 text-slate-700' :
-                                                                        row.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700' :
-                                                                            'bg-purple-100 text-purple-700'
-                                                        }`}>
-                                                        {row.status}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-xs">
-                                                    {row.check_in ? format(new Date(row.check_in), 'hh:mm a') : "-"}
-                                                </TableCell>
-                                                <TableCell className="text-xs">
-                                                    {row.check_out ? format(new Date(row.check_out), 'hh:mm a') : "-"}
-                                                </TableCell>
-                                                <TableCell className="font-medium text-xs">
-                                                    {row.total_hours || 0} h
-                                                    {row.overtime_hours > 0 && <span className="text-purple-600 ml-1">(+{row.overtime_hours} OT)</span>}
-                                                </TableCell>
-                                                <TableCell className="text-xs text-muted-foreground italic truncate max-w-[150px]">
-                                                    {row.remarks || "-"}
-                                                </TableCell>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {history.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No records found for this month.</TableCell>
                                             </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
+                                        ) : (
+                                            history.map((row) => (
+                                                <TableRow key={row.id}>
+                                                    <TableCell className="font-bold">{format(new Date(row.date), 'MMM dd, EEE')}</TableCell>
+                                                    <TableCell>
+                                                        <Badge className={`text-[10px] uppercase font-bold border-none ${row.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
+                                                            row.status === 'absent' ? 'bg-rose-100 text-rose-700' :
+                                                                row.status === 'half-day' ? 'bg-amber-100 text-amber-700' :
+                                                                    row.status === 'leave' ? 'bg-blue-100 text-blue-700' :
+                                                                        row.status === 'holiday' ? 'bg-slate-100 text-slate-700' :
+                                                                            row.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700' :
+                                                                                'bg-purple-100 text-purple-700'
+                                                            }`}>
+                                                            {row.status}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        {row.check_in ? format(new Date(row.check_in), 'hh:mm a') : "-"}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        {row.check_out ? format(new Date(row.check_out), 'hh:mm a') : "-"}
+                                                    </TableCell>
+                                                    <TableCell className="font-medium text-xs">
+                                                        {row.total_hours || 0} h
+                                                        {row.overtime_hours > 0 && <span className="text-purple-600 ml-1">(+{row.overtime_hours} OT)</span>}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground italic truncate max-w-[150px]">
+                                                        {row.remarks || "-"}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>

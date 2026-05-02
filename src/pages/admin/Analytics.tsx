@@ -71,7 +71,7 @@ export default function AdminAnalytics() {
     const revenueServiceData = finData?.revenue_by_service ? Object.entries(finData.revenue_by_service).map(([name, value]) => ({ name, value })) : [];
 
     return (
-        <div className="flex min-h-screen w-full bg-muted/40">
+        <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40">
             <AdminSidebar />
             <main className="flex-1 p-8 overflow-y-auto max-h-screen">
                 <div className="flex items-center justify-between mb-8">

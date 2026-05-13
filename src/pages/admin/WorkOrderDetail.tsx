@@ -2624,7 +2624,7 @@ export default function WorkOrderDetail() {
 
             {/* Reopen Work Order Dialog */}
             {/* Enhanced Reopen Configuration Form */}
-            <Dialog open={showConfigForm} onOpenChange={setShowConfigForm}>
+            <Dialog open={showConfigForm} onOpenChange={(open) => !open && setSearchParams({})}>
                 <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-0">
                     <DialogHeader className="px-6 pt-6 pb-0">
                         <DialogTitle className="sr-only">Configure Work Order</DialogTitle>
@@ -2646,7 +2646,7 @@ export default function WorkOrderDetail() {
             </Dialog>
 
             {/* Add Service Dialog */}
-            <Dialog open={showAddServiceForm} onOpenChange={setShowAddServiceForm}>
+            <Dialog open={showAddServiceForm} onOpenChange={(open) => !open && setSearchParams({})}>
                 <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-0">
                     <DialogHeader className="px-6 pt-6 pb-0">
                         <DialogTitle className="sr-only">Add Service</DialogTitle>

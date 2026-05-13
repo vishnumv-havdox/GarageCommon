@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Wrench, Search, ChevronDown, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, Camera, Upload as UploadIcon, X, Package, CheckCircle2 } from "lucide-react"
+import { Loader2, Wrench, Search, ChevronDown, ChevronRight, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, Camera, Upload as UploadIcon, X, Package, CheckCircle2 } from "lucide-react"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
 import { format } from "date-fns"
@@ -328,6 +328,7 @@ export function WorkOrderForm({
           if (draft.priority) setPriority(draft.priority);
           if (draft.estimatedDeliveryDate) setEstimatedDeliveryDate(new Date(draft.estimatedDeliveryDate));
           if (draft.estimatedDeliveryTime) setEstimatedDeliveryTime(draft.estimatedDeliveryTime);
+          if (draft.newBelonging) setNewBelonging(draft.newBelonging);
           console.log("[Draft] Restored form fields from session storage");
         } catch (e) {
           console.warn("[Draft] Failed to restore form fields", e);
@@ -351,8 +352,8 @@ export function WorkOrderForm({
               description: ""
             };
           }));
-          if (type === 'arrival') setArrivalPhotos(restored);
-          else setIssuePhotos(restored);
+          if (type === 'arrival') setArrivalPhotos(prev => [...restored, ...prev]);
+          else setIssuePhotos(prev => [...restored, ...prev]);
           console.log(`[Draft] Restored ${restored.length} ${type} photos`);
         }
       };
@@ -375,12 +376,51 @@ export function WorkOrderForm({
       serviceSections,
       priority,
       estimatedDeliveryDate: estimatedDeliveryDate?.toISOString(),
-      estimatedDeliveryTime
+      estimatedDeliveryTime,
+      newBelonging
     };
     sessionStorage.setItem(draftKey, JSON.stringify(draft));
-  }, [customerId, vehicleId, lifecycleData.odometer_reading, generalDescription, selectedServices, serviceSections, priority, estimatedDeliveryDate, estimatedDeliveryTime]);
+  }, [customerId, vehicleId, lifecycleData.odometer_reading, generalDescription, selectedServices, serviceSections, priority, estimatedDeliveryDate, estimatedDeliveryTime, newBelonging]);
 
   // --- END DRAFT PERSISTENCE ---
+
+  // --- START NATIVE DOM FILE RESTORE (ANDROID CAMERA FIX) ---
+  useEffect(() => {
+    // When Android kills the browser for the camera app and restores it,
+    // the native <input type="file"> might retain the file, but React loses its state.
+    // We manually check the DOM for restored files.
+    const checkRestoredFiles = () => {
+      [arrivalCaptureId, arrivalUploadId].forEach(id => {
+        const input = document.getElementById(id) as HTMLInputElement;
+        if (input && input.files && input.files.length > 0) {
+           Array.from(input.files).forEach(f => handleAddPhoto('arrival', f));
+           input.value = ''; // Clear it so it doesn't trigger again
+        }
+      });
+      [issueCaptureId, issueUploadId].forEach(id => {
+        const input = document.getElementById(id) as HTMLInputElement;
+        if (input && input.files && input.files.length > 0) {
+           Array.from(input.files).forEach(f => handleAddPhoto('issue_area', f));
+           input.value = '';
+        }
+      });
+      // Handle belongings capture/upload
+      [`belonging-capture-${initialWorkOrderId || 'new'}`, `belonging-upload-${initialWorkOrderId || 'new'}`].forEach(id => {
+        const belongingInput = document.getElementById(id) as HTMLInputElement;
+        if (belongingInput && belongingInput.files && belongingInput.files.length > 0) {
+          setBelongingFile(belongingInput.files[0]);
+          // Do not clear the value so they can still see it's attached and click "Add"
+        }
+      });
+    };
+
+    // Check immediately, and also slightly delayed in case DOM restoration takes a moment
+    checkRestoredFiles();
+    const t1 = setTimeout(checkRestoredFiles, 500);
+    const t2 = setTimeout(checkRestoredFiles, 1500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [arrivalCaptureId, arrivalUploadId, issueCaptureId, issueUploadId]);
+  // --- END NATIVE DOM FILE RESTORE ---
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -3315,6 +3355,7 @@ export function WorkOrderForm({
                       {belongingFile ? <CheckCircle2 className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
                       {belongingFile ? "Attached" : "Capture"}
                       <input
+                        id={`belonging-capture-${initialWorkOrderId || 'new'}`}
                         type="file"
                         accept="image/*"
                         capture="environment"
@@ -3335,6 +3376,7 @@ export function WorkOrderForm({
                       {belongingFile ? <CheckCircle2 className="h-4 w-4" /> : <UploadIcon className="h-4 w-4" />}
                       {belongingFile ? "Attached" : "Upload"}
                       <input
+                        id={`belonging-upload-${initialWorkOrderId || 'new'}`}
                         type="file"
                         accept="image/*"
                         className="hidden"

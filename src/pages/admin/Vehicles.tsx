@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { NavLink, useSearchParams, Link } from "react-router-dom";
-import { LogOut, Users, Shield, Plus, Search, Truck } from "lucide-react";
+import { LogOut, Users, Shield, Plus, Search, Truck, Trash2 } from "lucide-react";
 import { VehicleForm } from "@/components/forms/VehicleForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { SearchInput } from "@/components/shared/SearchInput";
@@ -60,6 +60,115 @@ interface Vehicle {
       vehicle_categories: { name: string };
     };
   };
+  photo_url?: string;
+  photos?: string[];
+}
+
+function VehicleCardItem({ 
+  vehicle, 
+  onView, 
+  onEdit, 
+  onDelete 
+}: { 
+  vehicle: Vehicle, 
+  onView: () => void, 
+  onEdit: () => void, 
+  onDelete: () => void 
+}) {
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const images = vehicle.photos && vehicle.photos.length > 0 ? vehicle.photos : (vehicle.photo_url ? [vehicle.photo_url] : []);
+  const hasMultipleImages = images.length > 1;
+
+  useEffect(() => {
+    if (!hasMultipleImages) return;
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prev) => (prev + 1) % images.length);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [hasMultipleImages, images.length]);
+
+  return (
+    <Card className="overflow-hidden hover:shadow-lg transition-all group border-slate-200 dark:border-slate-800 flex flex-col h-full">
+      {/* Vehicle Image */}
+      <div className="relative h-40 bg-muted/30 border-b border-slate-100 dark:border-slate-800 overflow-hidden group/image">
+        {images.length > 0 ? (
+            <img 
+                src={images[currentImageIndex]} 
+                alt={vehicle.vehicle_number}
+                className="w-full h-full object-cover transition-transform duration-500"
+            />
+        ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground/40 bg-slate-50 dark:bg-slate-900/50">
+                <Truck className="h-12 w-12 mb-2 opacity-50" />
+                <span className="text-[10px] uppercase tracking-widest font-bold">No Photo</span>
+            </div>
+        )}
+        <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+          <Badge variant="outline" className="bg-background/80 backdrop-blur-sm border-white/20 text-[10px] uppercase font-bold">
+            {vehicle.status}
+          </Badge>
+          {hasMultipleImages && (
+            <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm text-[10px] font-bold shadow-sm">
+              {currentImageIndex + 1}/{images.length} Photos
+            </Badge>
+          )}
+        </div>
+        
+        {/* Manual Image Navigation Controls */}
+        {hasMultipleImages && (
+            <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover/image:opacity-100 transition-opacity">
+                {images.map((_, idx) => (
+                    <button
+                        key={idx}
+                        onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(idx); }}
+                        className={`w-2 h-2 rounded-full border border-white/50 transition-all ${currentImageIndex === idx ? 'bg-white scale-125' : 'bg-black/50 hover:bg-white/50'}`}
+                    />
+                ))}
+            </div>
+        )}
+      </div>
+
+      {/* Card Content */}
+      <CardContent className="p-4 flex flex-col flex-1">
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <h3 className="font-black text-lg tracking-tight">{vehicle.vehicle_number}</h3>
+            <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                {vehicle.vehicle_models?.vehicle_types?.name} • {vehicle.vehicle_models?.name} {vehicle.year ? `• ${vehicle.year}` : ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-2 space-y-1 mb-4 flex-1">
+            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+              <span className="font-semibold text-foreground/80">{vehicle.vehicle_models?.vehicle_manufacturers?.name}</span> • {vehicle.vehicle_models?.vehicle_types?.vehicle_categories?.name}
+            </p>
+            {vehicle.customer && (
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <Users className="h-3 w-3" />
+                Owner: <span className="font-semibold text-foreground/80 truncate">{vehicle.customer.name}</span>
+              </p>
+            )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 dark:border-slate-800">
+          <Link to={`/admin/vehicles/${vehicle.id}`} className="flex-1">
+            <Button variant="outline" size="sm" className="w-full h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary">
+              View
+            </Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={onEdit} className="flex-1 h-8 text-xs">
+            Edit
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onDelete} className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function AdminVehicles() {
@@ -199,37 +308,15 @@ export default function AdminVehicles() {
               ) : filteredVehicles.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">No vehicles found</div>
               ) : (
-                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {filteredVehicles.map((vehicle) => (
-                    <div key={vehicle.id} className="border p-4 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Truck className="h-4 w-4 text-muted-foreground" />
-                            <h3 className="font-semibold">{vehicle.vehicle_number}</h3>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {vehicle.vehicle_models?.vehicle_types?.name} • {vehicle.vehicle_models?.name} {vehicle.year ? `• ${vehicle.year}` : ''}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {vehicle.vehicle_models?.vehicle_manufacturers?.name} • {vehicle.vehicle_models?.vehicle_types?.vehicle_categories?.name}
-                          </p>
-                          {vehicle.customer && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              Owner: {vehicle.customer.name}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 w-full lg:w-auto">
-                          <Link to={`/admin/vehicles/${vehicle.id}`} className="flex-1 lg:flex-none">
-                            <Button variant="outline" size="sm" className="w-full">View</Button>
-                          </Link>
-                          <Button variant="outline" size="sm" onClick={() => { setEditingVehicle(vehicle); setShowForm(true); }} className="flex-1 lg:flex-none">Edit</Button>
-                          <Button variant="destructive" size="sm" onClick={() => setDeletingVehicle(vehicle)} className="flex-1 lg:flex-none">Delete</Button>
-                        </div>
-                      </div>
-                    </div>
+                    <VehicleCardItem 
+                      key={vehicle.id} 
+                      vehicle={vehicle} 
+                      onView={() => setViewingVehicle(vehicle)}
+                      onEdit={() => { setEditingVehicle(vehicle); setShowForm(true); }}
+                      onDelete={() => setDeletingVehicle(vehicle)}
+                    />
                   ))}
                 </div>
               )}
@@ -246,6 +333,31 @@ export default function AdminVehicles() {
           </DialogHeader>
           {viewingVehicle && (
             <div className="space-y-4">
+              {/* Vehicle Photo Gallery Header */}
+              {((viewingVehicle.photos && viewingVehicle.photos.length > 0) || viewingVehicle.photo_url) && (
+                <div className="space-y-2">
+                    <div className="w-full h-48 bg-muted rounded-lg overflow-hidden relative border shadow-inner">
+                        <img 
+                            src={viewingVehicle.photos?.[0] || viewingVehicle.photo_url} 
+                            alt="Vehicle Primary"
+                            className="w-full h-full object-cover"
+                        />
+                    </div>
+                    {viewingVehicle.photos && viewingVehicle.photos.length > 1 && (
+                        <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                            {viewingVehicle.photos.slice(1).map((photo, i) => (
+                                <img 
+                                    key={i}
+                                    src={photo} 
+                                    alt={`Gallery ${i+1}`}
+                                    className="h-16 w-24 object-cover rounded border shadow-sm flex-shrink-0"
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Vehicle Number</Label>

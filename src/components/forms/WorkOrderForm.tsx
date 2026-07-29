@@ -3218,7 +3218,6 @@ export function WorkOrderForm({
                       <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border shadow-sm group">
                         <img src={photo.previewUrl} className="w-full h-full object-cover" alt="Arrival condition" />
                         <button type="button"
-                          type="button"
                           className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                           onClick={() => handleRemovePhoto('arrival', index)}
                         >
@@ -3256,7 +3255,6 @@ export function WorkOrderForm({
                       <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border shadow-sm group">
                         <img src={photo.previewUrl} className="w-full h-full object-cover" alt="Issue area" />
                         <button type="button"
-                          type="button"
                           className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                           onClick={() => handleRemovePhoto('issue_area', index)}
                         >

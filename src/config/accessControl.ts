@@ -207,6 +207,12 @@ export const accessControlConfig: AccessRule[] = [
     description: "Company profile and document settings - admin and manager",
   },
   {
+    path: "/admin/tally",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Tally Integration - admin and manager only",
+  },
+  {
     path: "/inventory",
     allowedRoles: ["admin", "manager"],
     redirectTo: "/dashboard",
@@ -338,6 +344,7 @@ export const navConfig: NavItem[] = [
   { label: "Inventory Room", path: "/inventory/room", icon: QrCode, roles: ["admin", "manager"] },
   { label: "Invoices", path: "/admin/invoices", icon: Receipt, roles: ["admin", "manager", "staff"] },
   { label: "Financials", path: "/admin/invoice-analytics", icon: BarChart3, roles: ["admin", "manager"] },
+  { label: "Tally Integration", path: "/admin/tally", icon: Receipt, roles: ["admin", "manager"] },
   { label: "360° Analytics", path: "/admin/analytics-dashboard", icon: PieChart, roles: ["admin", "manager"] },
   { label: "Configuration", path: "/admin/settings", icon: Settings, roles: ["admin", "manager"] },
   { label: "Attendance", path: "/admin/attendance", icon: CalendarCheck, roles: ["admin", "manager"] },

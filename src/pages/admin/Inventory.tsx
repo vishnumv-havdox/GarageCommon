@@ -10,8 +10,12 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Search, Package, Download, Edit, Trash2,
   AlertTriangle, Filter, ChevronRight, QrCode, ScanLine, Clock, ArrowLeftRight,
-  ExternalLink, RefreshCw, Eye, MoreHorizontal
+  ExternalLink, RefreshCw, Eye, MoreHorizontal, LayoutGrid, List,
+  Wrench, Zap, Car, Settings, Droplet
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { InventoryForm } from "@/components/inventory/InventoryForm";
@@ -23,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -125,6 +130,32 @@ export default function AdminInventory() {
   const [selectedUnitForView, setSelectedUnitForView] = useState<any>(null);
   const [isUnitViewOpen, setIsUnitViewOpen] = useState(false);
 
+  const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [adminEmployeeId, setAdminEmployeeId] = useState<string | null>(null);
+
+  // Allocation State
+  const [allocatingItem, setAllocatingItem] = useState<InventoryItem | null>(null);
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [allocationQty, setAllocationQty] = useState(1);
+  const [isIssueImmediately, setIsIssueImmediately] = useState(false);
+  const [submittingAllocation, setSubmittingAllocation] = useState(false);
+
+  // Quick Restock State
+  const [restockingItem, setRestockingItem] = useState<InventoryItem | null>(null);
+  const [restockQty, setRestockQty] = useState(1);
+  const [restockNotes, setRestockNotes] = useState("");
+  const [submittingRestock, setSubmittingRestock] = useState(false);
+
+  // Manage Reservations State
+  const [managingReservationsItem, setManagingReservationsItem] = useState<InventoryItem | null>(null);
+  const [returningRes, setReturningRes] = useState<any | null>(null);
+  const [returnQty, setReturnQty] = useState(1);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnCondition, setReturnCondition] = useState("unused");
+  const [submittingReturn, setSubmittingReturn] = useState(false);
 
   const categories = ["All", "Mechanical", "Electrical", "Body", "Consumable", "Accessory", "Others"];
 
@@ -132,6 +163,8 @@ export default function AdminInventory() {
     fetchInventory();
     fetchHistory();
     fetchPendingReturns();
+    fetchActiveWorkOrdersAndEmployees();
+    fetchAdminEmployee();
 
     // Sync tab state if URL changes
     const tab = searchParams.get("tab");
@@ -139,6 +172,356 @@ export default function AdminInventory() {
       setActiveTab(tab);
     }
   }, [searchParams]);
+
+  const fetchActiveWorkOrdersAndEmployees = async () => {
+    try {
+      const { data: wos, error: woError } = await supabase
+        .from("work_orders")
+        .select(`
+          id,
+          service_type,
+          status,
+          assigned_to,
+          vehicle:vehicles(
+            vehicle_number,
+            customers(name, company_name)
+          )
+        `)
+        .in("status", ["Pending", "In Progress"]);
+
+      if (woError) throw woError;
+      setWorkOrders(wos || []);
+
+      const { data: emps, error: empError } = await supabase
+        .from("employees")
+        .select("id, name")
+        .eq("status", "active")
+        .order("name");
+
+      if (empError) throw empError;
+      setEmployees(emps || []);
+    } catch (error: any) {
+      console.error("Error fetching work orders/employees:", error.message);
+    }
+  };
+
+  const fetchAdminEmployee = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) {
+        setAdminEmployeeId(data.id);
+      }
+    } catch (error: any) {
+      console.error("Error fetching admin employee:", error.message);
+    }
+  };
+
+  const getCategoryDetails = (category: string) => {
+    switch (category?.toLowerCase()) {
+      case "mechanical":
+        return {
+          gradient: "from-blue-500 to-indigo-600",
+          icon: Wrench,
+          color: "text-blue-500",
+          lightBg: "bg-blue-50",
+          darkText: "text-blue-700"
+        };
+      case "electrical":
+        return {
+          gradient: "from-amber-400 to-orange-500",
+          icon: Zap,
+          color: "text-amber-500",
+          lightBg: "bg-amber-50",
+          darkText: "text-amber-700"
+        };
+      case "body":
+        return {
+          gradient: "from-slate-600 to-gray-800",
+          icon: Car,
+          color: "text-slate-600",
+          lightBg: "bg-slate-50",
+          darkText: "text-slate-700"
+        };
+      case "consumable":
+        return {
+          gradient: "from-teal-400 to-emerald-600",
+          icon: Droplet,
+          color: "text-teal-500",
+          lightBg: "bg-teal-50",
+          darkText: "text-emerald-700"
+        };
+      case "accessory":
+        return {
+          gradient: "from-purple-500 to-pink-600",
+          icon: Settings,
+          color: "text-purple-500",
+          lightBg: "bg-purple-50",
+          darkText: "text-purple-700"
+        };
+      default:
+        return {
+          gradient: "from-gray-400 to-neutral-600",
+          icon: Package,
+          color: "text-gray-500",
+          lightBg: "bg-gray-50",
+          darkText: "text-gray-700"
+        };
+    }
+  };
+
+  const handleAllocatePart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!allocatingItem || !selectedWorkOrderId || !selectedEmployeeId || allocationQty <= 0) {
+      toast({ variant: "destructive", title: "Validation Error", description: "Please fill in all allocation details." });
+      return;
+    }
+
+    if (allocationQty > allocatingItem.available_qty) {
+      toast({ variant: "destructive", title: "Validation Error", description: `Cannot allocate more than available quantity (${allocatingItem.available_qty}).` });
+      return;
+    }
+
+    setSubmittingAllocation(true);
+    try {
+      let finalAdminId = adminEmployeeId;
+      if (!finalAdminId) {
+        const { data: fallbackEmp } = await supabase
+          .from("employees")
+          .select("id")
+          .eq("access_level", "admin")
+          .limit(1)
+          .maybeSingle();
+        if (fallbackEmp) finalAdminId = fallbackEmp.id;
+      }
+
+      const { data: newReq, error: insertError } = await supabase
+        .from("part_requests")
+        .insert([{
+          work_order_id: selectedWorkOrderId,
+          item_id: allocatingItem.id,
+          requested_by: selectedEmployeeId,
+          requested_qty: allocationQty,
+          status: "pending",
+          approved_qty: 0,
+          notes: "Direct allocation from Inventory page"
+        }])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      const { error: approveError } = await supabase.rpc("approve_part_request", {
+        _request_id: newReq.id,
+        _approved_qty: allocationQty,
+        _admin_id: finalAdminId
+      });
+
+      if (approveError) throw approveError;
+
+      if (isIssueImmediately) {
+        const { error: issueError } = await supabase.rpc("issue_part_request", {
+          _request_id: newReq.id,
+          _issued_qty: allocationQty,
+          _employee_id: selectedEmployeeId
+        });
+        if (issueError) throw issueError;
+      }
+
+      toast({
+        title: "Allocation Successful",
+        description: isIssueImmediately
+          ? `Allocated and issued ${allocationQty} units to work order.`
+          : `Allocated and reserved ${allocationQty} units for work order.`
+      });
+
+      setAllocatingItem(null);
+      setSelectedWorkOrderId("");
+      setSelectedEmployeeId("");
+      setAllocationQty(1);
+      setIsIssueImmediately(false);
+
+      fetchInventory();
+      fetchHistory();
+    } catch (error: any) {
+      console.error("Allocation failed:", error);
+      toast({ variant: "destructive", title: "Allocation Failed", description: error.message });
+    } finally {
+      setSubmittingAllocation(false);
+    }
+  };
+
+  const handleQuickRestock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restockingItem || restockQty <= 0) {
+      toast({ variant: "destructive", title: "Validation Error", description: "Please enter a valid quantity." });
+      return;
+    }
+
+    setSubmittingRestock(true);
+    try {
+      let finalAdminId = adminEmployeeId;
+      if (!finalAdminId) {
+        const { data: fallbackEmp } = await supabase
+          .from("employees")
+          .select("id")
+          .eq("access_level", "admin")
+          .limit(1)
+          .maybeSingle();
+        if (fallbackEmp) finalAdminId = fallbackEmp.id;
+      }
+
+      const newQty = restockingItem.quantity + restockQty;
+      const newAvailable = restockingItem.available_qty + restockQty;
+
+      const { error: updateError } = await supabase
+        .from("inventory")
+        .update({
+          quantity: newQty,
+          available_qty: newAvailable
+        })
+        .eq("id", restockingItem.id);
+
+      if (updateError) throw updateError;
+
+      const { error: histError } = await supabase
+        .from("inventory_lifecycle_history")
+        .insert([{
+          inventory_id: restockingItem.id,
+          transaction_type: "restock",
+          quantity: restockQty,
+          performed_by: finalAdminId,
+          transaction_notes: restockNotes || `Quick restock of ${restockQty} units.`
+        }]);
+
+      if (histError) console.error("Restock history log failed:", histError.message);
+
+      toast({ title: "Restock Successful", description: `Successfully added ${restockQty} units to ${restockingItem.item_name}.` });
+
+      setRestockingItem(null);
+      setRestockQty(1);
+      setRestockNotes("");
+
+      fetchInventory();
+      fetchHistory();
+    } catch (error: any) {
+      console.error("Restock failed:", error);
+      toast({ variant: "destructive", title: "Restock Failed", description: error.message });
+    } finally {
+      setSubmittingRestock(false);
+    }
+  };
+
+  const handleCancelReservation = async (res: any) => {
+    let finalAdminId = adminEmployeeId;
+    if (!finalAdminId) {
+      const { data: fallbackEmp } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("user_id", user?.id)
+        .maybeSingle();
+      if (fallbackEmp) finalAdminId = fallbackEmp.id;
+    }
+
+    if (!finalAdminId) {
+      toast({ variant: "destructive", title: "Error", description: "Your admin account is not linked to an employee record." });
+      return;
+    }
+
+    try {
+      if (res.issued_qty > 0) {
+        if (!confirm("Are you sure you want to release the unissued reserved units back to stock?")) return;
+        const { error: rpcError } = await supabase.rpc("release_unissued_reservation", {
+          _request_id: res.id,
+          _admin_id: finalAdminId
+        });
+        if (rpcError) throw rpcError;
+        toast({ title: "Stock Released", description: "Unissued reserved units returned to stock." });
+      } else {
+        const notes = prompt("Reason for cancellation:", "Cancelled from Inventory");
+        if (notes === null) return;
+        const { error: rpcError } = await supabase.rpc("reject_part_request", {
+          _request_id: res.id,
+          _admin_id: finalAdminId,
+          _notes: notes || "Cancelled from Inventory"
+        });
+        if (rpcError) throw rpcError;
+        toast({ title: "Reservation Cancelled", description: "Part reservation has been cancelled." });
+      }
+      
+      setManagingReservationsItem(null);
+      fetchInventory();
+      fetchHistory();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Action Failed", description: error.message });
+    }
+  };
+
+  const handleExecuteReturn = async () => {
+    if (!returningRes) return;
+    
+    let finalAdminId = adminEmployeeId;
+    if (!finalAdminId) {
+      const { data: fallbackEmp } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("user_id", user?.id)
+        .maybeSingle();
+      if (fallbackEmp) finalAdminId = fallbackEmp.id;
+    }
+
+    if (!finalAdminId) {
+      toast({ variant: "destructive", title: "Error", description: "Your admin account is not linked to an employee record." });
+      return;
+    }
+
+    setSubmittingReturn(true);
+    try {
+      // 1. Request part return
+      const { data: returnId, error: reqError } = await supabase.rpc("request_part_return", {
+        _work_order_id: returningRes.work_order_id,
+        _inventory_id: managingReservationsItem?.id,
+        _quantity: returnQty,
+        _reason: returnReason || "Returned by Admin from Inventory page",
+        _condition: returnCondition,
+        _employee_id: returningRes.requested_by
+      });
+
+      if (reqError) throw reqError;
+
+      // 2. Process return immediately as approved
+      const { error: processError } = await supabase.rpc("process_part_return", {
+        _return_id: returnId,
+        _status: "approved",
+        _admin_id: finalAdminId,
+        _notes: "Automatically approved by Admin"
+      });
+
+      if (processError) throw processError;
+
+      toast({ title: "Return Completed", description: `Successfully returned ${returnQty} units back to stock.` });
+      
+      // Reset states
+      setReturningRes(null);
+      setReturnQty(1);
+      setReturnReason("");
+      setReturnCondition("unused");
+      setManagingReservationsItem(null);
+      
+      // Refresh
+      fetchInventory();
+      fetchHistory();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Return Failed", description: error.message });
+    } finally {
+      setSubmittingReturn(false);
+    }
+  };
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
@@ -198,10 +581,15 @@ export default function AdminInventory() {
           *,
           *,
           reservations:part_requests!item_id(
+            id,
             work_order_id,
+            requested_qty,
             approved_qty,
             issued_qty,
+            returned_qty,
             status,
+            requested_by,
+            employee:employees!requested_by(name),
             work_orders:work_orders(
               vehicle:vehicles(vehicle_number)
             )
@@ -725,70 +1113,124 @@ export default function AdminInventory() {
               </div>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Inventory Items</CardTitle>
-                <CardDescription>Stock status for all parts and supplies.</CardDescription>
+            <Card className="border-none shadow-none bg-transparent">
+              <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 pb-4 px-0 bg-transparent">
+                <div>
+                  <CardTitle className="text-xl font-bold">Inventory Items</CardTitle>
+                  <CardDescription>Stock status for all parts and supplies.</CardDescription>
+                </div>
+                <div className="flex items-center gap-2 border rounded-lg p-1 bg-muted/40">
+                  <Button
+                    variant={viewMode === "grid" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-8 px-3"
+                    onClick={() => setViewMode("grid")}
+                  >
+                    <LayoutGrid className="h-4 w-4 mr-1.5" />
+                    Grid
+                  </Button>
+                  <Button
+                    variant={viewMode === "list" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-8 px-3"
+                    onClick={() => setViewMode("list")}
+                  >
+                    <List className="h-4 w-4 mr-1.5" />
+                    List
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product Details</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Brand</TableHead>
-                        <TableHead className="text-right">Stock (Avail/Tot/Res)</TableHead>
-                        <TableHead className="text-right">Unit Price</TableHead>
-                        <TableHead>Location</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loading && inventory.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center py-10">Loading inventory data...</TableCell></TableRow>
-                      ) : filteredInventory.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center py-10">No items found matching your filters.</TableCell></TableRow>
-                      ) : (
-                        filteredInventory.map((item) => (
-                          <TableRow key={item.id} className={item.available_qty <= item.reorder_level ? "bg-destructive/5" : ""}>
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-muted rounded border">
-                                  <QrCode className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <div>
-                                  <p className="font-medium">{item.item_name}</p>
-                                  <p className="text-xs text-muted-foreground">SKU: {item.sku || 'N/A'}</p>
+              <CardContent className="px-0">
+                {viewMode === "grid" ? (
+                  loading && inventory.length === 0 ? (
+                    <div className="text-center py-20 text-muted-foreground bg-card border rounded-lg">
+                      <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 opacity-40" />
+                      Loading inventory items...
+                    </div>
+                  ) : filteredInventory.length === 0 ? (
+                    <div className="text-center py-20 text-muted-foreground bg-card border rounded-lg">
+                      <Package className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                      No items found matching your filters.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                      {filteredInventory.map((item) => {
+                        const catInfo = getCategoryDetails(item.category);
+                        const stockPercentage = Math.min(100, Math.max(0, (item.available_qty / (item.quantity || 1)) * 100));
+                        return (
+                          <Card key={item.id} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border flex flex-col h-full bg-card hover:border-primary/40">
+                            {/* Category-themed Gradient Header */}
+                            <div className="relative h-28 flex items-center justify-center overflow-hidden">
+                              <div className={cn("absolute inset-0 bg-gradient-to-br transition-transform duration-500 group-hover:scale-105 opacity-90", catInfo.gradient)} />
+                              <catInfo.icon className="h-10 w-10 text-white/90 drop-shadow-md relative z-10" />
+                              <span className="absolute top-2.5 left-2.5 bg-black/40 backdrop-blur-md text-[10px] px-2 py-0.5 rounded text-white font-mono border border-white/10 z-10">
+                                {item.location || 'Unset'}
+                              </span>
+                              <span className="absolute top-2.5 right-2.5 bg-white/20 backdrop-blur-md text-[10px] px-2.5 py-0.5 rounded-full text-white font-medium border border-white/10 z-10">
+                                {item.category}
+                              </span>
+                            </div>
+
+                            {/* Card Details */}
+                            <div className="p-4 flex-1 flex flex-col justify-between space-y-4">
+                              <div className="space-y-1">
+                                <h4 className="font-semibold text-base leading-tight tracking-tight line-clamp-2 min-h-[2.5rem] text-card-foreground group-hover:text-primary transition-colors">
+                                  {item.item_name}
+                                </h4>
+                                <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                  <span className="truncate max-w-[100px]">{item.brand_name || 'Generic'}</span>
+                                  <span className="font-mono text-[10px]">SKU: {item.sku || 'N/A'}</span>
                                 </div>
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{item.category}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <span className="text-sm">{item.brand_name || '-'}</span>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex flex-col items-end">
-                                <span className="font-bold">{item.available_qty}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {item.quantity} Total / {item.reserved_qty || 0} Res
-                                </span>
+
+                              <div className="flex justify-between items-baseline pt-1">
+                                <span className="text-xl font-bold text-foreground">₹{item.unit_price}</span>
+                                <span className="text-xs text-muted-foreground">per unit</span>
+                              </div>
+
+                              {/* Progress bar and Stock info */}
+                              <div className="space-y-1.5 pt-1">
+                                <div className="flex justify-between text-xs font-medium">
+                                  <span className="text-muted-foreground">Available</span>
+                                  <span className={cn(item.available_qty <= item.reorder_level ? "text-destructive font-semibold" : "text-emerald-600 font-semibold")}>
+                                    {item.available_qty} / {item.quantity} units
+                                  </span>
+                                </div>
+                                <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className={cn("h-full rounded-full transition-all duration-500", item.available_qty <= item.reorder_level ? "bg-destructive animate-pulse" : "bg-emerald-500")}
+                                    style={{ width: `${stockPercentage}%` }}
+                                  />
+                                </div>
                                 {item.available_qty <= item.reorder_level && (
-                                  <Badge variant="destructive" className="mt-1 h-4 text-[10px]">Low Stock</Badge>
+                                  <div className="flex items-center gap-1 text-[10px] text-destructive font-medium">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    <span>Low Stock (Reorder: {item.reorder_level})</span>
+                                  </div>
                                 )}
                               </div>
-                            </TableCell>
-                            <TableCell className="text-right font-medium">₹{item.unit_price}</TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="font-mono">{item.location || 'Unset'}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end">
+
+                              {/* Footer Action buttons */}
+                              <div className="flex items-center gap-2 pt-3 border-t">
+                                <Button
+                                  size="sm"
+                                  className="flex-1 text-xs"
+                                  onClick={() => setAllocatingItem(item)}
+                                >
+                                  Allocate
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="px-2"
+                                  title="Quick Restock"
+                                  onClick={() => setRestockingItem(item)}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <Button size="sm" variant="outline" className="px-2">
                                       <MoreHorizontal className="h-4 w-4" />
                                     </Button>
                                   </DropdownMenuTrigger>
@@ -801,7 +1243,12 @@ export default function AdminInventory() {
                                       <Edit className="mr-2 h-4 w-4" /> Edit Item
                                     </DropdownMenuItem>
 
-                                    {/* Reserved Part Navigation */}
+                                    {item.reserved_qty > 0 && item.reservations && (
+                                      <DropdownMenuItem onClick={() => setManagingReservationsItem(item)}>
+                                        <ArrowLeftRight className="mr-2 h-4 w-4 text-primary" /> Manage Allocations
+                                      </DropdownMenuItem>
+                                    )}
+
                                     {item.reserved_qty > 0 && item.reservations && (
                                       <>
                                         {item.reservations.filter((r: any) => (r.status === 'approved' || r.status === 'issued') && r.approved_qty > r.issued_qty).map((r: any) => (
@@ -822,13 +1269,134 @@ export default function AdminInventory() {
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : (
+                  <div className="rounded-md border overflow-x-auto bg-card">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Product Details</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead>Brand</TableHead>
+                          <TableHead className="text-right">Stock (Avail/Tot/Res)</TableHead>
+                          <TableHead className="text-right">Unit Price</TableHead>
+                          <TableHead>Location</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading && inventory.length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-10">Loading inventory data...</TableCell></TableRow>
+                        ) : filteredInventory.length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-10">No items found matching your filters.</TableCell></TableRow>
+                        ) : (
+                          filteredInventory.map((item) => (
+                            <TableRow key={item.id} className={item.available_qty <= item.reorder_level ? "bg-destructive/5" : ""}>
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-muted rounded border">
+                                    <QrCode className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                  <div>
+                                    <p className="font-medium">{item.item_name}</p>
+                                    <p className="text-xs text-muted-foreground">SKU: {item.sku || 'N/A'}</p>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{item.category}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm">{item.brand_name || '-'}</span>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold">{item.available_qty}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {item.quantity} Total / {item.reserved_qty || 0} Res
+                                  </span>
+                                  {item.available_qty <= item.reorder_level && (
+                                    <Badge variant="destructive" className="mt-1 h-4 text-[10px]">Low Stock</Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">₹{item.unit_price}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary" className="font-mono">{item.location || 'Unset'}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2 items-center">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setAllocatingItem(item)}
+                                    title="Allocate to Work Order"
+                                  >
+                                    Allocate
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setRestockingItem(item)}
+                                    title="Quick Restock"
+                                  >
+                                    Restock
+                                  </Button>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                      <DropdownMenuItem onClick={() => {
+                                        setEditingItem(item);
+                                        setIsFormOpen(true);
+                                      }}>
+                                        <Edit className="mr-2 h-4 w-4" /> Edit Item
+                                      </DropdownMenuItem>
+
+                                      {item.reserved_qty > 0 && item.reservations && (
+                                        <DropdownMenuItem onClick={() => setManagingReservationsItem(item)}>
+                                          <ArrowLeftRight className="mr-2 h-4 w-4 text-primary" /> Manage Allocations
+                                        </DropdownMenuItem>
+                                      )}
+
+                                      {/* Reserved Part Navigation */}
+                                      {item.reserved_qty > 0 && item.reservations && (
+                                        <>
+                                          {item.reservations.filter((r: any) => (r.status === 'approved' || r.status === 'issued') && r.approved_qty > r.issued_qty).map((r: any) => (
+                                            <DropdownMenuItem key={r.work_order_id} onClick={() => navigate(`/admin/work-orders/${r.work_order_id}`)}>
+                                              <ExternalLink className="mr-2 h-4 w-4" /> Go to WO #{r.work_order_id.slice(0, 6)}
+                                            </DropdownMenuItem>
+                                          ))}
+                                        </>
+                                      )}
+
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-destructive focus:text-destructive"
+                                        onClick={() => handleDelete(item.id)}
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete Item
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1304,8 +1872,360 @@ export default function AdminInventory() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
 
+      {/* Allocation Dialog */}
+      <Dialog open={!!allocatingItem} onOpenChange={(open) => !open && setAllocatingItem(null)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Allocate Part to Work Order</DialogTitle>
+            <DialogDescription>
+              Reserve or issue <strong>{allocatingItem?.item_name}</strong> directly to an active work order.
+            </DialogDescription>
+          </DialogHeader>
+          {allocatingItem && (
+            <form onSubmit={handleAllocatePart} className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Select Work Order</Label>
+                <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a work order..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workOrders.length === 0 ? (
+                      <SelectItem value="none" disabled>No active work orders found</SelectItem>
+                    ) : (
+                      workOrders.map((wo) => {
+                        const vehicleNo = wo.vehicle?.vehicle_number || "No Vehicle";
+                        const customerName = wo.vehicle?.customers?.company_name || wo.vehicle?.customers?.name || "Walk-in";
+                        return (
+                          <SelectItem key={wo.id} value={wo.id}>
+                            WO #{wo.id.slice(0, 6)} - {vehicleNo} ({customerName}) - {wo.service_type}
+                          </SelectItem>
+                        );
+                      })
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Assign to Employee</Label>
+                <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select technician / staff..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.length === 0 ? (
+                      <SelectItem value="none" disabled>No active employees found</SelectItem>
+                    ) : (
+                      employees.map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Quantity (Max: {allocatingItem.available_qty})</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={allocatingItem.available_qty}
+                    value={allocationQty}
+                    onChange={(e) => setAllocationQty(parseInt(e.target.value) || 1)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Unit Price</Label>
+                  <Input
+                    value={`₹${allocatingItem.unit_price}`}
+                    disabled
+                    className="bg-muted font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3 rounded-lg border p-4 bg-muted/40">
+                <Checkbox
+                  id="issueImmediately"
+                  checked={isIssueImmediately}
+                  onCheckedChange={(checked) => setIsIssueImmediately(!!checked)}
+                />
+                <div className="space-y-1 leading-none">
+                  <label
+                    htmlFor="issueImmediately"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Issue Immediately
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    If checked, physical stock will be deducted instantly, the part will be added to the work order's invoice, and transactions will be logged. Otherwise, it will only be reserved.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setAllocatingItem(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submittingAllocation}>
+                  {submittingAllocation ? "Allocating..." : "Confirm Allocation"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Restock Dialog */}
+      <Dialog open={!!restockingItem} onOpenChange={(open) => !open && setRestockingItem(null)}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Quick Restock Inventory</DialogTitle>
+            <DialogDescription>
+              Increase stock quantity for <strong>{restockingItem?.item_name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          {restockingItem && (
+            <form onSubmit={handleQuickRestock} className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Current Stock</Label>
+                <div className="grid grid-cols-2 gap-4 text-sm bg-muted/50 p-3 rounded-md border font-mono">
+                  <div>Total: <strong>{restockingItem.quantity}</strong></div>
+                  <div>Available: <strong>{restockingItem.available_qty}</strong></div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Restock Quantity</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={restockQty}
+                  onChange={(e) => setRestockQty(parseInt(e.target.value) || 1)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Transaction Notes (Optional)</Label>
+                <Input
+                  placeholder="e.g. Received shipment from supplier"
+                  value={restockNotes}
+                  onChange={(e) => setRestockNotes(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setRestockingItem(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submittingRestock}>
+                  {submittingRestock ? "Restocking..." : "Add to Stock"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Reservations / Allocations Dialog */}
+      <Dialog open={!!managingReservationsItem} onOpenChange={(open) => {
+        if (!open) {
+          setManagingReservationsItem(null);
+          setReturningRes(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Manage Allocations: {managingReservationsItem?.item_name}</DialogTitle>
+            <DialogDescription>
+              View, return, or cancel active allocations and reservations for this spare part.
+            </DialogDescription>
+          </DialogHeader>
+
+          {managingReservationsItem && (
+            <div className="py-4">
+              {!returningRes ? (
+                <div className="space-y-4">
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-muted/40">
+                        <TableRow>
+                          <TableHead className="text-xs">Work Order</TableHead>
+                          <TableHead className="text-xs">Employee</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs font-mono">Qty (App/Iss/Ret)</TableHead>
+                          <TableHead className="text-right text-xs">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {!managingReservationsItem.reservations || 
+                         managingReservationsItem.reservations.filter((r: any) => 
+                           r.status === 'approved' || r.status === 'issued'
+                         ).length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-6 text-muted-foreground text-xs">
+                              No active allocations for this part.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          managingReservationsItem.reservations
+                            .filter((r: any) => r.status === 'approved' || r.status === 'issued')
+                            .map((res: any) => {
+                              const activeIssued = res.issued_qty || 0;
+                              const activeReturned = res.returned_qty || 0;
+                              const remToReturn = activeIssued - activeReturned;
+
+                              return (
+                                <TableRow key={res.id}>
+                                  <TableCell className="font-semibold text-xs">
+                                    <span 
+                                      className="text-primary hover:underline cursor-pointer"
+                                      onClick={() => {
+                                        setManagingReservationsItem(null);
+                                        navigate(`/admin/work-orders/${res.work_order_id}`);
+                                      }}
+                                    >
+                                      WO #{res.work_order_id.slice(0, 8)}
+                                    </span>
+                                    {res.work_orders?.vehicle?.vehicle_number && (
+                                      <div className="text-[10px] text-muted-foreground">
+                                        {res.work_orders.vehicle.vehicle_number}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-xs">{res.employee?.name || 'N/A'}</TableCell>
+                                  <TableCell className="text-xs capitalize">
+                                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-medium">
+                                      {res.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="font-mono text-xs">
+                                    {res.approved_qty} / {res.issued_qty} / {activeReturned}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex justify-end gap-1.5">
+                                      {/* Return option if issued */}
+                                      {remToReturn > 0 && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="text-primary text-[10px] h-7 px-2"
+                                          onClick={() => {
+                                            setReturningRes(res);
+                                            setReturnQty(remToReturn);
+                                            setReturnReason("Direct return from inventory management");
+                                            setReturnCondition("unused");
+                                          }}
+                                        >
+                                          Return
+                                        </Button>
+                                      )}
+                                      
+                                      {/* Cancel option */}
+                                      {res.issued_qty === 0 ? (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="text-destructive hover:bg-destructive/10 text-[10px] h-7 px-2"
+                                          onClick={() => handleCancelReservation(res)}
+                                        >
+                                          Cancel
+                                        </Button>
+                                      ) : (
+                                        res.approved_qty > res.issued_qty && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="text-orange-600 hover:bg-orange-50 text-[10px] h-7 px-2"
+                                            onClick={() => handleCancelReservation(res)}
+                                            title="Release unissued reserved parts"
+                                          >
+                                            Release
+                                          </Button>
+                                        )
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex justify-end pt-2">
+                    <Button variant="outline" onClick={() => setManagingReservationsItem(null)}>
+                      Close
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-3 bg-muted rounded-lg border text-xs">
+                    <div className="font-bold">Returning: {managingReservationsItem.item_name}</div>
+                    <div className="text-muted-foreground">
+                      Work Order: WO #{returningRes.work_order_id.slice(0, 8)} | Issued: {returningRes.issued_qty}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Return Quantity</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max={returningRes.issued_qty - (returningRes.returned_qty || 0)}
+                        value={returnQty}
+                        onChange={(e) => setReturnQty(parseInt(e.target.value) || 1)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Condition</Label>
+                      <Select value={returnCondition} onValueChange={setReturnCondition}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Condition" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unused">Unused / Like New</SelectItem>
+                          <SelectItem value="opened">Opened / Fixed But Removed</SelectItem>
+                          <SelectItem value="damaged">Damaged / Defective</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Reason for Return</Label>
+                    <Input
+                      placeholder="e.g. Extra part, incorrect part, damaged..."
+                      value={returnReason}
+                      onChange={(e) => setReturnReason(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" onClick={() => setReturningRes(null)}>
+                      Back
+                    </Button>
+                    <Button 
+                      onClick={handleExecuteReturn}
+                      disabled={submittingReturn || returnQty <= 0}
+                    >
+                      {submittingReturn ? "Returning..." : "Confirm Return"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

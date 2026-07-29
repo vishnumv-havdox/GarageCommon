@@ -12,7 +12,7 @@ import {
     Truck, User, Calendar, Shield, Phone,
     FileText, ArrowLeft, Loader2, Info,
     Wrench, CheckCircle2, MapPin, ClipboardList,
-    Clock, ExternalLink
+    Clock, ExternalLink, Expand, Edit2, ImageIcon
 } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { generateVehicleHistoryPDF, parseNotes } from "@/utils/pdfGenerator";
@@ -46,6 +46,7 @@ interface Vehicle {
             vehicle_categories: { name: string };
         };
     };
+    photo_url?: string;
 }
 
 interface ServiceHistoryRecord {
@@ -85,6 +86,7 @@ export default function AdminVehicleDetail() {
     const [loading, setLoading] = useState(true);
     const [vehicle, setVehicle] = useState<Vehicle | null>(null);
     const [history, setHistory] = useState<ServiceHistoryRecord[]>([]);
+    const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
     const fetchVehicleData = useCallback(async () => {
         if (!id) return;
@@ -208,8 +210,7 @@ export default function AdminVehicleDetail() {
                                 <ArrowLeft className="h-4 w-4 mr-2" />
                                 Back to Vehicles
                             </Button>
-                            <div className="flex items-center gap-3">
-                                <Truck className="h-8 w-8 text-primary" />
+                            <div className="flex items-center gap-4">
                                 <div>
                                     <h1 className="text-3xl font-bold">{vehicle.vehicle_number}</h1>
                                     <p className="text-muted-foreground">
@@ -228,6 +229,56 @@ export default function AdminVehicleDetail() {
                             </Link>
                         </div>
                     </div>
+
+                    {/* Image Gallery Section */}
+                    {((vehicle.photos && vehicle.photos.length > 0) || vehicle.photo_url) && (
+                        <Card className="mb-8 overflow-hidden">
+                            <div className="flex flex-col md:flex-row">
+                                {/* Main Image */}
+                                <div className="relative md:w-2/3 h-[400px] bg-muted/30 group">
+                                    <img 
+                                        src={vehicle.photos?.[activePhotoIndex] || vehicle.photo_url} 
+                                        alt="Vehicle Primary" 
+                                        className="w-full h-full object-contain bg-black/5"
+                                    />
+                                    <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button variant="secondary" size="icon" className="shadow-md" onClick={() => window.open(vehicle.photos?.[activePhotoIndex] || vehicle.photo_url, '_blank')}>
+                                            <Expand className="h-4 w-4" />
+                                        </Button>
+                                        <Link to={`/admin/vehicles?edit=${vehicle.id}`}>
+                                            <Button variant="secondary" size="icon" className="shadow-md">
+                                                <Edit2 className="h-4 w-4" />
+                                            </Button>
+                                        </Link>
+                                    </div>
+                                    <div className="absolute bottom-4 left-4">
+                                        <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm text-xs font-bold shadow-sm">
+                                            <ImageIcon className="h-3 w-3 mr-1" />
+                                            Photo {activePhotoIndex + 1} of {(vehicle.photos?.length || 1)}
+                                        </Badge>
+                                    </div>
+                                </div>
+                                
+                                {/* Thumbnails */}
+                                {vehicle.photos && vehicle.photos.length > 1 && (
+                                    <div className="md:w-1/3 p-4 bg-muted/10 border-t md:border-t-0 md:border-l overflow-y-auto max-h-[400px]">
+                                        <h3 className="font-semibold text-sm mb-3 text-muted-foreground uppercase tracking-wider">All Photos</h3>
+                                        <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
+                                            {vehicle.photos.map((photo, i) => (
+                                                <div 
+                                                    key={i} 
+                                                    onClick={() => setActivePhotoIndex(i)}
+                                                    className={`cursor-pointer aspect-[4/3] rounded overflow-hidden border-2 transition-all ${activePhotoIndex === i ? 'border-primary ring-2 ring-primary/20 shadow-md' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                                                >
+                                                    <img src={photo} alt={`Gallery ${i+1}`} className="h-full w-full object-cover" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+                    )}
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                         {/* Vehicle Info Card */}

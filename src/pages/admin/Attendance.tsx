@@ -152,11 +152,15 @@ export default function AttendancePage() {
             const formattedDate = format(date, 'yyyy-MM-dd');
             const toUpsert = employees.map(emp => {
                 const existing = attendance[emp.id];
-                if (!existing?.status || existing?.status === "") {
+                const needsUpdate = !existing?.status || existing?.status === "" || (existing?.status === "present" && (!existing.session_1 || !existing.session_2));
+                
+                if (needsUpdate) {
                     return {
                         employee_id: emp.id,
                         date: formattedDate,
                         status: "present",
+                        session_1: true,
+                        session_2: true,
                         marked_by: currentUser?.id,
                         updated_by: currentUser?.id
                     };
@@ -169,6 +173,15 @@ export default function AttendancePage() {
                 setSaving(false);
                 return;
             }
+
+            // Update local state instantly for UI feedback
+            setAttendance(prev => {
+                const updated = { ...prev };
+                toUpsert.forEach((record: any) => {
+                    updated[record.employee_id] = { ...updated[record.employee_id], ...record };
+                });
+                return updated;
+            });
 
             const { error } = await supabase
                 .from("attendance")
@@ -268,9 +281,11 @@ export default function AttendancePage() {
             // Handle manual check_in/check_out time overrides
             if (field === 'check_in' || field === 'check_out') {
                 if (value && value.includes(':') && !value.includes('T')) {
-                    // Combine the roster date with the manual time
-                    const rosterDate = format(date, 'yyyy-MM-dd');
-                    updated[field] = `${rosterDate}T${value}:00.000Z`;
+                    // Combine the roster date with the manual time locally
+                    const [hours, minutes] = value.split(':');
+                    const newDateObj = new Date(date);
+                    newDateObj.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+                    updated[field] = newDateObj.toISOString();
                 }
             }
 
@@ -433,13 +448,25 @@ export default function AttendancePage() {
             const toUpsert = Object.values(attendance)
                 .filter((a: any) => a.status && a.status !== "")
                 .map((a: any) => {
+                    // Parse fallback times if they somehow missed handleFieldChange
+                    const parseTime = (timeStr: string | null) => {
+                        if (!timeStr) return null;
+                        if (timeStr.includes('T')) return timeStr;
+                        const [hours, minutes] = timeStr.split(':');
+                        const newDateObj = new Date(date);
+                        newDateObj.setHours(parseInt(hours, 10) || 0, parseInt(minutes, 10) || 0, 0, 0);
+                        return newDateObj.toISOString();
+                    };
+
                     const record: any = {
                         employee_id: a.employee_id,
                         date: formattedDate,
                         status: a.status,
+                        session_1: a.session_1 ?? false,
+                        session_2: a.session_2 ?? false,
                         overtime_hours: a.overtime_hours || 0,
-                        check_in: a.check_in ? (a.check_in.includes('T') ? a.check_in : `${formattedDate}T${a.check_in}`) : null,
-                        check_out: a.check_out ? (a.check_out.includes('T') ? a.check_out : `${formattedDate}T${a.check_out}`) : null,
+                        check_in: parseTime(a.check_in),
+                        check_out: parseTime(a.check_out),
                         total_hours: a.total_hours || 0,
                         remarks: a.remarks || "",
                         marked_by: a.marked_by || currentUser?.id,
@@ -656,11 +683,11 @@ export default function AttendancePage() {
                                         <Table>
                                             <TableHeader className="bg-muted/30">
                                                 <TableRow className="hover:bg-transparent">
-                                                    <TableHead className="w-[200px] font-black text-slate-900 border-r py-4 px-6 bg-slate-50/50">1. EMPLOYEE INFO</TableHead>
-                                                    <TableHead className="font-black text-slate-900 border-r py-4 px-6 bg-slate-50/50">2. PORTAL</TableHead>
-                                                    <TableHead className="font-black text-slate-900 border-r py-4 px-6 bg-indigo-50/30 text-indigo-900">3. QUICK ACTIONS</TableHead>
-                                                    <TableHead className="font-black text-slate-900 border-r py-4 px-6 bg-amber-50/30 text-amber-900 text-center">4. MANUAL LOGS (CORRECTIONS)</TableHead>
-                                                    <TableHead className="font-black text-slate-900 py-4 px-6 bg-slate-50/50">5. HOURS & REMARKS</TableHead>
+                                                    <TableHead className="min-w-[200px] font-black text-slate-900 border-r py-4 px-6 bg-slate-50/50 whitespace-nowrap">1. EMPLOYEE INFO</TableHead>
+                                                    <TableHead className="min-w-[120px] font-black text-slate-900 border-r py-4 px-6 bg-slate-50/50 whitespace-nowrap">2. PORTAL</TableHead>
+                                                    <TableHead className="min-w-[280px] font-black text-slate-900 border-r py-4 px-6 bg-indigo-50/30 text-indigo-900 whitespace-nowrap">3. QUICK ACTIONS</TableHead>
+                                                    <TableHead className="min-w-[240px] font-black text-slate-900 border-r py-4 px-6 bg-amber-50/30 text-amber-900 text-center whitespace-nowrap">4. MANUAL LOGS</TableHead>
+                                                    <TableHead className="min-w-[220px] font-black text-slate-900 py-4 px-6 bg-slate-50/50 whitespace-nowrap">5. HOURS & REMARKS</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -746,7 +773,7 @@ export default function AttendancePage() {
                                                                         </SelectContent>
                                                                     </Select>
 
-                                                                    <div className="flex items-center gap-1.5">
+                                                                    <div className="flex flex-wrap items-center gap-1.5">
                                                                         <TooltipProvider>
                                                                             {isToday && (
                                                                                 <>
@@ -846,7 +873,7 @@ export default function AttendancePage() {
 
                                                             {/* 4. MANUAL LOGS (CORRECTIONS) */}
                                                             <TableCell className="border-r px-6 py-4 bg-amber-50/5">
-                                                                <div className="flex justify-center items-center gap-6">
+                                                                <div className="flex flex-wrap justify-center items-center gap-3 md:gap-6">
                                                                     <div className="flex flex-col items-center">
                                                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><LogIn className="h-3 w-3" /> Correction In</span>
                                                                         <Input
@@ -869,9 +896,9 @@ export default function AttendancePage() {
                                                             </TableCell>
 
                                                             {/* 5. HOURS & REMARKS */}
-                                                            <TableCell className="px-6 py-4 bg-slate-50/50">
+                                                            <TableCell className="px-6 py-4 bg-slate-50/50 align-top">
                                                                 <div className="flex flex-col gap-3">
-                                                                    <div className="flex items-center gap-4">
+                                                                    <div className="flex flex-wrap items-center gap-4">
                                                                         <div className="flex flex-col">
                                                                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Hours</span>
                                                                             <div className="relative">

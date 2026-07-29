@@ -21,6 +21,7 @@ import AdminInvoices from "./pages/admin/Invoices";
 import AdminInvoiceEditor from "./pages/admin/InvoiceEditor";
 import InvoiceAnalytics from "./pages/admin/InvoiceAnalytics";
 import AnalyticsDashboard from "./pages/admin/AnalyticsDashboard";
+import AdminTally from "./pages/admin/Tally";
 import AdminUsers from "./pages/admin/Users";
 import CustomerLedger from "./pages/admin/CustomerLedger";
 import AdminLedger from "./pages/admin/Ledger";
@@ -64,6 +65,7 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/invoices": AdminInvoices,
   "/admin/invoices/:id": AdminInvoiceEditor,
   "/admin/invoice-analytics": InvoiceAnalytics,
+  "/admin/tally": AdminTally,
   "/admin/analytics-dashboard": AnalyticsDashboard,
   "/admin/ledger": AdminLedger,
   "/admin/customers/:id/ledger": CustomerLedger,

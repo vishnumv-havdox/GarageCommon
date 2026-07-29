@@ -7,7 +7,7 @@ import { Combobox } from "@/components/ui/combobox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Truck, Plus } from "lucide-react"
+import { Loader2, Truck, Plus, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -37,9 +37,10 @@ interface Vehicle {
   notes?: string
   kilometers_driven?: number
   next_service_km?: number
-  next_service_date?: string
   vehicle_type?: string // legacy
   model?: string // legacy
+  photo_url?: string // legacy
+  photos?: string[]
 }
 
 interface Manufacturer { id: string; name: string }
@@ -69,7 +70,8 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
     notes: initialData?.notes || "",
     kilometers_driven: initialData?.kilometers_driven || 0,
     next_service_km: initialData?.next_service_km || 0,
-    next_service_date: initialData?.next_service_date || ""
+    next_service_date: initialData?.next_service_date || "",
+    photos: initialData?.photos || (initialData?.photo_url ? [initialData.photo_url] : [])
   })
 
   // Normalized catalogs
@@ -278,6 +280,86 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-3 rounded-md bg-muted/20">
+            {/* Vehicle Photos Upload */}
+            <div className="md:col-span-2 space-y-2 pb-2">
+              <div className="flex items-center justify-between">
+                  <Label>Vehicle Photos</Label>
+                  <span className="text-xs text-muted-foreground">{formData.photos.length} uploaded</span>
+              </div>
+              <div className="p-4 border rounded-lg bg-muted/50">
+                  {/* Photo Gallery Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
+                      {formData.photos.map((url, index) => (
+                          <div key={index} className="relative group aspect-[4/3] rounded overflow-hidden border shadow-sm bg-white">
+                              <img src={url} alt={`Vehicle ${index + 1}`} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                                  <Button 
+                                      type="button"
+                                      variant="destructive" 
+                                      size="sm" 
+                                      className="h-8 shadow-lg"
+                                      onClick={() => {
+                                          const newPhotos = [...formData.photos];
+                                          newPhotos.splice(index, 1);
+                                          setFormData({ ...formData, photos: newPhotos });
+                                      }}
+                                  >
+                                      <Trash2 className="h-4 w-4 mr-1" /> Delete
+                                  </Button>
+                              </div>
+                          </div>
+                      ))}
+                      {/* Empty Placeholder if no photos */}
+                      {formData.photos.length === 0 && (
+                          <div className="aspect-[4/3] col-span-full sm:col-span-3 md:col-span-4 flex flex-col items-center justify-center border-2 border-dashed rounded bg-muted/50 text-muted-foreground">
+                              <Truck className="h-10 w-10 mb-2 opacity-50" />
+                              <p className="text-sm font-medium">No photos uploaded</p>
+                          </div>
+                      )}
+                  </div>
+
+                  {/* Upload Input */}
+                  <div className="flex items-center gap-4">
+                      <Input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={async (e) => {
+                              const files = e.target.files;
+                              if (!files || files.length === 0) return;
+                              setIsLoading(true);
+                              try {
+                                  const uploadedUrls: string[] = [];
+                                  // Upload files sequentially to avoid hitting storage rate limits
+                                  for (let i = 0; i < files.length; i++) {
+                                      const file = files[i];
+                                      const fileExt = file.name.split('.').pop();
+                                      const fileName = `vehicle-${Date.now()}-${i}.${fileExt}`;
+                                      const { error: uploadError } = await supabase.storage
+                                          .from('public-assets')
+                                          .upload(fileName, file);
+                                      if (uploadError) throw uploadError;
+                                      const { data: { publicUrl } } = supabase.storage
+                                          .from('public-assets')
+                                          .getPublicUrl(fileName);
+                                      uploadedUrls.push(publicUrl);
+                                  }
+                                  setFormData(prev => ({ ...prev, photos: [...prev.photos, ...uploadedUrls] }));
+                                  toast({ title: `${uploadedUrls.length} Photo(s) Uploaded` });
+                              } catch (error: any) {
+                                  toast({ variant: "destructive", title: "Upload Failed", description: error.message });
+                              } finally {
+                                  setIsLoading(false);
+                              }
+                          }}
+                          disabled={isLoading}
+                          className="flex-1 cursor-pointer bg-background"
+                      />
+                      <p className="text-[10px] text-muted-foreground hidden sm:block whitespace-nowrap">You can select multiple files.</p>
+                  </div>
+              </div>
+            </div>
+
             {/* Manufacturer */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">

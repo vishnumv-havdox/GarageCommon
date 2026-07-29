@@ -147,8 +147,8 @@ export const generateWorkSlipPDF = async (workOrderId: string, copyType: 'custom
     return generateDocument(workOrderId, 'work_slip', action, copyType);
 };
 
-export const generateInvoicePDF = async (workOrderId: string, action: 'save' | 'preview' = 'preview') => {
-    return generateDocument(workOrderId, 'invoice', action);
+export const generateInvoicePDF = async (workOrderId: string, action: 'save' | 'preview' = 'preview', themeColor?: string) => {
+    return generateDocument(workOrderId, 'invoice', action, 'customer', themeColor);
 };
 
 export const parseNotes = (notes: any): string => {
@@ -946,9 +946,38 @@ const generateDocument = async (
     workOrderId: string,
     type: 'work_slip' | 'invoice',
     action: 'save' | 'preview' = 'preview',
-    copyType: 'customer' | 'workshop' = 'customer'
+    copyType: 'customer' | 'workshop' = 'customer',
+    themeColor?: string
 ) => {
     try {
+        // Apply theme color to global COLORS object dynamically
+        if (themeColor === 'blue') {
+            COLORS.primary = [30, 64, 175];
+            COLORS.success = [29, 78, 216];
+            COLORS.lightBg = [239, 246, 255];
+            COLORS.darkText = [30, 64, 175];
+        } else if (themeColor === 'emerald') {
+            COLORS.primary = [6, 95, 70];
+            COLORS.success = [4, 120, 87];
+            COLORS.lightBg = [236, 253, 245];
+            COLORS.darkText = [6, 95, 70];
+        } else if (themeColor === 'indigo') {
+            COLORS.primary = [55, 48, 163];
+            COLORS.success = [67, 56, 202];
+            COLORS.lightBg = [245, 243, 255];
+            COLORS.darkText = [55, 48, 163];
+        } else if (themeColor === 'rose') {
+            COLORS.primary = [159, 18, 57];
+            COLORS.success = [190, 24, 74];
+            COLORS.lightBg = [255, 241, 242];
+            COLORS.darkText = [159, 18, 57];
+        } else {
+            // Restore default Slate theme
+            COLORS.primary = [15, 23, 42];
+            COLORS.success = [15, 23, 42];
+            COLORS.lightBg = [248, 250, 252];
+            COLORS.darkText = [15, 23, 42];
+        }
         // Fetch all required data
         const [
             profileRes,

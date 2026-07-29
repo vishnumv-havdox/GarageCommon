@@ -249,6 +249,7 @@ export async function updateUser(
     email?: string;
     fullName?: string;
     phone?: string;
+    password?: string;
     // Employee-specific
     positionId?: string;
     accessLevel?: "admin" | "manager" | "staff";
@@ -271,12 +272,13 @@ export async function updateUser(
   const config = getUserConfig(userType);
 
   try {
-    // Step 1: Update auth user metadata if needed
-    if (data.fullName || data.phone || data.email) {
+    // Step 1: Update auth user metadata or password if needed
+    if (data.fullName || data.phone || data.email || data.password) {
       const updateData: any = {};
       if (data.fullName) updateData.user_metadata = { ...updateData.user_metadata, [config.authMetaField]: data.fullName };
       if (data.phone) updateData.user_metadata = { ...updateData.user_metadata, phone: data.phone };
       if (data.email) updateData.email = data.email;
+      if (data.password) updateData.password = data.password;
 
       const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, updateData);
       if (authError) return { success: false, error: authError.message };

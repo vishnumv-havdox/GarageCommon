@@ -351,7 +351,6 @@ export default function AdminDashboard() {
                 onClick={() => navigate('/admin/invoices')}
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 opacity-90 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20" />
 
                 <CardContent className="relative p-6 text-white flex items-center justify-between">
                   <div className="space-y-1">

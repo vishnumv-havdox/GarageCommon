@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useReactToPrint } from "react-to-print";
+import { PrintableLabel, LabelPrintItem } from "@/components/inventory/PrintableLabel";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,7 +13,7 @@ import {
   Plus, Search, Package, Download, Edit, Trash2,
   AlertTriangle, Filter, ChevronRight, QrCode, ScanLine, Clock, ArrowLeftRight,
   ExternalLink, RefreshCw, Eye, MoreHorizontal, LayoutGrid, List,
-  Wrench, Zap, Car, Settings, Droplet
+  Wrench, Zap, Car, Settings, Droplet, Printer
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -148,6 +150,15 @@ export default function AdminInventory() {
   const [restockQty, setRestockQty] = useState(1);
   const [restockNotes, setRestockNotes] = useState("");
   const [submittingRestock, setSubmittingRestock] = useState(false);
+
+  // Browser Printing States for Label Printer
+  const printRef = useRef<HTMLDivElement>(null);
+  const [printQueue, setPrintQueue] = useState<LabelPrintItem[]>([]);
+
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: "Inventory_Labels",
+  });
 
   // Manage Reservations State
   const [managingReservationsItem, setManagingReservationsItem] = useState<InventoryItem | null>(null);
@@ -825,6 +836,62 @@ export default function AdminInventory() {
     }
   };
 
+  const printMasterLabel = (item: InventoryItem, copies: number) => {
+    const label: LabelPrintItem = {
+      name: item.item_name,
+      brand: item.brand_name,
+      sku: item.sku,
+      price: item.unit_price,
+      qrCode: item.qr_code || item.sku,
+      location: item.location,
+    };
+    const queue = Array(copies).fill(label);
+    setPrintQueue(queue);
+    setTimeout(() => {
+      handlePrint();
+    }, 150);
+    toast({ title: "Printing Label", description: `Sending ${copies} label(s) to browser print...` });
+  };
+
+  const printAllUnitLabels = (item: InventoryItem) => {
+    if (productUnits.length === 0) {
+      toast({ variant: "destructive", title: "Empty", description: "No units found. Generate them first." });
+      return;
+    }
+
+    const queue: LabelPrintItem[] = productUnits.map(unit => ({
+      name: item.item_name,
+      brand: item.brand_name,
+      sku: item.sku,
+      price: item.unit_price,
+      qrCode: unit.qr_code,
+      location: item.location,
+    }));
+
+    setPrintQueue(queue);
+    setTimeout(() => {
+      handlePrint();
+    }, 150);
+    toast({ title: "Printing Units", description: `Sending ${queue.length} unit labels to browser print...` });
+  };
+
+  const printSingleUnitLabel = (item: InventoryItem, unit: any) => {
+    const label: LabelPrintItem = {
+      name: item.item_name,
+      brand: item.brand_name,
+      sku: item.sku,
+      price: item.unit_price,
+      qrCode: unit.qr_code,
+      location: item.location,
+    };
+
+    setPrintQueue([label]);
+    setTimeout(() => {
+      handlePrint();
+    }, 150);
+    toast({ title: "Printing Label", description: `Sending unit label ${unit.qr_code} to browser print...` });
+  };
+
   useEffect(() => {
     if (selectedProductForQR) {
       fetchProductUnits(selectedProductForQR.id);
@@ -1011,7 +1078,7 @@ export default function AdminInventory() {
                     setIsFormOpen(false);
                     setEditingItem(null);
                   }}
-                  onPrintLabels={generateLabelPDF}
+                  onPrintLabels={printMasterLabel}
                   onSubmit={handleFormSubmit}
                   loading={loading}
                 />
@@ -1243,6 +1310,18 @@ export default function AdminInventory() {
                                       <Edit className="mr-2 h-4 w-4" /> Edit Item
                                     </DropdownMenuItem>
 
+                                    <DropdownMenuItem onClick={() => {
+                                      const count = prompt("Enter number of copies to print:", "1");
+                                      if (count && !isNaN(parseInt(count))) {
+                                        const copies = parseInt(count);
+                                        if (copies > 0) {
+                                          printMasterLabel(item, copies);
+                                        }
+                                      }
+                                    }}>
+                                      <Printer className="mr-2 h-4 w-4" /> Print Sticker Label
+                                    </DropdownMenuItem>
+
                                     {item.reserved_qty > 0 && item.reservations && (
                                       <DropdownMenuItem onClick={() => setManagingReservationsItem(item)}>
                                         <ArrowLeftRight className="mr-2 h-4 w-4 text-primary" /> Manage Allocations
@@ -1360,6 +1439,18 @@ export default function AdminInventory() {
                                         setIsFormOpen(true);
                                       }}>
                                         <Edit className="mr-2 h-4 w-4" /> Edit Item
+                                      </DropdownMenuItem>
+
+                                      <DropdownMenuItem onClick={() => {
+                                        const count = prompt("Enter number of copies to print:", "1");
+                                        if (count && !isNaN(parseInt(count))) {
+                                          const copies = parseInt(count);
+                                          if (copies > 0) {
+                                            printMasterLabel(item, copies);
+                                          }
+                                        }
+                                      }}>
+                                        <Printer className="mr-2 h-4 w-4" /> Print Sticker Label
                                       </DropdownMenuItem>
 
                                       {item.reserved_qty > 0 && item.reservations && (
@@ -1723,10 +1814,10 @@ export default function AdminInventory() {
                   <Button
                     variant="default"
                     size="sm"
-                    onClick={() => generateUnitQRPDF(selectedProductForQR)}
+                    onClick={() => printAllUnitLabels(selectedProductForQR)}
                     disabled={productUnits.length === 0}
                   >
-                    <Download className="mr-2 h-4 w-4" />
+                    <Printer className="mr-2 h-4 w-4" />
                     Print All Units
                   </Button>
                 </div>
@@ -1772,16 +1863,29 @@ export default function AdminInventory() {
                                 {new Date(unit.created_at).toLocaleString()}
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    setSelectedUnitForView(unit);
-                                    setIsUnitViewOpen(true);
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setSelectedUnitForView(unit);
+                                      setIsUnitViewOpen(true);
+                                    }}
+                                    title="View Details"
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  {selectedProductForQR && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => printSingleUnitLabel(selectedProductForQR, unit)}
+                                      title="Print Sticker Label"
+                                    >
+                                      <Printer className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
                               </TableCell>
 
                             </TableRow>
@@ -1861,14 +1965,26 @@ export default function AdminInventory() {
               </div>
             </div>
 
-            <Button
-              variant="default"
-              className="w-full"
-              onClick={() => handleDownloadSingleQR(selectedUnitForView)}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download High-Res QR
-            </Button>
+            <div className="flex w-full gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => handleDownloadSingleQR(selectedUnitForView)}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download QR
+              </Button>
+              {selectedProductForQR && (
+                <Button
+                  variant="default"
+                  className="flex-1"
+                  onClick={() => printSingleUnitLabel(selectedProductForQR, selectedUnitForView)}
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Print Label
+                </Button>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -2225,6 +2341,9 @@ export default function AdminInventory() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Hidden printable label container for thermal printer */}
+      <PrintableLabel ref={printRef} items={printQueue} />
     </div>
   );
 }

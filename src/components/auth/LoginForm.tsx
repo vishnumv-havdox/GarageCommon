@@ -89,7 +89,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             )}
           </div>
           <CardTitle className="text-2xl font-bold uppercase">
-            {profile?.company_name || 'AMMA AUTO GARAGE'}
+            {profile?.company_name || 'GARAGE MANAGEMENT'}
           </CardTitle>
           <CardDescription>
             Sign in to access the service center management system

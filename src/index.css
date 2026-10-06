@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* AMMA AUTO GARAGE Design System - Professional Automotive Theme */
+/* Professional Automotive Theme Design System */
 
 @layer base {
   :root {
@@ -158,4 +158,50 @@
 
 .animate-blink-blue {
   animation: blink-blue 2s ease-in-out infinite;
+}
+
+/* Print Styles for QR Label Printing */
+@media print {
+  @page {
+    size: 50mm 30mm;
+    margin: 0;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Hide everything on screen during printing */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Show only the printable labels container and its descendants */
+  .printable-label-batch,
+  .printable-label-batch * {
+    visibility: visible !important;
+  }
+
+  /* Position the printable labels in the top-left corner */
+  .printable-label-batch {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 50mm;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  /* Force page breaks after each single label sticker */
+  .single-label-sticker {
+    page-break-after: always;
+    break-after: page;
+    width: 50mm;
+    height: 30mm;
+    box-sizing: border-box;
+    display: flex !important;
+    overflow: hidden;
+  }
 }

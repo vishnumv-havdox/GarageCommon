@@ -28,7 +28,7 @@ export const Payslip = React.forwardRef<HTMLDivElement, PayslipProps>(
                 <div className="border-b-2 border-slate-800 pb-6 mb-8 flex justify-between items-start">
                     <div>
                         <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 uppercase">
-                            {companyProfile?.company_name || 'Amma Auto'}
+                            {companyProfile?.company_name || 'Service Center'}
                         </h1>
                         <p className="text-sm font-medium text-slate-500 mt-1">Payslip & Salary Statement</p>
                         {companyProfile?.address && (
@@ -74,6 +74,38 @@ export const Payslip = React.forwardRef<HTMLDivElement, PayslipProps>(
                         <div>
                             <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-1">Days Present</label>
                             <div className="text-sm font-medium text-slate-700">{data.days_present} Days</div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-1">Payment Method</label>
+                            <div className="text-sm font-medium text-slate-700 uppercase">
+                                {data.payment_method?.replace('_', ' ') || 'Cash'}
+                            </div>
+                        </div>
+                        <div>
+                            {data.payment_method === 'bank_transfer' && data.account_number && (
+                                <>
+                                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-1">Bank Account</label>
+                                    <div className="text-sm font-medium text-slate-700">
+                                        {data.bank_name || 'Bank'} ({data.account_number.slice(-4).padStart(data.account_number.length, '*')})
+                                    </div>
+                                </>
+                            )}
+                            {data.payment_method === 'upi' && data.upi_id && (
+                                <>
+                                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-1">UPI ID</label>
+                                    <div className="text-sm font-medium text-slate-700">
+                                        {data.upi_id}
+                                    </div>
+                                </>
+                            )}
+                            {(!data.payment_method || data.payment_method === 'cash') && (
+                                <>
+                                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-1">Payment Detail</label>
+                                    <div className="text-sm font-medium text-slate-700 italic">
+                                        Handed over in Cash
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -132,7 +164,7 @@ export const Payslip = React.forwardRef<HTMLDivElement, PayslipProps>(
                 </div>
 
                 <div className="mt-6 text-center">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">Generated via Amma Auto Admin Portal • {format(new Date(), "PP pp")}</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">Generated via Admin Portal • {format(new Date(), "PP pp")}</p>
                 </div>
 
             </div>

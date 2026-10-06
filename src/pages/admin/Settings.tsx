@@ -1188,7 +1188,7 @@ export default function Settings() {
                                                     id="accountName"
                                                     value={profile.acc_name || ''}
                                                     onChange={(e) => setProfile({ ...profile, acc_name: e.target.value })}
-                                                    placeholder="e.g. Amma Auto Service"
+                                                    placeholder="e.g. My Service Center"
                                                 />
                                             </div>
                                             <div className="space-y-2">

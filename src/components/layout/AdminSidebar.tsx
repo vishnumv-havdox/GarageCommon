@@ -208,7 +208,7 @@ export function AdminSidebar() {
             )}
           </div>
           <div className="truncate">
-            <h1 className="font-bold truncate text-sm uppercase">{company?.company_name || 'AMMA AUTO'}</h1>
+            <h1 className="font-bold truncate text-sm uppercase">{company?.company_name || 'GARAGE'}</h1>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Admin Panel</p>
           </div>
         </NavLink>
@@ -378,7 +378,7 @@ export function AdminSidebar() {
       <header className="hidden lg:flex fixed top-0 right-0 left-64 h-16 border-b bg-card/85 backdrop-blur-md items-center justify-between px-8 z-20 shadow-sm transition-all duration-300">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">
-            {company?.company_name || 'Amma Auto Garage'}
+            {company?.company_name || 'Garage'}
           </span>
         </div>
         

@@ -7,6 +7,7 @@ import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import {
     Table,
@@ -40,7 +41,9 @@ import {
     Palette,
     RefreshCw,
     ChevronUp,
-    ChevronDown
+    ChevronDown,
+    CheckCircle2,
+    XCircle
 } from "lucide-react";
 import {
     DropdownMenuContent,
@@ -150,15 +153,18 @@ const InvoiceItemRow = ({
     const handleDescriptionChange = (val: string) => {
         onChange(index, 'description', val);
         if (!val.trim()) {
-            setSuggestions([]);
-            setShowDropdown(false);
+            setSuggestions(templates.slice(0, 6));
+            setActiveIndex(0);
+            setShowDropdown(true);
             return;
         }
-        const query = val.toLowerCase();
+        const query = val.toLowerCase().replace(/[\[\]]/g, ' ');
+        const terms = query.split(/\s+/).filter(Boolean);
         const matches = templates.filter(t => {
-            const name = t.name || t.item_name || "";
-            const brand = t.brand_name || "";
-            return name.toLowerCase().includes(query) || brand.toLowerCase().includes(query);
+            const name = (t.name || t.item_name || "").toLowerCase();
+            const brand = (t.brand_name || "").toLowerCase();
+            const combined = `${brand} ${name}`;
+            return terms.every(term => combined.includes(term));
         });
         setSuggestions(matches.slice(0, 6));
         setActiveIndex(0);
@@ -170,9 +176,9 @@ const InvoiceItemRow = ({
         const displayName = suggestion.brand_name ? `[${suggestion.brand_name}] ${name}` : name;
         const price = suggestion.price || suggestion.unit_price || 0;
         const hsn = suggestion.hsn_code || suggestion.sac_code || "";
-        
-        const resolvedCategory = itemType === 'service' && serviceTypes 
-            ? serviceTypes.find(st => st.id === suggestion.service_type_id)?.name 
+
+        const resolvedCategory = itemType === 'service' && serviceTypes
+            ? serviceTypes.find(st => st.id === suggestion.service_type_id)?.name
             : undefined;
 
         const updateFields: Partial<InvoiceItem> = {
@@ -186,10 +192,10 @@ const InvoiceItemRow = ({
         }
 
         onChange(index, updateFields);
-        
+
         setSuggestions([]);
         setShowDropdown(false);
-        
+
         // Focus the next input: Qty
         setTimeout(() => {
             const nextEl = document.getElementById(`${itemType}-qty-${index}`);
@@ -268,9 +274,7 @@ const InvoiceItemRow = ({
                     value={item.description || ''}
                     onChange={(e) => handleDescriptionChange(e.target.value)}
                     onFocus={() => {
-                        if (item.description) {
-                            handleDescriptionChange(item.description);
-                        }
+                        handleDescriptionChange(item.description || '');
                     }}
                     onKeyDown={handleNameKeyDown}
                     disabled={isReadOnly}
@@ -280,8 +284,8 @@ const InvoiceItemRow = ({
                 />
 
                 {showDropdown && suggestions.length > 0 && (
-                    <div 
-                        ref={dropdownRef} 
+                    <div
+                        ref={dropdownRef}
                         className="absolute left-0 right-0 z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto"
                         style={{ top: '100%' }}
                     >
@@ -296,8 +300,8 @@ const InvoiceItemRow = ({
                                     onClick={() => handleSelectSuggestion(s)}
                                     className={cn(
                                         "px-3 py-2 text-xs cursor-pointer flex justify-between items-center transition-colors rounded-sm",
-                                        idx === activeIndex 
-                                            ? "bg-primary/10 text-primary-foreground font-semibold" 
+                                        idx === activeIndex
+                                            ? "bg-primary/10 text-primary-foreground font-semibold"
                                             : "hover:bg-slate-50 text-slate-700"
                                     )}
                                 >
@@ -367,7 +371,7 @@ const InvoiceItemRow = ({
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                                 e.preventDefault();
-                                document.getElementById(`${itemType}-gst-${index}`)?.focus();
+                                onRowComplete?.();
                             }
                         }}
                         disabled={isReadOnly}
@@ -386,7 +390,7 @@ const InvoiceItemRow = ({
                     }}
                     disabled={isReadOnly}
                 >
-                    <SelectTrigger 
+                    <SelectTrigger
                         id={`${itemType}-gst-${index}`}
                         className="h-8 border-none bg-transparent hover:bg-slate-100/50 focus:ring-0 shadow-none px-2 text-xs"
                         onKeyDown={(e) => {
@@ -436,6 +440,16 @@ export default function InvoiceEditor() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const lastSavedStateRef = useRef<string>("");
+    const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => {
+        const stored = localStorage.getItem('invoice_auto_save_enabled');
+        return stored === null ? true : stored === 'true';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('invoice_auto_save_enabled', String(autoSaveEnabled));
+    }, [autoSaveEnabled]);
 
     // Data
     const [invoice, setInvoice] = useState<any>(null);
@@ -737,6 +751,14 @@ export default function InvoiceEditor() {
             if (itemsError) throw itemsError;
             setItems(invItems || []);
 
+            // Initialize last saved state ref to prevent loop on initial fetch
+            const initialTaxRate = inv.type === 'quotation' && (!inv.subtotal || inv.tax === 0) ? 0 : 18;
+            lastSavedStateRef.current = JSON.stringify({
+                items: invItems || [],
+                notes: inv.notes || '',
+                taxRate: initialTaxRate
+            });
+
             // 3. Fetch associated Work Order details for non-destructive import panel
             if (inv.work_order_id) {
                 const [servicesRes, tasksRes, partsRes] = await Promise.all([
@@ -822,9 +844,22 @@ export default function InvoiceEditor() {
         setItems(items.filter((_, i) => i !== index));
     };
 
-    const handleSave = async (finalize = false) => {
-        setSaving(true);
+    const handleSave = async (finalize = false, silent = false) => {
+        if (!silent) setSaving(true);
+        else setAutoSaveStatus('saving');
         try {
+            // Helper to generate RFC4122 compliant UUID v4 (fallback for non-secure contexts)
+            const uuidv4 = () => {
+                if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                    return crypto.randomUUID();
+                }
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                    const r = (Math.random() * 16) | 0;
+                    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+                    return v.toString(16);
+                });
+            };
+
             // 1. Upsert Items
             const itemsToUpsert = items.map(item => {
                 const payload: any = {
@@ -845,18 +880,21 @@ export default function InvoiceEditor() {
                 };
                 if (!item.id.startsWith('temp-')) {
                     payload.id = item.id;
+                } else {
+                    payload.id = uuidv4();
                 }
                 return payload;
             });
 
-            const { error: upsertError } = await supabase
+            const { data: savedItems, error: upsertError } = await supabase
                 .from('invoice_items')
-                .upsert(itemsToUpsert as any);
+                .upsert(itemsToUpsert as any)
+                .select();
 
             if (upsertError) throw upsertError;
 
             // 2. Identify and Delete Removed Items
-            const currentIds = items.filter(i => !i.id.startsWith('temp-')).map(i => i.id);
+            const currentIds = itemsToUpsert.map(i => i.id);
             if (currentIds.length > 0) {
                 await supabase
                     .from('invoice_items')
@@ -885,16 +923,64 @@ export default function InvoiceEditor() {
 
             if (headerError) throw headerError;
 
-            toast({ title: "Saved", description: finalize ? "Invoice finalized!" : "Invoice updated successfully." });
-            fetchInvoiceData();
+            if (savedItems) {
+                setItems(savedItems);
+            }
+
+            // Update ref
+            lastSavedStateRef.current = JSON.stringify({
+                items: savedItems || itemsToUpsert,
+                notes: invoice.notes || '',
+                taxRate
+            });
+
+            if (silent) {
+                setAutoSaveStatus('saved');
+                setTimeout(() => {
+                    setAutoSaveStatus(prev => prev === 'saved' ? 'idle' : prev);
+                }, 3000);
+            } else {
+                toast({ title: "Saved", description: finalize ? "Invoice finalized!" : "Invoice updated successfully." });
+                fetchInvoiceData();
+            }
 
         } catch (error: any) {
             console.error("Save error:", error);
-            toast({ variant: "destructive", title: "Error", description: error.message });
+            if (silent) {
+                setAutoSaveStatus('error');
+            } else {
+                toast({ variant: "destructive", title: "Error", description: error.message });
+            }
         } finally {
-            setSaving(false);
+            if (!silent) setSaving(false);
         }
     };
+
+    useEffect(() => {
+        if (!autoSaveEnabled || loading || !invoice || invoice.status !== 'Draft') {
+            return;
+        }
+
+        const currentStateStr = JSON.stringify({
+            items,
+            notes: invoice.notes || '',
+            taxRate
+        });
+
+        // Skip saving if data matches what was already saved
+        if (currentStateStr === lastSavedStateRef.current) {
+            return;
+        }
+
+        // Set status to saving (gives immediate visual feedback of unsaved changes pending)
+        setAutoSaveStatus('saving');
+
+        const handler = setTimeout(() => {
+            handleSave(false, true);
+        }, 2000); // 2 seconds debounce
+
+        return () => clearTimeout(handler);
+    }, [items, invoice?.notes, taxRate, loading, invoice, autoSaveEnabled]);
 
     const handleConvertToInvoice = async () => {
         if (!confirm("Convert this Quotation to a Tax Invoice? This will change the document type.")) return;
@@ -989,6 +1075,43 @@ export default function InvoiceEditor() {
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                            {/* Auto-save status toggle & indicator */}
+                            {!isFinalized && (
+                                <div className="flex items-center gap-3 text-xs mr-2 self-center bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60">
+                                    <div className="flex items-center gap-2">
+                                        <Switch
+                                            id="auto-save"
+                                            checked={autoSaveEnabled}
+                                            onCheckedChange={setAutoSaveEnabled}
+                                            className="scale-90"
+                                        />
+                                        <Label htmlFor="auto-save" className="text-xs text-slate-600 font-medium cursor-pointer select-none">
+                                            Auto-save
+                                        </Label>
+                                    </div>
+                                    {autoSaveEnabled && autoSaveStatus !== 'idle' && (
+                                        <div className="h-3 w-px bg-slate-200" />
+                                    )}
+                                    {autoSaveEnabled && autoSaveStatus === 'saving' && (
+                                        <span className="flex items-center gap-1.5 text-slate-500">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                            Saving...
+                                        </span>
+                                    )}
+                                    {autoSaveEnabled && autoSaveStatus === 'saved' && (
+                                        <span className="flex items-center gap-1.5 text-emerald-600 font-medium">
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                            Saved
+                                        </span>
+                                    )}
+                                    {autoSaveEnabled && autoSaveStatus === 'error' && (
+                                        <span className="flex items-center gap-1.5 text-rose-600 font-medium animate-pulse">
+                                            <XCircle className="h-3.5 w-3.5 text-rose-500" />
+                                            Save failed
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                             <Button variant="outline" size="sm" onClick={() => generateInvoicePDF(invoice.work_order_id, 'save', themeColor)} title="Download PDF">
                                 <Download className="h-4 w-4 mr-2" /> PDF
                             </Button>
@@ -1067,19 +1190,19 @@ export default function InvoiceEditor() {
                                                 {woServices.map(service => {
                                                     const tasksForService = woTasks.filter(t => t.service_id === service.id);
                                                     const finalPrice = service.billing_price || service.estimated_cost || 0;
-                                                    
-                                                    const isImported = items.some(item => 
-                                                        item.type === 'service' && 
+
+                                                    const isImported = items.some(item =>
+                                                        item.type === 'service' &&
                                                         (item.category === service.service_type || tasksForService.some(t => t.task_name === item.description))
                                                     );
 
                                                     return (
-                                                        <div 
+                                                        <div
                                                             key={service.id}
                                                             onClick={() => {
                                                                 if (isImported) return;
                                                                 if (tasksForService.length > 0) {
-                                                                    const newItems = tasksForService.map((task, idx) => 
+                                                                    const newItems = tasksForService.map((task, idx) =>
                                                                         importService(service, task, idx === 0 ? finalPrice : 0)
                                                                     );
                                                                     setItems(prev => [...prev, ...newItems]);
@@ -1091,13 +1214,13 @@ export default function InvoiceEditor() {
                                                             }}
                                                             className={cn(
                                                                 "flex items-start gap-3 p-3 rounded-lg border text-xs bg-white transition-all",
-                                                                isImported 
-                                                                    ? "opacity-60 border-slate-200/85 bg-slate-50/50 cursor-not-allowed select-none" 
+                                                                isImported
+                                                                    ? "opacity-60 border-slate-200/85 bg-slate-50/50 cursor-not-allowed select-none"
                                                                     : "border-orange-100 hover:border-orange-300 hover:shadow-sm cursor-pointer"
                                                             )}
                                                         >
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 checked={isImported}
                                                                 readOnly
                                                                 className="mt-0.5 h-3.5 w-3.5 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
@@ -1126,12 +1249,12 @@ export default function InvoiceEditor() {
                                             <Label className="text-[10px] font-bold tracking-wider text-orange-800/80 uppercase">Available Parts & Spares</Label>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                 {woParts.map(part => {
-                                                    const isImported = items.some(item => 
+                                                    const isImported = items.some(item =>
                                                         item.type === 'part' && item.description === part.part_name
                                                     );
 
                                                     return (
-                                                        <div 
+                                                        <div
                                                             key={part.id}
                                                             onClick={() => {
                                                                 if (isImported) return;
@@ -1141,13 +1264,13 @@ export default function InvoiceEditor() {
                                                             }}
                                                             className={cn(
                                                                 "flex items-start gap-3 p-3 rounded-lg border text-xs bg-white transition-all",
-                                                                isImported 
-                                                                    ? "opacity-60 border-slate-200/85 bg-slate-50/50 cursor-not-allowed select-none" 
+                                                                isImported
+                                                                    ? "opacity-60 border-slate-200/85 bg-slate-50/50 cursor-not-allowed select-none"
                                                                     : "border-orange-100 hover:border-orange-300 hover:shadow-sm cursor-pointer"
                                                             )}
                                                         >
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 checked={isImported}
                                                                 readOnly
                                                                 className="mt-0.5 h-3.5 w-3.5 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
@@ -1197,7 +1320,7 @@ export default function InvoiceEditor() {
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-8 p-6">
-                                
+
                                 {/* Customer & Vehicle Quick Details inside Line Items Card */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b pb-6 mb-6 bg-slate-50/30 p-4 rounded-lg">
                                     <div>
@@ -1251,10 +1374,10 @@ export default function InvoiceEditor() {
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-[320px] p-0" align="end">
                                                         <Command>
-                                                            <CommandInput 
-                                                                placeholder="Search templates (e.g. Wash, Brake)..." 
-                                                                value={serviceSearch} 
-                                                                onValueChange={setServiceSearch} 
+                                                            <CommandInput
+                                                                placeholder="Search templates (e.g. Wash, Brake)..."
+                                                                value={serviceSearch}
+                                                                onValueChange={setServiceSearch}
                                                             />
                                                             <CommandList>
                                                                 <CommandEmpty className="p-3 text-xs text-muted-foreground flex flex-col gap-2 items-center">
@@ -1389,10 +1512,10 @@ export default function InvoiceEditor() {
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-[320px] p-0" align="end">
                                                         <Command>
-                                                            <CommandInput 
-                                                                placeholder="Search inventory (e.g. Filter, Plug)..." 
-                                                                value={partSearch} 
-                                                                onValueChange={setPartSearch} 
+                                                            <CommandInput
+                                                                placeholder="Search inventory (e.g. Filter, Plug)..."
+                                                                value={partSearch}
+                                                                onValueChange={setPartSearch}
                                                             />
                                                             <CommandList>
                                                                 <CommandEmpty className="p-3 text-xs text-muted-foreground flex flex-col gap-2 items-center">
@@ -1511,7 +1634,7 @@ export default function InvoiceEditor() {
                                                 className="min-h-[100px] text-xs bg-slate-50/30"
                                             />
                                         </div>
-                                        
+
                                         <div className="border border-dashed rounded-lg p-3 bg-slate-50/50 text-[10px]">
                                             <p className="font-bold text-[9px] text-slate-400 uppercase tracking-wider mb-2">Remittance Instructions</p>
                                             {companyProfile?.bank_name ? (
@@ -1534,7 +1657,7 @@ export default function InvoiceEditor() {
                                                 <span>Subtotal</span>
                                                 <span className="font-mono">₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                             </div>
-                                            
+
                                             <div className="flex justify-between items-center text-muted-foreground">
                                                 <div className="flex items-center gap-1.5">
                                                     <span>Tax (GST)</span>
@@ -1553,9 +1676,9 @@ export default function InvoiceEditor() {
                                                 </div>
                                                 <span className="font-mono">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                             </div>
-                                            
+
                                             <Separator className="my-2" />
-                                            
+
                                             <div className="flex justify-between items-center">
                                                 <span className="text-sm font-bold text-slate-800">Grand Total</span>
                                                 <span className="text-lg font-bold font-mono text-primary">
@@ -1580,8 +1703,8 @@ export default function InvoiceEditor() {
                                                             <span>Balance Due</span>
                                                             <span className={cn(
                                                                 "font-mono font-bold",
-                                                                grandTotal - payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (invoice?.total_deductions || 0) <= 0 
-                                                                    ? "text-green-600" 
+                                                                grandTotal - payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (invoice?.total_deductions || 0) <= 0
+                                                                    ? "text-green-600"
                                                                     : "text-destructive"
                                                             )}>
                                                                 ₹{Math.max(0, grandTotal - payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (invoice?.total_deductions || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -1598,7 +1721,7 @@ export default function InvoiceEditor() {
 
                         {/* Collapsible Invoice Designer Settings Panel */}
                         <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden w-full">
-                            <CardHeader 
+                            <CardHeader
                                 className="bg-gradient-to-r from-slate-50 to-slate-100/50 pb-3 border-b cursor-pointer hover:bg-slate-100/50 transition-colors select-none"
                                 onClick={() => setShowDesignerPanel(!showDesignerPanel)}
                             >
@@ -1630,11 +1753,10 @@ export default function InvoiceEditor() {
                                                     key={color.name}
                                                     type="button"
                                                     onClick={() => handleThemeChange(color.name as any)}
-                                                    className={`h-7 w-7 rounded-full ${color.bg} transition-all duration-200 flex items-center justify-center hover:scale-110 shadow-sm ${
-                                                        themeColor === color.name 
-                                                        ? `ring-4 ${color.ring} ring-offset-2 scale-105` 
-                                                        : 'opacity-70 hover:opacity-100'
-                                                    }`}
+                                                    className={`h-7 w-7 rounded-full ${color.bg} transition-all duration-200 flex items-center justify-center hover:scale-110 shadow-sm ${themeColor === color.name
+                                                            ? `ring-4 ${color.ring} ring-offset-2 scale-105`
+                                                            : 'opacity-70 hover:opacity-100'
+                                                        }`}
                                                     title={`Select ${color.name} theme`}
                                                 >
                                                     {themeColor === color.name && (
@@ -1654,14 +1776,12 @@ export default function InvoiceEditor() {
                                         <button
                                             type="button"
                                             onClick={() => handleShowLogoChange(!showLogo)}
-                                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                                showLogo ? 'bg-primary' : 'bg-slate-200'
-                                            }`}
+                                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${showLogo ? 'bg-primary' : 'bg-slate-200'
+                                                }`}
                                         >
                                             <span
-                                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                                    showLogo ? 'translate-x-4' : 'translate-x-0'
-                                                }`}
+                                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${showLogo ? 'translate-x-4' : 'translate-x-0'
+                                                    }`}
                                             />
                                         </button>
                                     </div>
@@ -1712,7 +1832,7 @@ export default function InvoiceEditor() {
 
                         {/* Collapsible Live Interactive Invoice Preview Panel */}
                         <Card className="border border-slate-200 shadow-sm overflow-hidden bg-slate-50 w-full">
-                            <CardHeader 
+                            <CardHeader
                                 className="bg-white border-b py-3 px-4 flex flex-row items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors select-none"
                                 onClick={() => setShowLivePreview(!showLivePreview)}
                             >
@@ -1727,11 +1847,11 @@ export default function InvoiceEditor() {
                             {showLivePreview && (
                                 <CardContent className="p-4 max-h-[70vh] overflow-y-auto bg-slate-100 animate-in fade-in duration-200">
                                     <div className="bg-white rounded-lg shadow border border-slate-200 p-6 min-h-[500px] text-xs">
-                                        <InvoiceTemplate 
-                                            invoice={invoice} 
-                                            items={items} 
-                                            companyProfile={companyProfile} 
-                                            settings={invoiceSettings} 
+                                        <InvoiceTemplate
+                                            invoice={invoice}
+                                            items={items}
+                                            companyProfile={companyProfile}
+                                            settings={invoiceSettings}
                                             themeColor={themeColor}
                                             showLogo={showLogo}
                                             customTerms={customTerms}
@@ -1742,7 +1862,7 @@ export default function InvoiceEditor() {
                                 </CardContent>
                             )}
                         </Card>
-                        
+
                         {/* Payment History Log */}
                         {payments.length > 0 && (
                             <Card className="border border-slate-200 shadow-sm">

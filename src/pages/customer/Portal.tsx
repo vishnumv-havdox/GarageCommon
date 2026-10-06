@@ -1201,7 +1201,7 @@ export default function CustomerPortal() {
             </div>
             <div className="flex flex-col">
               <span className="text-lg font-bold text-primary uppercase tracking-tight leading-tight">
-                {profile?.company_name || "Amma Auto Garage"}
+                {profile?.company_name || "Service Center"}
               </span>
               <div className="flex items-center gap-2 mt-0.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />

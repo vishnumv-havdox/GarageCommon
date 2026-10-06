@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Car,
   Users,
@@ -33,6 +34,15 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const [company, setCompany] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchCompany = async () => {
+      const { data } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
+      if (data) setCompany(data);
+    };
+    fetchCompany();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,9 +52,9 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center space-x-4">
-              <img src={logo} alt="AMMA AUTO GARAGE" className="h-10 w-10" />
+              <img src={company?.logo_url || logo} alt={company?.company_name || "GARAGE"} className="h-10 w-10 object-contain" />
               <div>
-                <h1 className="text-xl font-bold text-foreground">AMMA AUTO GARAGE</h1>
+                <h1 className="text-xl font-bold text-foreground">{company?.company_name || "GARAGE"}</h1>
                 <p className="text-sm text-muted-foreground">One Stop Solution for All Vehicle Needs</p>
               </div>
             </div>

@@ -51,12 +51,19 @@ export default function InventoryRoom() {
             const { data, error } = await supabase
                 .from("work_orders")
                 .select(`
-          id, 
-          service_type, 
-          status,
-          vehicle:vehicles(vehicle_number),
-          part_requests!inner(*)
-        `)
+                  id, 
+                  service_type, 
+                  status,
+                  vehicle:vehicles(
+                    vehicle_number,
+                    model,
+                    customers(
+                      name,
+                      company_name
+                    )
+                  ),
+                  part_requests!inner(*)
+                `)
                 .eq("part_requests.status", "approved")
                 .order("created_at", { ascending: false });
 
@@ -362,10 +369,16 @@ export default function InventoryRoom() {
                                 </div>
                             ) : (
                                 <div className="p-4 md:p-6">
-                                    {workOrders.filter(wo =>
-                                        wo.vehicle?.vehicle_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        wo.service_type.toLowerCase().includes(searchTerm.toLowerCase())
-                                    ).length === 0 ? (
+                                    {workOrders.filter(wo => {
+                                        const search = searchTerm.toLowerCase();
+                                        return (
+                                            wo.vehicle?.vehicle_number?.toLowerCase().includes(search) ||
+                                            (wo.vehicle?.model && wo.vehicle.model.toLowerCase().includes(search)) ||
+                                            (wo.vehicle?.customers?.company_name && wo.vehicle.customers.company_name.toLowerCase().includes(search)) ||
+                                            (wo.vehicle?.customers?.name && wo.vehicle.customers.name.toLowerCase().includes(search)) ||
+                                            wo.service_type?.toLowerCase().includes(search)
+                                        );
+                                    }).length === 0 ? (
                                         <div className="py-16 text-center border-2 border-dashed border-border/60 rounded-xl bg-muted/10">
                                             <ClipboardList className="h-14 w-14 text-muted-foreground/60 mx-auto mb-4" />
                                             <h3 className="text-lg font-bold text-foreground mb-1">No Active Orders Found</h3>
@@ -375,12 +388,19 @@ export default function InventoryRoom() {
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                                            {workOrders.filter(wo =>
-                                                wo.vehicle?.vehicle_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                                wo.service_type.toLowerCase().includes(searchTerm.toLowerCase())
-                                            ).map((wo) => {
+                                            {workOrders.filter(wo => {
+                                                const search = searchTerm.toLowerCase();
+                                                return (
+                                                    wo.vehicle?.vehicle_number?.toLowerCase().includes(search) ||
+                                                    (wo.vehicle?.model && wo.vehicle.model.toLowerCase().includes(search)) ||
+                                                    (wo.vehicle?.customers?.company_name && wo.vehicle.customers.company_name.toLowerCase().includes(search)) ||
+                                                    (wo.vehicle?.customers?.name && wo.vehicle.customers.name.toLowerCase().includes(search)) ||
+                                                    wo.service_type?.toLowerCase().includes(search)
+                                                );
+                                            }).map((wo) => {
                                                 const ServiceIcon = getServiceIcon(wo.service_type);
                                                 const approvedCount = wo.part_requests.filter((p: any) => p.status === 'approved').length;
+                                                const ownerName = wo.vehicle?.customers?.company_name || wo.vehicle?.customers?.name;
                                                 
                                                 // Icon color based on service type
                                                 let iconBg = "bg-blue-500/10 text-blue-500 border-blue-500/20";
@@ -411,9 +431,21 @@ export default function InventoryRoom() {
                                                         </div>
 
                                                         {/* Middle detail */}
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Service Type</p>
-                                                            <p className="text-sm font-semibold truncate text-foreground/90 uppercase">{wo.service_type}</p>
+                                                        <div className="space-y-0.5">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Vehicle</span>
+                                                                {ownerName && (
+                                                                    <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.25 rounded border border-indigo-100 uppercase max-w-[120px] truncate">
+                                                                        {ownerName}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-sm font-bold truncate text-foreground/90 uppercase">
+                                                                {wo.vehicle?.model || "Unknown Vehicle"}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground truncate uppercase font-semibold">
+                                                                {wo.service_type}
+                                                            </p>
                                                         </div>
 
                                                         {/* Bottom status */}
@@ -507,7 +539,19 @@ export default function InventoryRoom() {
                                 <h2 className="text-xl font-extrabold tracking-tight uppercase">{selectedWO.vehicle?.vehicle_number}</h2>
                                 <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">Active Console</Badge>
                             </div>
-                            <p className="text-muted-foreground text-xs uppercase font-semibold tracking-wider">{selectedWO.service_type}</p>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5 font-semibold">
+                                <span className="text-foreground uppercase">{selectedWO.vehicle?.model || "Unknown Model"}</span>
+                                <span className="h-2.5 w-px bg-border" />
+                                {(selectedWO.vehicle?.customers?.company_name || selectedWO.vehicle?.customers?.name) && (
+                                    <>
+                                        <span className="text-indigo-600 uppercase">
+                                            {selectedWO.vehicle.customers.company_name || selectedWO.vehicle.customers.name}
+                                        </span>
+                                        <span className="h-2.5 w-px bg-border" />
+                                    </>
+                                )}
+                                <span className="uppercase tracking-wider">{selectedWO.service_type}</span>
+                            </div>
                         </div>
                     </div>
                     

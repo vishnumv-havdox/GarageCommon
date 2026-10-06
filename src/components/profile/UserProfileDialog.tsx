@@ -23,6 +23,17 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [factors, setFactors] = useState<any[]>([]);
+    const [companyName, setCompanyName] = useState<string>("Garage");
+
+    useEffect(() => {
+        const fetchCompany = async () => {
+            const { data } = await supabase.from('company_profiles').select('company_name').limit(1).maybeSingle();
+            if (data?.company_name) {
+                setCompanyName(data.company_name);
+            }
+        };
+        fetchCompany();
+    }, []);
 
     useEffect(() => {
         if (open) {
@@ -72,7 +83,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                         Manage your account settings and security preferences.
                     </DialogDescription>
                 </DialogHeader>
-
+ 
                 <div className="flex flex-col items-center justify-center p-4 gap-3">
                     <Avatar className="h-20 w-20 border-2 border-primary/10">
                         <AvatarImage src="" />
@@ -108,7 +119,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                                 <Building2 className="h-5 w-5 text-muted-foreground" />
                                 <div>
                                     <p className="text-xs text-muted-foreground font-medium uppercase">Company</p>
-                                    <p className="text-sm font-medium">Amma Auto Garage</p>
+                                    <p className="text-sm font-medium">{companyName}</p>
                                 </div>
                             </div>
                         </div>

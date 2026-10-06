@@ -530,7 +530,7 @@ export default function StaffDashboard() {
           Loading Dashboard...
         </p>
         <p className="mt-2 text-muted-foreground text-sm uppercase tracking-wider">
-          {company?.company_name || 'Amma Auto Garage'} Dashboard
+          {company?.company_name || 'Service Center'} Dashboard
         </p>
       </div>
     );
@@ -554,7 +554,7 @@ export default function StaffDashboard() {
             </div>
             <div className="flex flex-col">
               <span className="text-lg font-bold text-primary uppercase tracking-tight leading-tight">
-                {company?.company_name || "Amma Auto Garage"}
+                {company?.company_name || "Service Center"}
               </span>
               <div className="flex items-center gap-2 mt-0.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />

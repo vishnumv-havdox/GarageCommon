@@ -240,7 +240,12 @@ export default function SalaryManagementPage() {
                     overtime_pay: parseFloat(editPayoutData.overtime_pay) || 0,
                     arrears_adj: parseFloat(editPayoutData.arrears_adj) || 0,
                     total_amount: total,
-                    notes: editPayoutData.notes
+                    notes: editPayoutData.notes,
+                    payment_method: editPayoutData.payment_method || "bank_transfer",
+                    bank_name: editPayoutData.bank_name || "",
+                    account_number: editPayoutData.account_number || "",
+                    ifsc_code: editPayoutData.ifsc_code || "",
+                    upi_id: editPayoutData.upi_id || "",
                 })
                 .eq("id", selectedPayout.id);
 
@@ -383,8 +388,8 @@ export default function SalaryManagementPage() {
                                                     <TableRow>
                                                         <TableHead>Employee</TableHead>
                                                         <TableHead>Period</TableHead>
-                                                        <TableHead>Total Amount</TableHead>
-                                                        <TableHead>Status</TableHead>
+                                                        <TableHead className="text-right">Total Amount</TableHead>
+                                                        <TableHead className="text-center">Status</TableHead>
                                                         <TableHead className="text-right">Actions</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
@@ -395,10 +400,14 @@ export default function SalaryManagementPage() {
                                                             <TableCell className="text-xs text-muted-foreground">
                                                                 {p.period_start} to {p.period_end}
                                                             </TableCell>
-                                                            <TableCell className="font-bold">₹{p.total_amount.toLocaleString()}</TableCell>
-                                                            <TableCell>
-                                                                <Badge variant={p.status === 'paid' ? 'default' : 'secondary'}>
-                                                                    {p.status}
+                                                            <TableCell className="font-bold text-right">₹{p.total_amount.toLocaleString()}</TableCell>
+                                                            <TableCell className="text-center">
+                                                                <Badge className={
+                                                                    p.status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 border-transparent hover:bg-emerald-100/80 font-bold' :
+                                                                    p.status === 'approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-400 border-transparent hover:bg-blue-100/80 font-bold' :
+                                                                    'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400 border-transparent hover:bg-amber-100/80 font-bold'
+                                                                }>
+                                                                    {p.status.toUpperCase()}
                                                                 </Badge>
                                                             </TableCell>
                                                             <TableCell className="text-right">
@@ -468,8 +477,8 @@ export default function SalaryManagementPage() {
                                                     <TableRow>
                                                         <TableHead>Employee</TableHead>
                                                         <TableHead>Description</TableHead>
-                                                        <TableHead>Amount</TableHead>
-                                                        <TableHead>Status</TableHead>
+                                                        <TableHead className="text-right">Amount</TableHead>
+                                                        <TableHead className="text-center">Status</TableHead>
                                                         <TableHead>Date</TableHead>
                                                         <TableHead className="text-right">Actions</TableHead>
                                                     </TableRow>
@@ -479,11 +488,15 @@ export default function SalaryManagementPage() {
                                                         <TableRow key={a.id}>
                                                             <TableCell className="font-medium">{a.employees?.name}</TableCell>
                                                             <TableCell className="text-xs">{a.description}</TableCell>
-                                                            <TableCell className={`font-bold ${a.amount < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                                                            <TableCell className={`font-bold text-right ${a.amount < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
                                                                 {a.amount > 0 ? '+' : ''}₹{a.amount.toLocaleString()}
                                                             </TableCell>
-                                                            <TableCell>
-                                                                <Badge variant={a.is_processed ? 'default' : 'outline'}>
+                                                            <TableCell className="text-center">
+                                                                <Badge className={
+                                                                    a.is_processed ?
+                                                                    'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 border-transparent hover:bg-emerald-100/80 font-bold' :
+                                                                    'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400 border-transparent hover:bg-amber-100/80 font-bold'
+                                                                }>
                                                                     {a.is_processed ? 'Processed' : 'Pending'}
                                                                 </Badge>
                                                             </TableCell>
@@ -563,6 +576,8 @@ export default function SalaryManagementPage() {
                                                             <div className="text-[10px] font-bold text-right">₹{config.base_amount.toLocaleString()}</div>
                                                             <div className="text-[10px] uppercase font-medium text-muted-foreground">OT Rate</div>
                                                             <div className="text-[10px] font-bold text-right">₹{config.overtime_rate}/hr</div>
+                                                            <div className="text-[10px] uppercase font-medium text-muted-foreground">Method</div>
+                                                            <div className="text-[10px] font-bold text-right uppercase text-muted-foreground">{config.payment_method?.replace('_', ' ') || 'Cash'}</div>
                                                         </div>
                                                     ) : (
                                                         <div className="px-4 pb-4 border-t pt-3 flex items-center justify-center">
@@ -644,7 +659,7 @@ export default function SalaryManagementPage() {
                 </DialogContent>
             </Dialog>
             <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-xl">
                     <DialogHeader>
                         <div className="flex justify-between items-center">
                             <div>
@@ -682,101 +697,201 @@ export default function SalaryManagementPage() {
                                         <p className="text-xs font-medium">{selectedPayout.period_end}</p>
                                     </div>
                                 </Card>
-                                <Card className="bg-primary/10 border-none">
+                                <Card className="bg-blue-50 dark:bg-blue-950/30 border-none">
                                     <div className="p-2">
-                                        <p className="text-[9px] uppercase font-bold text-primary mb-1">Days Present</p>
-                                        <p className="text-xs font-bold text-primary">{selectedPayout.days_present || 0} Days</p>
+                                        <p className="text-[9px] uppercase font-bold text-blue-600 dark:text-blue-400 mb-1">Days Present</p>
+                                        <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{selectedPayout.days_present || 0} Days</p>
                                     </div>
                                 </Card>
                             </div>
 
-                            <div className="space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Base Earnings</span>
-                                        {isEditingPayout ? (
-                                            <Input
-                                                type="number"
-                                                className="h-8 w-24 text-right"
-                                                value={editPayoutData.base_calc}
-                                                onChange={(e) => setEditPayoutData({ ...editPayoutData, base_calc: e.target.value })}
-                                            />
-                                        ) : (
-                                            <span className="font-medium">₹{selectedPayout.base_calc?.toLocaleString()}</span>
-                                        )}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-3 bg-muted/20 p-3 rounded-lg border border-muted/50">
+                                    <h4 className="text-xs font-bold uppercase text-muted-foreground border-b pb-1">Earnings</h4>
+                                    
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-muted-foreground">Base Salary</span>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    type="number"
+                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    value={editPayoutData.base_calc}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, base_calc: e.target.value })}
+                                                />
+                                            ) : (
+                                                <span className="font-semibold">₹{selectedPayout.base_calc?.toLocaleString()}</span>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-muted-foreground">Job Incentives</span>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    type="number"
+                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    value={editPayoutData.job_incentives}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, job_incentives: e.target.value })}
+                                                />
+                                            ) : (
+                                                <span className="font-semibold">₹{selectedPayout.job_incentives?.toLocaleString()}</span>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-muted-foreground">Overtime Pay</span>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    type="number"
+                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    value={editPayoutData.overtime_pay}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, overtime_pay: e.target.value })}
+                                                />
+                                            ) : (
+                                                <span className="font-semibold">₹{selectedPayout.overtime_pay?.toLocaleString()}</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Attendance Adjustment</span>
-                                        {isEditingPayout ? (
-                                            <Input
-                                                type="number"
-                                                className="h-8 w-24 text-right text-destructive"
-                                                value={editPayoutData.attendance_adj}
-                                                onChange={(e) => setEditPayoutData({ ...editPayoutData, attendance_adj: e.target.value })}
-                                            />
-                                        ) : (
-                                            <span className={`font-medium ${selectedPayout.attendance_adj < 0 ? 'text-destructive' : ''}`}>
-                                                {selectedPayout.attendance_adj < 0 ? '-' : ''}₹{Math.abs(selectedPayout.attendance_adj)?.toLocaleString()}
-                                            </span>
-                                        )}
+                                
+                                <div className="space-y-3 bg-muted/20 p-3 rounded-lg border border-muted/50">
+                                    <h4 className="text-xs font-bold uppercase text-muted-foreground border-b pb-1">Deductions & Adjustments</h4>
+                                    
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-muted-foreground">Attendance Adj.</span>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    type="number"
+                                                    className="h-6 w-16 text-right text-xs p-1 text-destructive"
+                                                    value={editPayoutData.attendance_adj}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, attendance_adj: e.target.value })}
+                                                />
+                                            ) : (
+                                                <span className={`font-semibold ${selectedPayout.attendance_adj < 0 ? 'text-destructive' : ''}`}>
+                                                    {selectedPayout.attendance_adj < 0 ? '-' : ''}₹{Math.abs(selectedPayout.attendance_adj || 0)?.toLocaleString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-muted-foreground">Arrears/Corr.</span>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    type="number"
+                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    value={editPayoutData.arrears_adj}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, arrears_adj: e.target.value })}
+                                                />
+                                            ) : (
+                                                <span className={`font-semibold ${selectedPayout.arrears_adj < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                                                    {selectedPayout.arrears_adj > 0 ? '+' : ''}₹{selectedPayout.arrears_adj?.toLocaleString()}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Job Incentives</span>
-                                        {isEditingPayout ? (
-                                            <Input
-                                                type="number"
-                                                className="h-8 w-24 text-right"
-                                                value={editPayoutData.job_incentives}
-                                                onChange={(e) => setEditPayoutData({ ...editPayoutData, job_incentives: e.target.value })}
-                                            />
-                                        ) : (
-                                            <span className="font-medium">₹{selectedPayout.job_incentives?.toLocaleString()}</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Overtime Pay</span>
-                                        {isEditingPayout ? (
-                                            <Input
-                                                type="number"
-                                                className="h-8 w-24 text-right"
-                                                value={editPayoutData.overtime_pay}
-                                                onChange={(e) => setEditPayoutData({ ...editPayoutData, overtime_pay: e.target.value })}
-                                            />
-                                        ) : (
-                                            <span className="font-medium">₹{selectedPayout.overtime_pay?.toLocaleString()}</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Arrears / Adjustments</span>
-                                        {isEditingPayout ? (
-                                            <Input
-                                                type="number"
-                                                className="h-8 w-24 text-right"
-                                                value={editPayoutData.arrears_adj}
-                                                onChange={(e) => setEditPayoutData({ ...editPayoutData, arrears_adj: e.target.value })}
-                                            />
-                                        ) : (
-                                            <span className={`font-medium ${selectedPayout.arrears_adj < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
-                                                {selectedPayout.arrears_adj > 0 ? '+' : ''}₹{selectedPayout.arrears_adj?.toLocaleString()}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="flex justify-between text-sm py-4 border-t-2">
-                                    <span className="font-bold">Total Payout</span>
-                                    <span className="font-bold text-primary text-lg">₹{selectedPayout.total_amount?.toLocaleString()}</span>
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="flex justify-between text-sm py-4 border-t border-b">
+                                <span className="font-bold">Total Payout</span>
+                                <span className="font-bold text-primary text-lg">₹{(isEditingPayout ? (
+                                    (parseFloat(editPayoutData.base_calc) || 0) +
+                                    (parseFloat(editPayoutData.attendance_adj) || 0) +
+                                    (parseFloat(editPayoutData.job_incentives) || 0) +
+                                    (parseFloat(editPayoutData.overtime_pay) || 0) +
+                                    (parseFloat(editPayoutData.arrears_adj) || 0)
+                                ) : selectedPayout.total_amount)?.toLocaleString()}</span>
+                            </div>
+
+                            <div className="border-t pt-4 space-y-3">
+                                <h4 className="text-xs font-bold uppercase text-muted-foreground">Payment Details</h4>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] text-muted-foreground uppercase">Payment Method</Label>
+                                        {isEditingPayout ? (
+                                            <Select
+                                                value={editPayoutData.payment_method || 'bank_transfer'}
+                                                onValueChange={(val) => setEditPayoutData({ ...editPayoutData, payment_method: val })}
+                                            >
+                                                <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                                                    <SelectItem value="upi">UPI</SelectItem>
+                                                    <SelectItem value="cash">Cash</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        ) : (
+                                            <p className="text-xs font-semibold uppercase">{selectedPayout.payment_method?.replace('_', ' ') || 'Cash'}</p>
+                                        )}
+                                    </div>
+                                    
+                                    {((isEditingPayout ? editPayoutData.payment_method : selectedPayout.payment_method) === 'upi') && (
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground uppercase">UPI ID</Label>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    className="h-8 text-xs"
+                                                    value={editPayoutData.upi_id || ''}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, upi_id: e.target.value })}
+                                                />
+                                            ) : (
+                                                <p className="text-xs font-semibold">{selectedPayout.upi_id || 'Not specified'}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {((isEditingPayout ? editPayoutData.payment_method : selectedPayout.payment_method) === 'bank_transfer') && (
+                                    <div className="grid grid-cols-3 gap-2 bg-muted/30 p-2 rounded border text-xs">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground uppercase">Bank Name</Label>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    className="h-6 text-xs p-1"
+                                                    value={editPayoutData.bank_name || ''}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, bank_name: e.target.value })}
+                                                />
+                                            ) : (
+                                                <p className="font-semibold">{selectedPayout.bank_name || '-'}</p>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1 col-span-1">
+                                            <Label className="text-[10px] text-muted-foreground uppercase">Account Number</Label>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    className="h-6 text-xs p-1"
+                                                    value={editPayoutData.account_number || ''}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, account_number: e.target.value })}
+                                                />
+                                            ) : (
+                                                <p className="font-semibold">{selectedPayout.account_number || '-'}</p>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground uppercase">IFSC Code</Label>
+                                            {isEditingPayout ? (
+                                                <Input
+                                                    className="h-6 text-xs p-1"
+                                                    value={editPayoutData.ifsc_code || ''}
+                                                    onChange={(e) => setEditPayoutData({ ...editPayoutData, ifsc_code: e.target.value.toUpperCase() })}
+                                                />
+                                            ) : (
+                                                <p className="font-semibold">{selectedPayout.ifsc_code || '-'}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {((isEditingPayout ? editPayoutData.payment_method : selectedPayout.payment_method) === 'cash') && (
+                                    <p className="text-xs text-muted-foreground italic">Cash payout. No bank or UPI credentials needed.</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2 border-t pt-4">
                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Notes</p>
                                 {isEditingPayout ? (
                                     <Input
@@ -785,8 +900,8 @@ export default function SalaryManagementPage() {
                                         onChange={(e) => setEditPayoutData({ ...editPayoutData, notes: e.target.value })}
                                     />
                                 ) : selectedPayout.notes && (
-                                    <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100/50">
-                                        <p className="text-xs text-blue-700">{selectedPayout.notes}</p>
+                                    <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-lg border border-blue-100/50 dark:border-blue-900/30">
+                                        <p className="text-xs text-blue-700 dark:text-blue-300">{selectedPayout.notes}</p>
                                     </div>
                                 )}
                             </div>

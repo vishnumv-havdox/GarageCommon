@@ -106,6 +106,8 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
         const totalGST = totalCGST + totalSGST;
         const grandTotal = serviceTotal + partsTotal;
         const grandTotalRounded = Math.round(grandTotal);
+        const estimatedCost = Number(invoice.work_order?.estimated_cost || 0);
+        const savings = estimatedCost > grandTotalRounded ? (estimatedCost - grandTotalRounded) : 0;
 
         // Custom colors mapping
         const getThemeClasses = (color: string) => {
@@ -181,7 +183,7 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                         )}
                         <div>
                             <h1 className={`text-2xl font-extrabold tracking-tight ${theme.primaryText} uppercase`}>
-                                {companyProfile?.company_name || 'Amma Auto'}
+                                {companyProfile?.company_name || 'Service Center'}
                             </h1>
                             <p className="text-xs font-semibold text-slate-500 mt-0.5">
                                 {isQuotation ? 'Quotation / Estimate' : 'Tax Invoice'}
@@ -384,6 +386,18 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                                     <span className="text-slate-500">Parts & Materials:</span>
                                     <span className="font-medium font-mono text-slate-800">{formatCurrency(partsTotal)}</span>
                                 </div>
+                                {savings > 0 && (
+                                    <>
+                                        <div className="flex justify-between text-xs text-slate-500">
+                                            <span>Original Estimate:</span>
+                                            <span className="font-medium font-mono text-slate-800">{formatCurrency(estimatedCost)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-emerald-600 font-semibold">
+                                            <span>You Saved:</span>
+                                            <span className="font-mono">{formatCurrency(savings)}</span>
+                                        </div>
+                                    </>
+                                )}
                                 <div className={`border-t ${theme.border} my-1.5`}></div>
 
                                 {/* Net Payable Box */}
@@ -469,7 +483,7 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
 
                 <div className="mt-6 text-center">
                     <p className="text-[9px] text-slate-400 uppercase tracking-widest">
-                        {customFooter || settings?.footer_text || `Generated via Amma Auto Admin Portal • ${format(new Date(), "PP pp")}`}
+                        {customFooter || settings?.footer_text || `Generated via Admin Portal • ${format(new Date(), "PP pp")}`}
                     </p>
                 </div>
 

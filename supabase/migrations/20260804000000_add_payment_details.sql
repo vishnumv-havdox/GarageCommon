@@ -1,31 +1,23 @@
--- Add Session Configuration to Workforce Settings
-ALTER TABLE public.workforce_settings
-ADD COLUMN IF NOT EXISTS session_1_start_time TIME DEFAULT '09:00:00',
-ADD COLUMN IF NOT EXISTS session_1_end_time TIME DEFAULT '13:00:00',
-ADD COLUMN IF NOT EXISTS session_2_start_time TIME DEFAULT '14:00:00',
-ADD COLUMN IF NOT EXISTS session_2_end_time TIME DEFAULT '18:00:00',
-ADD COLUMN IF NOT EXISTS session_1_weight DECIMAL(3, 2) DEFAULT 0.5,
-ADD COLUMN IF NOT EXISTS session_2_weight DECIMAL(3, 2) DEFAULT 0.5;
+-- Migration: Add Payment Details to Salary Configs and Payouts
+-- Date: 2026-08-04
 
--- Add Session Tracking to Attendance
-ALTER TABLE public.attendance
-ADD COLUMN IF NOT EXISTS session_1 BOOLEAN DEFAULT FALSE,
-ADD COLUMN IF NOT EXISTS session_2 BOOLEAN DEFAULT FALSE;
+-- 1. Add columns to employee_salary_configs
+ALTER TABLE public.employee_salary_configs 
+ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('bank_transfer', 'upi', 'cash')) DEFAULT 'bank_transfer',
+ADD COLUMN IF NOT EXISTS bank_name TEXT,
+ADD COLUMN IF NOT EXISTS account_number TEXT,
+ADD COLUMN IF NOT EXISTS ifsc_code TEXT,
+ADD COLUMN IF NOT EXISTS upi_id TEXT;
 
--- Backfill existing data
-UPDATE public.attendance
-SET 
-  session_1 = TRUE,
-  session_2 = TRUE
-WHERE status IN ('present', 'paid-holiday', 'overtime');
+-- 2. Add columns to employee_payouts
+ALTER TABLE public.employee_payouts
+ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('bank_transfer', 'upi', 'cash')) DEFAULT 'bank_transfer',
+ADD COLUMN IF NOT EXISTS bank_name TEXT,
+ADD COLUMN IF NOT EXISTS account_number TEXT,
+ADD COLUMN IF NOT EXISTS ifsc_code TEXT,
+ADD COLUMN IF NOT EXISTS upi_id TEXT;
 
-UPDATE public.attendance
-SET 
-  session_1 = TRUE,
-  session_2 = FALSE
-WHERE status = 'half-day';
-
--- Update Calculate Employee Payouts RPC
+-- 3. Update Calculate Employee Payouts RPC
 CREATE OR REPLACE FUNCTION public.calculate_employee_payouts(
     _period_start DATE,
     _period_end DATE,
@@ -107,22 +99,9 @@ BEGIN
         IF r_config.pay_type = 'daily' THEN
             v_base_pay := v_present_days * r_config.base_amount;
         ELSE 
-            -- Monthly: (Base / Total Days in Month) * Present Days OR Fixed Base - Deduction
-            -- Simplification: Base Pay is fixed, deduct for absences? 
-            -- Current Logic: Pro-rata based on days present? 
-            -- Let's stick to simple Daily Rate derivation for accuracy:
             v_total_days := (_period_end - _period_start) + 1;
-            v_daily_rate := r_config.base_amount / 26; -- Assuming 26 working days standard or 30? Let's use 30 for monthly logic usually, or just config.
-            
-            -- Better Approach for Monthly: Pay = Base - (Absences * DailyRate)
-            -- But for now, let's use the Pro-Rata logic if they want strictly "Calculated".
-            -- IF user wants Fixed Monthly Salary regardless of minor leaves, this logic needs adjustment.
-            -- verified logic from previous chats: Monthly pays full base?
-            -- Reverting to simple: Daily Rate * Present Days is safest for "Worker" types. 
-            -- For Managers (Monthly), we might want full salary.
-            
-            -- Let's assume Daily Rate derived from Monthly / 30 for now to support accurate deductions
-             v_base_pay := (r_config.base_amount / 26) * v_present_days; 
+            v_daily_rate := r_config.base_amount / 26; 
+            v_base_pay := (r_config.base_amount / 26) * v_present_days; 
         END IF;
 
         -- 3. Overtime
@@ -134,7 +113,6 @@ BEGIN
         v_overtime_pay := v_overtime_hours * r_config.overtime_rate;
 
         -- 4. Job Incentives
-        -- Count completed tasks assigned to this employee
         WITH raw_completed_work AS (
             SELECT t.id FROM public.work_order_tasks t
             WHERE t.completed = true 
@@ -160,16 +138,18 @@ BEGIN
         -- Total
         v_total_payout := v_base_pay + v_overtime_pay + v_incentive_pay - v_deductions;
 
-        -- Insert Payout Record
+        -- Insert Payout Record with Payment Details
         INSERT INTO public.employee_payouts (
             employee_id, period_start, period_end, 
             base_calc, attendance_adj, job_incentives, overtime_pay, 
-            deductions, total_amount, status, notes
+            deductions, total_amount, status, notes,
+            payment_method, bank_name, account_number, ifsc_code, upi_id
         ) VALUES (
             r_config.employee_id, _period_start, _period_end,
             v_base_pay, 0, v_incentive_pay, v_overtime_pay,
             v_deductions, v_total_payout, 'draft', 
-            'Generated via RPC. Days: ' || v_present_days
+            'Generated via RPC. Days: ' || v_present_days,
+            r_config.payment_method, r_config.bank_name, r_config.account_number, r_config.ifsc_code, r_config.upi_id
         );
         
         v_count := v_count + 1;
@@ -178,3 +158,5 @@ BEGIN
     RETURN v_count;
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.calculate_employee_payouts(DATE, DATE, UUID) TO authenticated;

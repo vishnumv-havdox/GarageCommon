@@ -29,8 +29,17 @@ import {
     ChevronRight,
     RotateCcw,
     Trash2,
-    Zap
+    Zap,
+    Edit
 } from "lucide-react";
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+    SheetFooter,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -55,6 +64,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -90,6 +100,124 @@ export default function AttendancePage() {
         totalHours: 0,
         avgHours: 0
     });
+
+    // Drawer edit state
+    const [selectedEmployeeForEdit, setSelectedEmployeeForEdit] = useState<any | null>(null);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+    // Drawer form state
+    const [editStatus, setEditStatus] = useState<string>("");
+    const [editSession1, setEditSession1] = useState<boolean>(false);
+    const [editSession2, setEditSession2] = useState<boolean>(false);
+    const [editSelfService, setEditSelfService] = useState<boolean>(false);
+    const [editCheckIn, setEditCheckIn] = useState<string>("");
+    const [editCheckOut, setEditCheckOut] = useState<string>("");
+    const [editOvertimeHours, setEditOvertimeHours] = useState<number>(0);
+    const [editRemarks, setEditRemarks] = useState<string>("");
+    const [isSavingDrawer, setIsSavingDrawer] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (selectedEmployeeForEdit) {
+            const { emp, att } = selectedEmployeeForEdit;
+            setEditStatus(att?.status || "present");
+            setEditSession1(att?.session_1 || false);
+            setEditSession2(att?.session_2 || false);
+            setEditSelfService(emp.attendance_self_service || false);
+            
+            const getFormattedTime = (timeStr: string | null) => {
+                if (!timeStr) return "";
+                if (timeStr.includes('T')) {
+                    return format(new Date(timeStr), 'HH:mm');
+                }
+                return timeStr;
+            };
+            setEditCheckIn(getFormattedTime(att?.check_in));
+            setEditCheckOut(getFormattedTime(att?.check_out));
+            setEditOvertimeHours(att?.overtime_hours || 0);
+            setEditRemarks(att?.remarks || "");
+        }
+    }, [selectedEmployeeForEdit]);
+
+    const handleSaveDrawer = async () => {
+        if (!selectedEmployeeForEdit) return;
+        setIsSavingDrawer(true);
+        try {
+            const { emp, att } = selectedEmployeeForEdit;
+            const todayStr = format(date, 'yyyy-MM-dd');
+            const userId = (await supabase.auth.getUser()).data.user?.id;
+
+            if (emp.attendance_self_service !== editSelfService) {
+                const { error: empError } = await (supabase as any)
+                    .from("employees")
+                    .update({ attendance_self_service: editSelfService } as any)
+                    .eq("id", emp.id);
+                if (empError) throw empError;
+                setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, attendance_self_service: editSelfService } : e));
+            }
+
+            let checkInISO = null;
+            let checkOutISO = null;
+            
+            const mergeDateWithTime = (timeStr: string) => {
+                if (!timeStr) return null;
+                const [hours, minutes] = timeStr.split(':');
+                const newDateObj = new Date(date);
+                newDateObj.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+                return newDateObj.toISOString();
+            };
+
+            if (editCheckIn) checkInISO = mergeDateWithTime(editCheckIn);
+            if (editCheckOut) checkOutISO = mergeDateWithTime(editCheckOut);
+
+            let calculatedTotalHours = 0;
+            if (checkInISO && checkOutISO) {
+                const start = new Date(checkInISO);
+                const end = new Date(checkOutISO);
+                let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+                if (diff < 0) diff += 24;
+                calculatedTotalHours = parseFloat(diff.toFixed(2));
+            }
+
+            const payload: any = {
+                employee_id: emp.id,
+                date: todayStr,
+                status: editStatus,
+                session_1: editSession1,
+                session_2: editSession2,
+                check_in: checkInISO,
+                check_out: checkOutISO,
+                total_hours: calculatedTotalHours,
+                overtime_hours: editOvertimeHours,
+                remarks: editRemarks,
+                marked_by: userId
+            };
+
+            if (att?.id) {
+                payload.id = att.id;
+            }
+
+            const { data, error } = await supabase
+                .from("attendance")
+                .upsert(payload, { onConflict: 'employee_id,date' })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            setAttendance(prev => ({
+                ...prev,
+                [emp.id]: data
+            }));
+
+            toast({ title: "Changes Saved", description: `Successfully updated attendance details for ${emp.name}.` });
+            setIsDrawerOpen(false);
+            setSelectedEmployeeForEdit(null);
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Save Failed", description: error.message });
+        } finally {
+            setIsSavingDrawer(false);
+        }
+    };
 
     const isToday = isSameDay(date, new Date());
 
@@ -683,11 +811,11 @@ export default function AttendancePage() {
                                         <Table>
                                             <TableHeader className="bg-muted/30">
                                                 <TableRow className="hover:bg-transparent">
-                                                    <TableHead className="min-w-[200px] font-black text-slate-900 border-r py-4 px-6 bg-slate-50/50 whitespace-nowrap">1. EMPLOYEE INFO</TableHead>
-                                                    <TableHead className="min-w-[120px] font-black text-slate-900 border-r py-4 px-6 bg-slate-50/50 whitespace-nowrap">2. PORTAL</TableHead>
-                                                    <TableHead className="min-w-[280px] font-black text-slate-900 border-r py-4 px-6 bg-indigo-50/30 text-indigo-900 whitespace-nowrap">3. QUICK ACTIONS</TableHead>
-                                                    <TableHead className="min-w-[240px] font-black text-slate-900 border-r py-4 px-6 bg-amber-50/30 text-amber-900 text-center whitespace-nowrap">4. MANUAL LOGS</TableHead>
-                                                    <TableHead className="min-w-[220px] font-black text-slate-900 py-4 px-6 bg-slate-50/50 whitespace-nowrap">5. HOURS & REMARKS</TableHead>
+                                                    <TableHead className="font-bold text-slate-900 py-4 px-6">Employee</TableHead>
+                                                    <TableHead className="font-bold text-slate-900 py-4 px-6">Portal Access</TableHead>
+                                                    <TableHead className="font-bold text-slate-900 py-4 px-6 text-center">Status</TableHead>
+                                                    <TableHead className="font-bold text-slate-900 py-4 px-6 text-center">Shift & Duration</TableHead>
+                                                    <TableHead className="font-bold text-slate-900 py-4 px-6 text-right">Actions</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -696,249 +824,181 @@ export default function AttendancePage() {
                                                 ) : employees.length === 0 ? (
                                                     <TableRow><TableCell colSpan={5} className="text-center py-20 text-muted-foreground">No active employees found.</TableCell></TableRow>
                                                 ) : (
-                                                    employees.map((emp) => (
-                                                        <TableRow key={emp.id} className="hover:bg-muted/20 transition-colors">
-                                                            {/* 1. EMPLOYEE INFO */}
-                                                            <TableCell className="border-r px-6 py-4 bg-slate-50/50">
-                                                                <div className="flex flex-col">
-                                                                    <span className="font-black text-slate-900 text-sm tracking-tight">{emp.name}</span>
-                                                                    <span className="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 w-fit px-1.5 rounded mt-0.5">{emp.position?.name}</span>
-                                                                </div>
-                                                            </TableCell>
+                                                    employees.map((emp) => {
+                                                        const att = attendance[emp.id];
+                                                        return (
+                                                            <TableRow key={emp.id} className="hover:bg-muted/20 transition-colors">
+                                                                <TableCell className="px-6 py-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+                                                                            <AvatarFallback className="text-sm font-bold bg-primary text-primary-foreground">
+                                                                                {emp.name.substring(0, 2).toUpperCase()}
+                                                                            </AvatarFallback>
+                                                                        </Avatar>
+                                                                        <div className="flex flex-col">
+                                                                            <span className="font-bold text-slate-900 text-sm tracking-tight">{emp.name}</span>
+                                                                            <span className="text-[10px] uppercase font-bold text-primary/75 w-fit rounded mt-0.5">{emp.position?.name}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </TableCell>
 
-                                                            {/* 2. PORTAL ACCESS */}
-                                                            <TableCell className="border-r px-6 py-4">
-                                                                <div className="flex flex-col gap-1.5">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Switch
-                                                                            checked={emp.attendance_self_service}
-                                                                            onCheckedChange={() => handleToggleSelfService(emp.id, emp.attendance_self_service)}
-                                                                            className="scale-75 origin-left"
-                                                                        />
-                                                                        <span className={cn(
-                                                                            "text-[9px] font-black uppercase tracking-widest",
-                                                                            emp.attendance_self_service ? "text-emerald-600" : "text-slate-400"
+                                                                <TableCell className="px-6 py-4">
+                                                                    <Badge variant="outline" className={cn("text-[10px] font-bold px-2 py-0.5", emp.attendance_self_service ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200")}>
+                                                                        {emp.attendance_self_service ? "Enabled" : "Disabled"}
+                                                                    </Badge>
+                                                                </TableCell>
+
+                                                                <TableCell className="px-6 py-4 text-center">
+                                                                    {att?.status ? (
+                                                                        <Badge variant="outline" className={cn(
+                                                                            "text-[10px] uppercase font-bold px-2.5 py-1 border-none",
+                                                                            att.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
+                                                                            att.status === 'absent' ? 'bg-rose-100 text-rose-700' :
+                                                                            att.status === 'half-day' ? 'bg-amber-100 text-amber-700' :
+                                                                            att.status === 'leave' ? 'bg-blue-100 text-blue-700' :
+                                                                            att.status === 'holiday' ? 'bg-slate-100 text-slate-700' :
+                                                                            att.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700' :
+                                                                            'bg-purple-100 text-purple-700'
                                                                         )}>
-                                                                            {emp.attendance_self_service ? "Activated" : "Deactivated"}
-                                                                        </span>
+                                                                            {att.status}
+                                                                        </Badge>
+                                                                    ) : (
+                                                                        <span className="text-xs text-muted-foreground italic">Not Marked</span>
+                                                                    )}
+                                                                </TableCell>
+
+                                                                <TableCell className="px-6 py-4 text-center">
+                                                                    <div className="flex flex-col items-center justify-center gap-1">
+                                                                        {att?.check_in ? (
+                                                                            <>
+                                                                                <span className="text-xs font-semibold text-slate-700">
+                                                                                    {format(new Date(att.check_in), 'hh:mm a')}
+                                                                                    {att?.check_out ? ` - ${format(new Date(att.check_out), 'hh:mm a')}` : ' - Active'}
+                                                                                </span>
+                                                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                                                        {att.total_hours || 0} hrs
+                                                                                    </span>
+                                                                                    {att.overtime_hours > 0 && (
+                                                                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                                                                            +{att.overtime_hours} OT
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-xs text-slate-400">--</span>
+                                                                        )}
                                                                     </div>
-                                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Staff Portal Access</span>
-                                                                </div>
-                                                            </TableCell>
+                                                                </TableCell>
 
-                                                            {/* 3. STATUS & QUICK ACTIONS */}
-                                                            <TableCell className="border-r px-6 py-4 bg-indigo-50/5">
-                                                                <div className="flex flex-col gap-3">
-                                                                    <div className="flex flex-col gap-2">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-12">Session 1</Label>
-                                                                            <Switch
-                                                                                checked={attendance[emp.id]?.session_1}
-                                                                                onCheckedChange={(c) => handleManualAction(emp.id, 'session_1', c)}
-                                                                                className="scale-75 origin-left"
-                                                                            />
-                                                                            <span className="text-[9px] text-muted-foreground">
-                                                                                {workforceSettings?.session_1_start_time?.slice(0, 5)} - {workforceSettings?.session_1_end_time?.slice(0, 5)}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-12">Session 2</Label>
-                                                                            <Switch
-                                                                                checked={attendance[emp.id]?.session_2}
-                                                                                onCheckedChange={(c) => handleManualAction(emp.id, 'session_2', c)}
-                                                                                className="scale-75 origin-left"
-                                                                            />
-                                                                            <span className="text-[9px] text-muted-foreground">
-                                                                                {workforceSettings?.session_2_start_time?.slice(0, 5)} - {workforceSettings?.session_2_end_time?.slice(0, 5)}
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Legacy Status Override (Hidden or Small) */}
-                                                                    <Select
-                                                                        value={attendance[emp.id]?.status || ""}
-                                                                        onValueChange={(val) => handleStatusChange(emp.id, val)}
-                                                                    >
-                                                                        <SelectTrigger className="w-full h-6 text-[10px] font-bold bg-white border-slate-200 shadow-sm opacity-50 hover:opacity-100">
-                                                                            <SelectValue placeholder="Override Status" />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="present">Mark Present (Full)</SelectItem>
-                                                                            <SelectItem value="absent">Mark Absent</SelectItem>
-                                                                            <SelectItem value="half-day">Mark Half Day</SelectItem>
-                                                                            <SelectItem value="leave">On Leave</SelectItem>
-                                                                            <SelectItem value="overtime">Overtime Only</SelectItem>
-                                                                            <SelectItem value="holiday">Company Holiday (Unpaid)</SelectItem>
-                                                                            <SelectItem value="paid-holiday">Company Holiday (Paid)</SelectItem>
-                                                                        </SelectContent>
-                                                                    </Select>
-
-                                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                                        <TooltipProvider>
-                                                                            {isToday && (
+                                                                <TableCell className="px-6 py-4 text-right">
+                                                                    <div className="flex items-center justify-end gap-2">
+                                                                        <div className="flex items-center gap-1">
+                                                                            {!att?.check_in && att?.status !== 'leave' && att?.status !== 'paid-holiday' ? (
                                                                                 <>
-                                                                                    <Tooltip>
-                                                                                        <TooltipTrigger asChild>
-                                                                                            <Button
-                                                                                                size="sm"
-                                                                                                variant={attendance[emp.id]?.check_in && !attendance[emp.id]?.check_out ? "secondary" : "outline"}
-                                                                                                className={cn(
-                                                                                                    "h-8 px-2.5 gap-2 rounded-lg transition-all text-[10px] font-black uppercase tracking-tighter shadow-sm",
-                                                                                                    attendance[emp.id]?.check_in && !attendance[emp.id]?.check_out && "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 hover:text-white"
-                                                                                                )}
-                                                                                                disabled={!!attendance[emp.id]?.check_in || actionLoading === `${emp.id}_clock_in`}
-                                                                                                onClick={() => handleManualAction(emp.id, 'clock_in')}
-                                                                                            >
-                                                                                                {actionLoading === `${emp.id}_clock_in` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
-                                                                                                <span>In</span>
-                                                                                            </Button>
-                                                                                        </TooltipTrigger>
-                                                                                        <TooltipContent>Record manual check-in</TooltipContent>
-                                                                                    </Tooltip>
+                                                                                    <TooltipProvider>
+                                                                                        <Tooltip>
+                                                                                            <TooltipTrigger asChild>
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-100"
+                                                                                                    onClick={() => handleManualAction(emp.id, 'clock_in')}
+                                                                                                    disabled={actionLoading === `${emp.id}_clock_in`}
+                                                                                                >
+                                                                                                    {actionLoading === `${emp.id}_clock_in` ? (
+                                                                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                                                    ) : (
+                                                                                                        <LogIn className="h-4 w-4" />
+                                                                                                    )}
+                                                                                                </Button>
+                                                                                            </TooltipTrigger>
+                                                                                            <TooltipContent>Clock In</TooltipContent>
+                                                                                        </Tooltip>
+                                                                                    </TooltipProvider>
 
+                                                                                    <TooltipProvider>
+                                                                                        <Tooltip>
+                                                                                            <TooltipTrigger asChild>
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-100"
+                                                                                                    onClick={() => handleManualAction(emp.id, 'leave')}
+                                                                                                    disabled={actionLoading === `${emp.id}_leave`}
+                                                                                                >
+                                                                                                    <Palmtree className="h-4 w-4" />
+                                                                                                </Button>
+                                                                                            </TooltipTrigger>
+                                                                                            <TooltipContent>Mark Leave</TooltipContent>
+                                                                                        </Tooltip>
+                                                                                    </TooltipProvider>
+                                                                                </>
+                                                                            ) : att?.check_in && !att?.check_out ? (
+                                                                                <TooltipProvider>
                                                                                     <Tooltip>
                                                                                         <TooltipTrigger asChild>
                                                                                             <Button
                                                                                                 size="sm"
                                                                                                 variant="outline"
-                                                                                                className="h-8 px-2.5 gap-2 rounded-lg transition-all text-[10px] font-black uppercase tracking-tighter hover:bg-rose-600 hover:text-white hover:border-rose-700 shadow-sm"
-                                                                                                disabled={!attendance[emp.id]?.check_in || !!attendance[emp.id]?.check_out || actionLoading === `${emp.id}_clock_out`}
+                                                                                                className="h-8 px-2.5 gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-100 text-xs font-semibold"
                                                                                                 onClick={() => handleManualAction(emp.id, 'clock_out')}
+                                                                                                disabled={actionLoading === `${emp.id}_clock_out`}
                                                                                             >
-                                                                                                {actionLoading === `${emp.id}_clock_out` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
-                                                                                                <span>Out</span>
+                                                                                                {actionLoading === `${emp.id}_clock_out` ? (
+                                                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                                                ) : (
+                                                                                                    <LogOut className="h-3.5 w-3.5" />
+                                                                                                )}
+                                                                                                <span>Clock Out</span>
                                                                                             </Button>
                                                                                         </TooltipTrigger>
-                                                                                        <TooltipContent>Record manual check-out</TooltipContent>
+                                                                                        <TooltipContent>Clock Out</TooltipContent>
                                                                                     </Tooltip>
-                                                                                </>
+                                                                                </TooltipProvider>
+                                                                            ) : (
+                                                                                att?.id && (
+                                                                                    <TooltipProvider>
+                                                                                        <Tooltip>
+                                                                                            <TooltipTrigger asChild>
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    className="h-8 w-8 p-0 hover:bg-slate-100 border-dashed"
+                                                                                                    onClick={() => handleManualAction(emp.id, 'undo')}
+                                                                                                    disabled={actionLoading === `${emp.id}_undo`}
+                                                                                                >
+                                                                                                    {actionLoading === `${emp.id}_undo` ? (
+                                                                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                                                    ) : (
+                                                                                                        <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+                                                                                                    )}
+                                                                                                </Button>
+                                                                                            </TooltipTrigger>
+                                                                                            <TooltipContent>Reset Record</TooltipContent>
+                                                                                        </Tooltip>
+                                                                                    </TooltipProvider>
+                                                                                )
                                                                             )}
-
-                                                                            <Tooltip>
-                                                                                <TooltipTrigger asChild>
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        variant="outline"
-                                                                                        className={cn(
-                                                                                            "h-8 px-2.5 rounded-lg transition-all shadow-sm",
-                                                                                            attendance[emp.id]?.status === 'leave' && "bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
-                                                                                        )}
-                                                                                        disabled={!!attendance[emp.id]?.id && attendance[emp.id]?.status !== 'absent'}
-                                                                                        onClick={() => handleManualAction(emp.id, 'leave')}
-                                                                                    >
-                                                                                        <CalendarCheck className="w-3.5 h-3.5" />
-                                                                                    </Button>
-                                                                                </TooltipTrigger>
-                                                                                <TooltipContent>Quick Mark Leave</TooltipContent>
-                                                                            </Tooltip>
-
-                                                                            <Tooltip>
-                                                                                <TooltipTrigger asChild>
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        variant="outline"
-                                                                                        className={cn(
-                                                                                            "h-8 px-2.5 rounded-lg transition-all shadow-sm",
-                                                                                            attendance[emp.id]?.status === 'holiday' && "bg-amber-600 text-white border-amber-700 hover:bg-amber-700"
-                                                                                        )}
-                                                                                        disabled={!!attendance[emp.id]?.id && attendance[emp.id]?.status !== 'absent'}
-                                                                                        onClick={() => handleManualAction(emp.id, 'holiday')}
-                                                                                    >
-                                                                                        <Palmtree className="w-3.5 h-3.5" />
-                                                                                    </Button>
-                                                                                </TooltipTrigger>
-                                                                                <TooltipContent>Quick Mark Holiday</TooltipContent>
-                                                                            </Tooltip>
-
-                                                                            {attendance[emp.id]?.id && (
-                                                                                <Tooltip>
-                                                                                    <TooltipTrigger asChild>
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            variant="outline"
-                                                                                            className="h-8 px-2.5 rounded-lg transition-all hover:bg-slate-900 hover:text-white shadow-sm border-dashed"
-                                                                                            disabled={actionLoading === `${emp.id}_undo`}
-                                                                                            onClick={() => handleManualAction(emp.id, 'undo')}
-                                                                                        >
-                                                                                            {actionLoading === `${emp.id}_undo` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                                                                                        </Button>
-                                                                                    </TooltipTrigger>
-                                                                                    <TooltipContent>Reset/Undo Record</TooltipContent>
-                                                                                </Tooltip>
-                                                                            )}
-                                                                        </TooltipProvider>
-                                                                    </div>
-                                                                </div>
-                                                            </TableCell>
-
-                                                            {/* 4. MANUAL LOGS (CORRECTIONS) */}
-                                                            <TableCell className="border-r px-6 py-4 bg-amber-50/5">
-                                                                <div className="flex flex-wrap justify-center items-center gap-3 md:gap-6">
-                                                                    <div className="flex flex-col items-center">
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><LogIn className="h-3 w-3" /> Correction In</span>
-                                                                        <Input
-                                                                            type="time"
-                                                                            className="h-9 w-28 text-xs font-black text-center bg-white border-slate-200 shadow-inner rounded-xl focus:ring-amber-500"
-                                                                            value={attendance[emp.id]?.check_in ? (attendance[emp.id].check_in.includes('T') ? format(new Date(attendance[emp.id].check_in), 'HH:mm') : attendance[emp.id].check_in) : ""}
-                                                                            onChange={(e) => handleFieldChange(emp.id, 'check_in', e.target.value)}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="flex flex-col items-center">
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><LogOut className="h-3 w-3" /> Correction Out</span>
-                                                                        <Input
-                                                                            type="time"
-                                                                            className="h-9 w-28 text-xs font-black text-center bg-white border-slate-200 shadow-inner rounded-xl focus:ring-amber-500"
-                                                                            value={attendance[emp.id]?.check_out ? (attendance[emp.id].check_out.includes('T') ? format(new Date(attendance[emp.id].check_out), 'HH:mm') : attendance[emp.id].check_out) : ""}
-                                                                            onChange={(e) => handleFieldChange(emp.id, 'check_out', e.target.value)}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </TableCell>
-
-                                                            {/* 5. HOURS & REMARKS */}
-                                                            <TableCell className="px-6 py-4 bg-slate-50/50 align-top">
-                                                                <div className="flex flex-col gap-3">
-                                                                    <div className="flex flex-wrap items-center gap-4">
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Hours</span>
-                                                                            <div className="relative">
-                                                                                <Input
-                                                                                    type="number"
-                                                                                    className="w-20 h-8 text-[11px] font-black text-center bg-slate-900 text-white border-slate-700 rounded-lg shadow-lg"
-                                                                                    value={attendance[emp.id]?.total_hours || 0}
-                                                                                    readOnly
-                                                                                />
-                                                                                <span className="absolute -top-1.5 -right-1 text-[7px] font-black bg-indigo-600 text-white px-1 rounded uppercase tracking-tighter">Calc</span>
-                                                                            </div>
                                                                         </div>
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">OT Overwrite</span>
-                                                                            <Input
-                                                                                type="number"
-                                                                                step="0.5"
-                                                                                className="w-16 h-8 text-[11px] font-black text-center bg-amber-50 border-amber-200 text-amber-900 rounded-lg"
-                                                                                value={attendance[emp.id]?.overtime_hours || 0}
-                                                                                onChange={(e) => handleFieldChange(emp.id, "overtime_hours", parseFloat(e.target.value))}
-                                                                            />
-                                                                        </div>
+
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="ghost"
+                                                                            className="h-8 w-8 p-0 hover:bg-muted text-slate-600"
+                                                                            onClick={() => {
+                                                                                setSelectedEmployeeForEdit({ emp, att });
+                                                                                setIsDrawerOpen(true);
+                                                                            }}
+                                                                        >
+                                                                            <Edit className="h-4 w-4" />
+                                                                        </Button>
                                                                     </div>
-                                                                    <div className="relative">
-                                                                        <Input
-                                                                            placeholder="Add audit/manual adjustment note..."
-                                                                            className="h-7 text-[10px] italic bg-transparent border-dashed border-slate-200 focus:bg-white transition-all w-full"
-                                                                            value={attendance[emp.id]?.remarks || ""}
-                                                                            onChange={(e) => handleFieldChange(emp.id, "remarks", e.target.value)}
-                                                                        />
-                                                                        {attendance[emp.id]?.marked_by && (
-                                                                            <div className="absolute right-2 top-1.5 text-[7px] font-black text-slate-300 uppercase tracking-widest pointer-events-none">
-                                                                                By Admin Ref: {attendance[emp.id].marked_by.substring(0, 6)}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    ))
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })
                                                 )}
                                             </TableBody>
                                         </Table>
@@ -1122,6 +1182,211 @@ export default function AttendancePage() {
                     </Tabs>
                 </div>
             </main>
+
+            <Sheet open={isDrawerOpen} onOpenChange={(open) => {
+                setIsDrawerOpen(open);
+                if (!open) setSelectedEmployeeForEdit(null);
+            }}>
+                <SheetContent className="w-full sm:max-w-md overflow-y-auto bg-white p-6">
+                    <SheetHeader className="pb-4 border-b">
+                        <SheetTitle className="text-lg font-bold text-slate-900">Edit Attendance</SheetTitle>
+                        <SheetDescription className="text-sm text-slate-500">
+                            Modify daily record and portal configurations.
+                        </SheetDescription>
+                    </SheetHeader>
+
+                    {selectedEmployeeForEdit && (
+                        <div className="py-6 space-y-6">
+                            {/* Employee profile header */}
+                            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                                    <AvatarFallback className="text-base font-bold bg-primary text-primary-foreground">
+                                        {selectedEmployeeForEdit.emp.name.substring(0, 2).toUpperCase()}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-slate-900">{selectedEmployeeForEdit.emp.name}</span>
+                                    <span className="text-xs font-medium text-slate-500">{selectedEmployeeForEdit.emp.position?.name || "Staff Member"}</span>
+                                </div>
+                                <div className="ml-auto text-right">
+                                    <span className="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                        {format(date, 'MMM dd, yyyy')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Self service toggle */}
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Portal Control</Label>
+                                <div className="flex items-center justify-between bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-sm font-semibold text-slate-900">Staff Portal Access</span>
+                                        <span className="text-[10px] text-slate-500">Allow staff to request changes via their portal</span>
+                                    </div>
+                                    <Switch
+                                        checked={editSelfService}
+                                        onCheckedChange={setEditSelfService}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Attendance Status */}
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Daily Status</Label>
+                                <Select value={editStatus} onValueChange={setEditStatus}>
+                                    <SelectTrigger className="w-full font-semibold">
+                                        <SelectValue placeholder="Select status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="present" className="font-semibold">Present (Full Day)</SelectItem>
+                                        <SelectItem value="absent" className="font-semibold">Absent</SelectItem>
+                                        <SelectItem value="half-day" className="font-semibold">Half Day</SelectItem>
+                                        <SelectItem value="leave" className="font-semibold">On Leave</SelectItem>
+                                        <SelectItem value="overtime" className="font-semibold">Overtime Only</SelectItem>
+                                        <SelectItem value="holiday" className="font-semibold">Company Holiday (Unpaid)</SelectItem>
+                                        <SelectItem value="paid-holiday" className="font-semibold">Company Holiday (Paid)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Session control */}
+                            {(editStatus === 'present' || editStatus === 'half-day') && (
+                                <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Work Sessions</Label>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className="text-xs font-bold text-slate-700">Session 1 (Morning)</span>
+                                                <span className="text-[10px] text-slate-400">{workforceSettings?.session_1_start_time?.slice(0, 5)} - {workforceSettings?.session_1_end_time?.slice(0, 5)}</span>
+                                            </div>
+                                            <Switch
+                                                checked={editSession1}
+                                                onCheckedChange={(checked) => {
+                                                    setEditSession1(checked);
+                                                    if (checked && editSession2) setEditStatus('present');
+                                                    else if (checked || editSession2) setEditStatus('half-day');
+                                                    else setEditStatus('absent');
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className="text-xs font-bold text-slate-700">Session 2 (Afternoon)</span>
+                                                <span className="text-[10px] text-slate-400">{workforceSettings?.session_2_start_time?.slice(0, 5)} - {workforceSettings?.session_2_end_time?.slice(0, 5)}</span>
+                                            </div>
+                                            <Switch
+                                                checked={editSession2}
+                                                onCheckedChange={(checked) => {
+                                                    setEditSession2(checked);
+                                                    if (editSession1 && checked) setEditStatus('present');
+                                                    else if (editSession1 || checked) setEditStatus('half-day');
+                                                    else setEditStatus('absent');
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Time Correction */}
+                            {(editStatus === 'present' || editStatus === 'half-day' || editStatus === 'overtime') && (
+                                <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Shift Timing Corrections</Label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase">Clock In</span>
+                                            <Input
+                                                type="time"
+                                                value={editCheckIn}
+                                                onChange={(e) => setEditCheckIn(e.target.value)}
+                                                className="bg-white border-slate-200"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase">Clock Out</span>
+                                            <Input
+                                                type="time"
+                                                value={editCheckOut}
+                                                onChange={(e) => setEditCheckOut(e.target.value)}
+                                                className="bg-white border-slate-200"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Hours and Overtime override */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">OT Overwrite (hrs)</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        value={editOvertimeHours}
+                                        onChange={(e) => setEditOvertimeHours(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Shift (hrs)</Label>
+                                    <div className="h-10 flex items-center justify-center bg-slate-900 text-white rounded-lg text-sm font-bold">
+                                        {(() => {
+                                            if (!editCheckIn || !editCheckOut) return "0.00";
+                                            const [h1, m1] = editCheckIn.split(':');
+                                            const [h2, m2] = editCheckOut.split(':');
+                                            const start = new Date(date);
+                                            start.setHours(parseInt(h1, 10), parseInt(m1, 10), 0, 0);
+                                            const end = new Date(date);
+                                            end.setHours(parseInt(h2, 10), parseInt(m2, 10), 0, 0);
+                                            let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+                                            if (diff < 0) diff += 24;
+                                            return diff.toFixed(2);
+                                        })()} hrs
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Remarks */}
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Remarks / Auditor Note</Label>
+                                <Input
+                                    placeholder="Reason for correction or adjustment note..."
+                                    value={editRemarks}
+                                    onChange={(e) => setEditRemarks(e.target.value)}
+                                    className="text-xs italic"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <SheetFooter className="pt-4 border-t gap-2 sm:gap-0 mt-auto">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setIsDrawerOpen(false);
+                                setSelectedEmployeeForEdit(null);
+                            }}
+                            disabled={isSavingDrawer}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSaveDrawer}
+                            disabled={isSavingDrawer}
+                            className="bg-primary text-white font-bold"
+                        >
+                            {isSavingDrawer ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                "Save Changes"
+                            )}
+                        </Button>
+                    </SheetFooter>
+                </SheetContent>
+            </Sheet>
         </div>
     );
 }

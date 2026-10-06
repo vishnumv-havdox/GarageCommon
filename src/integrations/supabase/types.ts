@@ -64,6 +64,7 @@ export interface Database {
           phone: string | null
           company_name: string | null
           address: string | null
+          gst_number: string | null
           created_at: string
           updated_at: string
         }
@@ -75,6 +76,7 @@ export interface Database {
           phone?: string | null
           company_name?: string | null
           address?: string | null
+          gst_number?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -86,6 +88,7 @@ export interface Database {
           phone?: string | null
           company_name?: string | null
           address?: string | null
+          gst_number?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -426,6 +429,9 @@ export interface Database {
           status: string
           due_date: string | null
           paid_at: string | null
+          bill_number: string | null
+          tally_synced: boolean | null
+          tally_synced_at: string | null
           created_at: string
           updated_at: string
         }
@@ -440,6 +446,9 @@ export interface Database {
           status?: string
           due_date?: string | null
           paid_at?: string | null
+          bill_number?: string | null
+          tally_synced?: boolean | null
+          tally_synced_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -454,6 +463,9 @@ export interface Database {
           status?: string
           due_date?: string | null
           paid_at?: string | null
+          bill_number?: string | null
+          tally_synced?: boolean | null
+          tally_synced_at?: string | null
           created_at?: string
           updated_at?: string
         }

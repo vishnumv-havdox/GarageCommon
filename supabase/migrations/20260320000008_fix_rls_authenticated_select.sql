@@ -15,9 +15,14 @@ CREATE POLICY "Authenticated users can view work_order_tasks" ON public.work_ord
     FOR SELECT TO authenticated USING (true);
 
 -- 3. Policies for repair_tasks (Legacy)
-DROP POLICY IF EXISTS "Authenticated users can view repair_tasks" ON public.repair_tasks;
-CREATE POLICY "Authenticated users can view repair_tasks" ON public.repair_tasks
-    FOR SELECT TO authenticated USING (true);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'repair_tasks') THEN
+        DROP POLICY IF EXISTS "Authenticated users can view repair_tasks" ON public.repair_tasks;
+        CREATE POLICY "Authenticated users can view repair_tasks" ON public.repair_tasks
+            FOR SELECT TO authenticated USING (true);
+    END IF;
+END $$;
 
 -- Refresh schema
 NOTIFY pgrst, 'reload schema';

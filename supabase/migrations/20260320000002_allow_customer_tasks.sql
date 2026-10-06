@@ -19,18 +19,23 @@ CREATE POLICY "Customers can view services for their vehicles" ON public.work_or
     );
 
 -- 2. Policy for repair_tasks (Legacy/Simple work orders)
-DROP POLICY IF EXISTS "Customers can view repair_tasks for their vehicles" ON public.repair_tasks;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'repair_tasks') THEN
+        DROP POLICY IF EXISTS "Customers can view repair_tasks for their vehicles" ON public.repair_tasks;
 
-CREATE POLICY "Customers can view repair_tasks for their vehicles" ON public.repair_tasks
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.work_orders wo
-            JOIN public.vehicles v ON v.id = wo.vehicle_id
-            JOIN public.customers c ON c.id = v.customer_id
-            WHERE wo.id = repair_tasks.work_order_id
-            AND c.user_id = auth.uid()
-        )
-    );
+        CREATE POLICY "Customers can view repair_tasks for their vehicles" ON public.repair_tasks
+            FOR SELECT USING (
+                EXISTS (
+                    SELECT 1 FROM public.work_orders wo
+                    JOIN public.vehicles v ON v.id = wo.vehicle_id
+                    JOIN public.customers c ON c.id = v.customer_id
+                    WHERE wo.id = repair_tasks.work_order_id
+                    AND c.user_id = auth.uid()
+                )
+            );
+    END IF;
+END $$;
 
 -- 3. Refresh schema
 NOTIFY pgrst, 'reload schema';

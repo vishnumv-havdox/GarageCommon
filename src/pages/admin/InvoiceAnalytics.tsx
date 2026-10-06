@@ -654,7 +654,7 @@ export default function InvoiceAnalytics() {
     return (
         <div className="flex flex-col lg:flex-row bg-background min-h-screen">
             <AdminSidebar />
-            <div className="flex-1 p-8 space-y-6 overflow-y-auto h-screen">
+            <main className="flex-1 p-4 md:p-6 lg:p-8 space-y-6 min-h-screen">
 
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -663,7 +663,7 @@ export default function InvoiceAnalytics() {
                         <p className="text-muted-foreground">{pageDesc}</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Select value={timeRange} onValueChange={handleRangeChange}>
                             <SelectTrigger className="w-[180px]">
                                 <SelectValue placeholder="Select Range" />
@@ -1106,7 +1106,7 @@ export default function InvoiceAnalytics() {
                         </Card>
                     </TabsContent>
                 </Tabs>
-            </div>
+            </main>
             {selectedCustomerForAnalytics && (
                 <CustomerAnalyticsModal
                     open={!!selectedCustomerForAnalytics}

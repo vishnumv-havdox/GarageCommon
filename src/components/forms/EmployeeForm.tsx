@@ -204,78 +204,90 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
   const accessLevels = [{ value: "staff", label: "Staff" }, { value: "manager", label: "Manager" }];
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Briefcase className="w-5 h-5" />{editingEmployee ? "Edit Employee" : "Create Employee User"}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="bg-muted/50 p-4 rounded-lg mb-4">
-            <div className="flex items-center gap-2 text-sm">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="font-medium">Role is automatically assigned:</span>
-              <span className="px-2 py-0.5 bg-primary text-white text-xs rounded">{config.role.toUpperCase()}</span>
-            </div>
+    <div className="w-full">
+      <div className="flex items-center gap-2 pb-3 mb-4 border-b">
+        <div className="p-2 bg-primary/10 text-primary rounded-lg">
+          <Briefcase className="w-5 h-5" />
+        </div>
+        <div>
+          <h3 className="font-bold text-lg leading-tight">
+            {editingEmployee ? "Edit Employee" : "Create Employee User"}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Configure staff credentials, salary structure, and access permissions.
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="bg-muted/50 p-3.5 rounded-xl">
+          <div className="flex items-center gap-2 text-sm">
+            <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+            <span className="font-medium text-xs sm:text-sm">Role is automatically assigned:</span>
+            <span className="px-2 py-0.5 bg-primary text-white text-xs font-bold rounded">{config.role.toUpperCase()}</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2"><Label htmlFor="name">Full Name *</Label><Input id="name" placeholder="Enter name" value={formData.name} onChange={(e) => handleChange("name", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" placeholder="Phone number" value={formData.phone} onChange={(e) => { const value = e.target.value.replace(/\D/g, '').slice(0, 10); handleChange("phone", value); }} disabled={isLoading} maxLength={10} pattern="[0-9]*" inputMode="numeric" /></div>
-            <div className="space-y-2"><Label htmlFor="email">Email *</Label><Input id="email" type="email" placeholder="Enter email" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label htmlFor="password">Password {editingEmployee ? "(Leave blank to keep same)" : "*"}</Label><Input id="password" type="password" placeholder="Min 6 characters" value={formData.password} onChange={(e) => handleChange("password", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label>Position *</Label><div className="flex gap-2"><Select value={formData.position_id} onValueChange={(v) => handleChange("position_id", v)}><SelectTrigger className="flex-1"><SelectValue placeholder="Select position" /></SelectTrigger><SelectContent>{positions.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name} - {p.department}</SelectItem>))}</SelectContent></Select><Button type="button" variant="outline" size="icon" onClick={() => setShowPositionForm(!showPositionForm)}><Briefcase className="h-4 w-4" /></Button></div></div>
-            <div className="space-y-2"><Label>Access Level *</Label><Select value={formData.access_level} onValueChange={(v: "admin" | "manager" | "staff") => handleChange("access_level", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accessLevels.map((l) => (<SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>))}</SelectContent></Select></div>
-            <div className="space-y-2">
-              <Label>Base Pay (₹)</Label>
-              <Input id="salary" type="number" placeholder="Amount" value={formData.salary} onChange={(e) => handleChange("salary", e.target.value)} disabled={isLoading} />
-            </div>
-            <div className="space-y-2">
-              <Label>Pay Type</Label>
-              <Select value={formData.pay_type} onValueChange={(v) => handleChange("pay_type", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="monthly">Monthly Salary</SelectItem>
-                  <SelectItem value="weekly">Weekly Wage</SelectItem>
-                  <SelectItem value="daily">Daily Wage (Per Day)</SelectItem>
-                  <SelectItem value="per-job">Per Job payment</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2"><Label>Joining Date *</Label><Input type="date" value={formData.joining_date} onChange={(e) => handleChange("joining_date", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label>Emergency Contact</Label><Input placeholder="Name & Phone" value={formData.emergency_contact} onChange={(e) => handleChange("emergency_contact", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label>Aadhaar Number</Label><Input placeholder="12-digit Aadhaar" value={formData.aadhaar_number} onChange={(e) => handleChange("aadhaar_number", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label>PAN Number</Label><Input placeholder="PAN" value={formData.pan_number} onChange={(e) => handleChange("pan_number", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={formData.date_of_birth} onChange={(e) => handleChange("date_of_birth", e.target.value)} disabled={isLoading} /></div>
-            <div className="space-y-2"><Label>Blood Group</Label><Input placeholder="e.g., A+ve" value={formData.blood_group} onChange={(e) => handleChange("blood_group", e.target.value)} disabled={isLoading} /></div>
-            <div className="md:col-span-2 space-y-2"><Label>Address</Label><Input placeholder="Full residential address" value={formData.address} onChange={(e) => handleChange("address", e.target.value)} disabled={isLoading} /></div>
-            <div className="md:col-span-2 flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-              <div className="space-y-0.5">
-                <Label>Attendance Self-Service</Label>
-                <p className="text-xs text-muted-foreground">Allow employee to clock in/out and request leaves from their dashboard.</p>
-              </div>
-              <Switch
-                checked={formData.attendance_self_service}
-                onCheckedChange={(checked) => handleChange("attendance_self_service", checked)}
-                disabled={isLoading}
-              />
-            </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5"><Label htmlFor="name">Full Name *</Label><Input id="name" placeholder="Enter full name" value={formData.name} onChange={(e) => handleChange("name", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" placeholder="10-digit phone" value={formData.phone} onChange={(e) => { const value = e.target.value.replace(/\D/g, '').slice(0, 10); handleChange("phone", value); }} disabled={isLoading} maxLength={10} pattern="[0-9]*" inputMode="numeric" /></div>
+          <div className="space-y-1.5"><Label htmlFor="email">Email *</Label><Input id="email" type="email" placeholder="staff@example.com" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label htmlFor="password">Password {editingEmployee ? "(Leave blank to keep same)" : "*"}</Label><Input id="password" type="password" placeholder="Min 6 characters" value={formData.password} onChange={(e) => handleChange("password", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label>Position *</Label><div className="flex gap-2"><Select value={formData.position_id} onValueChange={(v) => handleChange("position_id", v)}><SelectTrigger className="flex-1"><SelectValue placeholder="Select position" /></SelectTrigger><SelectContent>{positions.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name} - {p.department}</SelectItem>))}</SelectContent></Select><Button type="button" variant="outline" size="icon" onClick={() => setShowPositionForm(!showPositionForm)}><Briefcase className="h-4 w-4" /></Button></div></div>
+          <div className="space-y-1.5"><Label>Access Level *</Label><Select value={formData.access_level} onValueChange={(v: "admin" | "manager" | "staff") => handleChange("access_level", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accessLevels.map((l) => (<SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>))}</SelectContent></Select></div>
+          <div className="space-y-1.5">
+            <Label>Base Pay (₹)</Label>
+            <Input id="salary" type="number" placeholder="Amount" value={formData.salary} onChange={(e) => handleChange("salary", e.target.value)} disabled={isLoading} />
           </div>
-          {showPositionForm && (
-            <div className="border rounded-lg p-4 bg-muted/50 space-y-4">
-              <div className="flex items-center justify-between"><h4 className="font-medium">Create New Position</h4><Button type="button" variant="ghost" size="sm" onClick={() => setShowPositionForm(false)}><X className="h-4 w-4" /></Button></div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2"><Label>Position Name *</Label><Input placeholder="e.g., Mechanic" value={newPosition.name} onChange={(e) => setNewPosition((p) => ({ ...p, name: e.target.value }))} /></div>
-                <div className="space-y-2"><Label>Department *</Label><Select value={newPosition.department} onValueChange={(v) => setNewPosition((p) => ({ ...p, department: v }))}><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger><SelectContent>{departments.map((d) => (<SelectItem key={d} value={d}>{d}</SelectItem>))}</SelectContent></Select></div>
-                <div className="space-y-2"><Label>Access Level</Label><Select value={newPosition.access_level} onValueChange={(v: "admin" | "manager" | "staff") => setNewPosition((p) => ({ ...p, access_level: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accessLevels.map((l) => (<SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>))}</SelectContent></Select></div>
-              </div>
-              <Button type="button" onClick={handleAddPosition} disabled={isSavingPosition}>{isSavingPosition ? "Creating..." : "Create Position"}</Button>
-            </div>
-          )}
-          <div className="flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>Cancel</Button>
-            <Button type="submit" disabled={isLoading}>{isLoading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating...</>) : (<><UserPlus className="mr-2 h-4 w-4" />{editingEmployee ? "Update Employee" : "Create Employee"}</>)}</Button>
+          <div className="space-y-1.5">
+            <Label>Pay Type</Label>
+            <Select value={formData.pay_type} onValueChange={(v) => handleChange("pay_type", v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly">Monthly Salary</SelectItem>
+                <SelectItem value="weekly">Weekly Wage</SelectItem>
+                <SelectItem value="daily">Daily Wage (Per Day)</SelectItem>
+                <SelectItem value="per-job">Per Job payment</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </form>
-      </CardContent>
-    </Card>
+          <div className="space-y-1.5"><Label>Joining Date *</Label><Input type="date" value={formData.joining_date} onChange={(e) => handleChange("joining_date", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label>Emergency Contact</Label><Input placeholder="Name & Phone" value={formData.emergency_contact} onChange={(e) => handleChange("emergency_contact", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label>Aadhaar Number</Label><Input placeholder="12-digit Aadhaar" value={formData.aadhaar_number} onChange={(e) => handleChange("aadhaar_number", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label>PAN Number</Label><Input placeholder="PAN" value={formData.pan_number} onChange={(e) => handleChange("pan_number", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label>Date of Birth</Label><Input type="date" value={formData.date_of_birth} onChange={(e) => handleChange("date_of_birth", e.target.value)} disabled={isLoading} /></div>
+          <div className="space-y-1.5"><Label>Blood Group</Label><Input placeholder="e.g., A+ve" value={formData.blood_group} onChange={(e) => handleChange("blood_group", e.target.value)} disabled={isLoading} /></div>
+          <div className="sm:col-span-2 space-y-1.5"><Label>Address</Label><Input placeholder="Full residential address" value={formData.address} onChange={(e) => handleChange("address", e.target.value)} disabled={isLoading} /></div>
+          <div className="sm:col-span-2 flex items-center justify-between p-3.5 border rounded-xl bg-muted/30">
+            <div className="space-y-0.5">
+              <Label>Attendance Self-Service</Label>
+              <p className="text-xs text-muted-foreground">Allow employee to clock in/out and request leaves from their dashboard.</p>
+            </div>
+            <Switch
+              checked={formData.attendance_self_service}
+              onCheckedChange={(checked) => handleChange("attendance_self_service", checked)}
+              disabled={isLoading}
+            />
+          </div>
+        </div>
+
+        {showPositionForm && (
+          <div className="border rounded-xl p-4 bg-muted/50 space-y-3">
+            <div className="flex items-center justify-between"><h4 className="font-semibold text-sm">Create New Position</h4><Button type="button" variant="ghost" size="sm" onClick={() => setShowPositionForm(false)}><X className="h-4 w-4" /></Button></div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5"><Label>Position Name *</Label><Input placeholder="e.g., Mechanic" value={newPosition.name} onChange={(e) => setNewPosition((p) => ({ ...p, name: e.target.value }))} /></div>
+              <div className="space-y-1.5"><Label>Department *</Label><Select value={newPosition.department} onValueChange={(v) => setNewPosition((p) => ({ ...p, department: v }))}><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger><SelectContent>{departments.map((d) => (<SelectItem key={d} value={d}>{d}</SelectItem>))}</SelectContent></Select></div>
+              <div className="space-y-1.5"><Label>Access Level</Label><Select value={newPosition.access_level} onValueChange={(v: "admin" | "manager" | "staff") => setNewPosition((p) => ({ ...p, access_level: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accessLevels.map((l) => (<SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>))}</SelectContent></Select></div>
+            </div>
+            <Button type="button" size="sm" onClick={handleAddPosition} disabled={isSavingPosition}>{isSavingPosition ? "Creating..." : "Create Position"}</Button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 justify-end pt-3 border-t mt-4">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>Cancel</Button>
+          <Button type="submit" disabled={isLoading}>{isLoading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating...</>) : (<><UserPlus className="mr-2 h-4 w-4" />{editingEmployee ? "Update Employee" : "Create Employee"}</>)}</Button>
+        </div>
+      </form>
+    </div>
   );
 }

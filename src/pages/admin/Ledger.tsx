@@ -4,6 +4,7 @@ import { format, startOfMonth, startOfWeek, subMonths, isWithinInterval, parseIS
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { FinanceTabsNav } from "@/components/layout/FinanceTabsNav";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -470,16 +471,17 @@ export default function AdminLedger() {
     return (
         <div className="flex flex-col lg:flex-row bg-background min-h-screen">
             <AdminSidebar />
-            <div className="flex-1 p-8 space-y-6 overflow-y-auto h-screen">
+            <main className="flex-1 p-4 md:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full min-h-screen">
 
                 {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Customer Ledger</h1>
-                        <p className="text-muted-foreground">Monitor and manage customer account balances.</p>
-                    </div>
+                <div>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-tight">Customer Ledger</h1>
+                            <p className="text-muted-foreground text-sm">Monitor debits, credits, and customer account statements.</p>
+                        </div>
 
-                    <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                         <Select value={timeRange} onValueChange={handleRangeChange}>
                             <SelectTrigger className="w-[180px]">
                                 <SelectValue placeholder="Select Range" />
@@ -575,6 +577,9 @@ export default function AdminLedger() {
                         </Dialog>
                     </div>
                 </div>
+            </div>
+
+            <FinanceTabsNav />
 
                 <div className="space-y-4">
                     <Card>
@@ -664,7 +669,7 @@ export default function AdminLedger() {
                         </CardContent>
                     </Card>
                 </div>
-            </div>
+            </main>
         </div>
     );
 }

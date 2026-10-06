@@ -62,11 +62,10 @@ export function generateCustomersXml(customers: any[]): string {
             ${address ? `<ADDRESS.LIST><ADDRESS>${address}</ADDRESS></ADDRESS.LIST>` : ""}
             ${phone ? `<LEDGERPHONE>${phone}</LEDGERPHONE>` : ""}
             ${email ? `<EMAIL>${email}</EMAIL>` : ""}
-            ${
-              gstin
-                ? `<PARTYGSTIN>${gstin}</PARTYGSTIN><GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>`
-                : `<GSTREGISTRATIONTYPE>Unregistered</GSTREGISTRATIONTYPE>`
-            }
+            ${gstin
+        ? `<PARTYGSTIN>${gstin}</PARTYGSTIN><GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>`
+        : `<GSTREGISTRATIONTYPE>Unregistered</GSTREGISTRATIONTYPE>`
+      }
           </LEDGER>
         </TALLYMESSAGE>
 `;

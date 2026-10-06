@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { AttendanceTabsNav } from "@/components/layout/AttendanceTabsNav";
 import { useRef } from "react";
 import { useReactToPrint } from "react-to-print";
 import { Payslip } from "@/components/employees/Payslip";
@@ -313,7 +314,7 @@ export default function SalaryManagementPage() {
                             <p className="text-muted-foreground">Configure salary structures and manage employee payouts.</p>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <Button variant="outline" size="icon" onClick={fetchData} title="Refresh Data">
                                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                             </Button>
@@ -325,6 +326,8 @@ export default function SalaryManagementPage() {
                             </Button>
                         </div>
                     </div>
+
+                    <AttendanceTabsNav />
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <Card>
@@ -363,10 +366,10 @@ export default function SalaryManagementPage() {
                     </div>
 
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                        <TabsList>
-                            <TabsTrigger value="payouts">Payout History</TabsTrigger>
-                            <TabsTrigger value="adjustments">Adjustment Log</TabsTrigger>
-                            <TabsTrigger value="configs">Salary structures</TabsTrigger>
+                        <TabsList className="w-full sm:w-auto flex overflow-x-auto no-scrollbar p-1">
+                            <TabsTrigger value="payouts" className="shrink-0 whitespace-nowrap">Payout History</TabsTrigger>
+                            <TabsTrigger value="adjustments" className="shrink-0 whitespace-nowrap">Adjustment Log</TabsTrigger>
+                            <TabsTrigger value="configs" className="shrink-0 whitespace-nowrap">Salary structures</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="payouts" className="space-y-4">

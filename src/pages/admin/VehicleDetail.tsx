@@ -219,7 +219,7 @@ export default function AdminVehicleDetail() {
                                 </div>
                             </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <Button onClick={() => id && generateVehicleHistoryPDF(id, 'preview')} variant="outline">
                                 <FileText className="h-4 w-4 mr-2" />
                                 Print History

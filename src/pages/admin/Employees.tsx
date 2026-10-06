@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { TeamTabsNav } from "@/components/layout/TeamTabsNav";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { supabaseAdmin } from "@/integrations/supabase/adminClient";
@@ -405,7 +406,7 @@ export default function AdminEmployees() {
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-muted/5">
       <AdminSidebar />
-      <div className="flex-1 p-6 md:p-8 space-y-8 overflow-y-auto h-screen">
+      <main className="flex-1 p-4 md:p-6 lg:p-8 space-y-8 min-h-screen">
 
         {/* 1. Header & Workforce Summary */}
         <div className="space-y-6">
@@ -420,6 +421,8 @@ export default function AdminEmployees() {
               </Button>
             </div>
           </div>
+
+          <TeamTabsNav />
 
           {/* Metrics Bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -646,11 +649,11 @@ export default function AdminEmployees() {
             </Button>
           </div>
         )}
-      </div>
+      </main>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto w-[calc(100vw-1.5rem)] sm:w-full p-4 sm:p-6">
+          <DialogHeader className="sr-only">
             <DialogTitle>{editingEmployee ? "Edit Employee" : "Add New Employee"}</DialogTitle>
           </DialogHeader>
           <EmployeeForm

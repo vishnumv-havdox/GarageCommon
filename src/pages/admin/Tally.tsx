@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { FinanceTabsNav } from "@/components/layout/FinanceTabsNav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -536,6 +537,8 @@ export default function AdminTally() {
             </div>
           </div>
 
+          <FinanceTabsNav />
+
           {/* Metrics Overview Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="border shadow-sm">
@@ -610,12 +613,12 @@ export default function AdminTally() {
           {/* DUAL OPTION ACTION PANEL */}
           <Tabs defaultValue="direct" className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <TabsList className="bg-muted p-1 rounded-xl">
-                <TabsTrigger value="direct" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <TabsList className="bg-muted p-1 rounded-xl w-full sm:w-auto flex overflow-x-auto no-scrollbar">
+                <TabsTrigger value="direct" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm shrink-0 whitespace-nowrap">
                   <Zap className="h-4 w-4 text-amber-500" />
                   Option 1: 1-Click Direct Sync
                 </TabsTrigger>
-                <TabsTrigger value="export" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <TabsTrigger value="export" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm shrink-0 whitespace-nowrap">
                   <Download className="h-4 w-4 text-primary" />
                   Option 2: Streamlined File Export
                 </TabsTrigger>

@@ -1033,9 +1033,9 @@ export default function AdminInventory() {
   const lowStockItems = inventory.filter(item => item.available_qty <= item.reorder_level);
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen bg-background overflow-hidden">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-background">
       <AdminSidebar />
-      <main className="flex-1 overflow-y-auto p-8">
+      <main className="flex-1 p-4 md:p-6 lg:p-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Inventory Master</h1>
@@ -1046,7 +1046,7 @@ export default function AdminInventory() {
               </a>
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="icon" onClick={() => {
               fetchInventory();
               fetchHistory();
@@ -1088,14 +1088,14 @@ export default function AdminInventory() {
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="inventory" className="flex items-center gap-2">
+          <TabsList className="w-full sm:w-auto flex overflow-x-auto no-scrollbar p-1">
+            <TabsTrigger value="inventory" className="flex items-center gap-2 shrink-0 whitespace-nowrap">
               <Package className="h-4 w-4" /> Stock Master
             </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-2">
+            <TabsTrigger value="history" className="flex items-center gap-2 shrink-0 whitespace-nowrap">
               <Clock className="h-4 w-4" /> Parts Retrieval History
             </TabsTrigger>
-            <TabsTrigger value="returns" className="flex items-center gap-2 relative">
+            <TabsTrigger value="returns" className="flex items-center gap-2 relative shrink-0 whitespace-nowrap">
               <ArrowLeftRight className="h-4 w-4" /> Return Requests
               {pendingReturns.length > 0 && (
                 <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 bg-destructive text-destructive-foreground">
@@ -1103,7 +1103,7 @@ export default function AdminInventory() {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="qr-management" className="flex items-center gap-2">
+            <TabsTrigger value="qr-management" className="flex items-center gap-2 shrink-0 whitespace-nowrap">
               <QrCode className="h-4 w-4" /> QR Management
             </TabsTrigger>
           </TabsList>

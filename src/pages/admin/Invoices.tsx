@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -69,9 +70,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
-import { Separator } from "@/components/ui/separator";
-import { useNavigate } from "react-router-dom"; // Add import
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { SearchInput } from "@/components/shared/SearchInput";
+import { FinanceTabsNav } from "@/components/layout/FinanceTabsNav";
 
 export default function AdminInvoices() {
   const { user } = useAuth();
@@ -80,7 +81,9 @@ export default function AdminInvoices() {
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all"); // 'all', 'invoice', 'quotation'
-  const navigate = useNavigate(); // Add hook
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const workOrderIdParam = searchParams.get("workOrderId");
 
   // Data
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -104,6 +107,13 @@ export default function AdminInvoices() {
   useEffect(() => {
     fetchData();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (workOrderIdParam) {
+      setSelectedWorkOrder(workOrderIdParam);
+      setIsCreateOpen(true);
+    }
+  }, [workOrderIdParam]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -161,14 +171,17 @@ export default function AdminInvoices() {
       const { data: woData, error: woError } = await supabase
         .from('work_orders')
         .select(`
-          *,
-          vehicle: vehicles(
+          id,
+          service_type,
+          created_at,
+          status,
+          vehicle:vehicles(
             vehicle_number,
             model,
-            customer: customers(name, company_name)
+            customer:customers(name, company_name)
           )
-            `)
-        .not('status', 'in', '("Cancelled")')
+        `)
+        .not('status', 'ilike', '%cancel%')
         .order('created_at', { ascending: false });
 
       if (woError) throw woError;
@@ -515,77 +528,82 @@ export default function AdminInvoices() {
       <div className="flex flex-col lg:flex-row">
         <AdminSidebar />
         <main className="flex-1 p-4 lg:p-8 space-y-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold flex items-center gap-2">
-                <Receipt className="h-8 w-8 text-primary" />
-                Invoices
-              </h1>
-              <p className="text-muted-foreground">Manage billing and payments</p>
-            </div>
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" /> Create Invoice
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Invoice</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-
-                  {/* Type Selection */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Document Type</label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div
-                        className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'invoice' ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted'}`}
-                        onClick={() => setCreationType('invoice')}
-                      >
-                        <FileText className="h-6 w-6 text-primary" />
-                        <span className="font-medium">Tax Invoice</span>
-                        <span className="text-xs text-muted-foreground text-center">With GST & Final Bill</span>
-                      </div>
-                      <div
-                        className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'quotation' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-muted'}`}
-                        onClick={() => setCreationType('quotation')}
-                      >
-                        <FileText className="h-6 w-6 text-orange-500" />
-                        <span className="font-medium">Quotation</span>
-                        <span className="text-xs text-muted-foreground text-center">Estimate (No GST initially)</span>
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h1 className="text-3xl font-bold flex items-center gap-2">
+                  <Receipt className="h-8 w-8 text-primary" />
+                  Invoices & Quotations
+                </h1>
+                <p className="text-muted-foreground text-sm">Manage billing, customer tax invoices, and payment receipts</p>
+              </div>
+              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogTrigger asChild>
+                  <Button className="rounded-xl font-semibold gap-1.5 shadow-sm">
+                    <Plus className="h-4 w-4" /> Create Invoice
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Invoice</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Document Type</label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div
+                          className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'invoice' ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted'}`}
+                          onClick={() => setCreationType('invoice')}
+                        >
+                          <FileText className="h-6 w-6 text-primary" />
+                          <span className="font-medium">Tax Invoice</span>
+                          <span className="text-xs text-muted-foreground text-center">With GST & Final Bill</span>
+                        </div>
+                        <div
+                          className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'quotation' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-muted'}`}
+                          onClick={() => setCreationType('quotation')}
+                        >
+                          <FileText className="h-6 w-6 text-orange-500" />
+                          <span className="font-medium">Quotation</span>
+                          <span className="text-xs text-muted-foreground text-center">Estimate (No GST initially)</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <Separator />
+                    <Separator />
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Select Work Order</label>
-                    <Select onValueChange={setSelectedWorkOrder} value={selectedWorkOrder}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a pending work order..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {pendingWorkOrders.map((wo) => (
-                          <SelectItem key={wo.id} value={wo.id}>
-                            {wo.vehicle?.vehicle_number} - {wo.vehicle?.model} ({wo.vehicle?.customer?.name}) {wo.vehicle?.customer?.company_name ? `- ${wo.vehicle.customer.company_name}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Select Work Order</label>
+                      <Select onValueChange={setSelectedWorkOrder} value={selectedWorkOrder}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a pending work order..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pendingWorkOrders.map((wo) => {
+                            const custName = wo.vehicle?.customer?.name || wo.customer?.name || 'Customer';
+                            const compName = wo.vehicle?.customer?.company_name || wo.customer?.company_name;
+                            return (
+                              <SelectItem key={wo.id} value={wo.id}>
+                                {wo.vehicle?.vehicle_number || 'Vehicle'} - {wo.service_type || 'General'} ({custName}){compName ? ` - ${compName}` : ''}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <Button
-                    onClick={handleCreateInvoice}
-                    disabled={!selectedWorkOrder || creatingInvoice}
-                    className="w-full"
-                  >
-                    {creatingInvoice && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Generate {creationType === 'quotation' ? 'Quotation' : 'Invoice'}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                    <Button onClick={handleCreateInvoice} disabled={creatingInvoice || !selectedWorkOrder}>
+                      {creatingInvoice ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      Create {creationType === 'invoice' ? 'Invoice' : 'Quotation'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <FinanceTabsNav />
           </div>
 
           {/* Stats Grid */}
@@ -652,10 +670,10 @@ export default function AdminInvoices() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="bg-muted/50 p-1 border">
-              <TabsTrigger value="all">All Invoices</TabsTrigger>
-              <TabsTrigger value="drafts">Drafts</TabsTrigger>
-              <TabsTrigger value="ready_to_bill" className="relative">
+            <TabsList className="bg-muted/50 p-1 border rounded-xl h-auto flex flex-nowrap overflow-x-auto no-scrollbar max-w-full justify-start">
+              <TabsTrigger value="all" className="shrink-0 whitespace-nowrap">All Invoices</TabsTrigger>
+              <TabsTrigger value="drafts" className="shrink-0 whitespace-nowrap">Drafts</TabsTrigger>
+              <TabsTrigger value="ready_to_bill" className="relative shrink-0 whitespace-nowrap">
                 Ready to Bill
                 {pendingWorkOrders.length > 0 && (
                   <Badge className="ml-2 bg-purple-500 hover:bg-purple-600 text-white border-none text-[10px] h-4 px-1.5 min-w-[16px] flex items-center justify-center">
@@ -663,8 +681,8 @@ export default function AdminInvoices() {
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="finalized">Finalized & Paid</TabsTrigger>
-              <TabsTrigger value="verification" className="relative">
+              <TabsTrigger value="finalized" className="shrink-0 whitespace-nowrap">Finalized & Paid</TabsTrigger>
+              <TabsTrigger value="verification" className="relative shrink-0 whitespace-nowrap">
                 Verification & Payments
                 {pendingPayments.length > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-3 w-3">
@@ -1037,7 +1055,7 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
         )}
       </div>
 
-      <div className="border border-slate-200/50 rounded-xl overflow-hidden bg-card/65 shadow-sm">
+      <div className="border border-slate-200/50 rounded-xl overflow-x-auto bg-card/65 shadow-sm">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow>

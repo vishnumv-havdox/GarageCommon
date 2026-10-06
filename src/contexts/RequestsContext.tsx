@@ -8,6 +8,7 @@ interface RequestsContextType {
     pendingWorkApprovals: number;
     pendingAppointments: number;
     urgentAppointments: number;
+    activeWorkOrders: number;
     totalPending: number;
     refreshCounts: () => Promise<void>;
 }
@@ -20,6 +21,7 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
     const [pendingWorkApprovals, setPendingWorkApprovals] = useState(0);
     const [pendingAppointments, setPendingAppointments] = useState(0);
     const [urgentAppointments, setUrgentAppointments] = useState(0);
+    const [activeWorkOrders, setActiveWorkOrders] = useState(0);
     const { toast } = useToast();
 
     const fetchCounts = useCallback(async () => {
@@ -36,9 +38,6 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
             setPendingPartRequests(partsCount || 0);
 
             // 2. Work Approvals (Work Orders in 'Pending Approval' state)
-            // We can also check work_order_service_employees in 'pending_approval' if we want granular notifications,
-            // but typically the Work Order status is the master 'gate' for Admins.
-            // Let's count Pending Approval Work Orders.
             const { count: woCount, error: woError } = await supabase
                 .from("work_orders")
                 .select("*", { count: 'exact', head: true })
@@ -68,6 +67,15 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
 
             if (urgentError) console.error("Error fetching urgent appointments count:", urgentError);
             setUrgentAppointments(urgentCount || 0);
+
+            // 5. Active Work Orders (not completed, delivered, cancelled, rejected)
+            const { count: activeCount, error: activeError } = await supabase
+                .from("work_orders")
+                .select("*", { count: 'exact', head: true })
+                .not("status", "in", '("Completed","Delivered","Cancelled","Rejected")');
+
+            if (activeError) console.error("Error fetching active work orders count:", activeError);
+            setActiveWorkOrders(activeCount || 0);
 
         } catch (error) {
             console.error("Error fetching request counts:", error);
@@ -103,14 +111,16 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
                 {
                     event: "*",
                     schema: "public",
-                    table: "work_orders",
-                    filter: "status=eq.Pending Approval"
+                    table: "work_orders"
                 },
-                () => {
-                    toast({
-                        title: "Work Order Pending Approval",
-                        description: "A work order needs your approval.",
-                    });
+                (payload) => {
+                    fetchCounts();
+                    if ((payload.new as any)?.status === "Pending Approval") {
+                        toast({
+                            title: "Work Order Pending Approval",
+                            description: "A work order needs your approval.",
+                        });
+                    }
                 }
             )
             .on(
@@ -142,6 +152,7 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
         pendingWorkApprovals,
         pendingAppointments,
         urgentAppointments,
+        activeWorkOrders,
         totalPending: pendingPartRequests + pendingWorkApprovals + pendingAppointments + urgentAppointments,
         refreshCounts: fetchCounts
     };

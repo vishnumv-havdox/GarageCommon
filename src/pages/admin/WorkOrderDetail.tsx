@@ -22,8 +22,10 @@ import {
     Truck, AlertTriangle, RefreshCw, ChevronRight, Plus, X, Edit, Play,
     Bell, ShieldCheck, FileText, Calendar as CalendarIcon,
     ListOrdered, Search, TrendingUp, Info, Loader2, RotateCcw,
-    Wrench, ArrowLeft, Users, ClipboardList, IndianRupee, Package, Camera
+    Wrench, ArrowLeft, Users, ClipboardList, IndianRupee, Package, Camera,
+    Receipt
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
 import { PartRequestList } from "@/components/inventory/PartRequestList";
 import { Progress } from "@/components/ui/progress";
@@ -213,6 +215,7 @@ export default function WorkOrderDetail() {
         balance: 0,
         status: 'Unpaid' as 'Paid' | 'Partial' | 'Unpaid' | 'N/A'
     });
+    const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "parts" | "billing">("overview");
 
     useEffect(() => {
         const fetchPredefinedTasks = async () => {
@@ -1077,15 +1080,15 @@ export default function WorkOrderDetail() {
 
     return (
         <div className="min-h-screen bg-background">
-            {/* Navigation Header */}
-            <div className="border-b bg-card">
-                <div className="container mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-4 w-full md:w-auto">
-                        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            {/* Sticky Navigation Header */}
+            <div className="sticky top-0 lg:top-16 z-20 border-b bg-card/95 backdrop-blur-md shadow-sm">
+                <div className="container mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-xl h-9 w-9">
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
                         <div className="flex-1">
-                            <h1 className="text-xl font-bold flex flex-wrap items-center gap-2">
+                            <h1 className="text-lg md:text-xl font-bold flex flex-wrap items-center gap-2">
                                 Work Order #{workOrder.id.slice(0, 8)}
                                 {getStatusBadge(workOrder.status)}
                                 {billingInfo.status !== 'N/A' && (
@@ -1094,70 +1097,82 @@ export default function WorkOrderDetail() {
                                     </Badge>
                                 )}
                                 {workOrder.is_reopened && (
-                                    <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse">
+                                    <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 animate-pulse text-[10px]">
                                         <RefreshCw className="h-3 w-3 mr-1" /> Reopened
                                     </Badge>
                                 )}
                             </h1>
-                            {workOrder.is_reopened && workOrder.reopen_reason && (
-                                <div className="mt-1 flex items-center gap-2 text-orange-600 text-[10px] font-medium uppercase tracking-wider">
-                                    <Info className="h-3 w-3" /> Reason: {workOrder.reopen_reason}
-                                </div>
-                            )}
-                            <div className="flex items-center gap-3 mt-1">
-                                <p className="text-sm text-muted-foreground">
+                            <div className="flex items-center gap-3 mt-0.5">
+                                <p className="text-xs text-muted-foreground font-medium">
                                     {workOrder.vehicle?.vehicle_number} • {workOrder.vehicle?.model}
                                 </p>
-                                <Separator orientation="vertical" className="h-4" />
+                                <Separator orientation="vertical" className="h-3" />
                                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 rounded-full border border-blue-100 dark:border-blue-800">
                                     <User className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                                    <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                                    <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300">
                                         Advisor: {(() => {
                                             const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
                                             const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
                                             return intake?.name || (workOrder.assigned_to ? `ID: ${workOrder.assigned_to.slice(0, 8)}` : 'N/A');
                                         })()}
                                     </span>
-                                    {(() => {
-                                        const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
-                                        const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
-                                        return intake?.phone && <span className="text-[10px] text-blue-500/70 ml-1">({intake.phone})</span>;
-                                    })()}
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-4 w-4 ml-1 hover:bg-blue-100 hover:text-blue-600 rounded-full"
+                                        className="h-3.5 w-3.5 ml-0.5 hover:bg-blue-100 hover:text-blue-600 rounded-full"
                                         onClick={() => setAdvisorDialogOpen(true)}
                                     >
-                                        <Edit className="h-2.5 w-2.5" />
+                                        <Edit className="h-2 w-2" />
                                     </Button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
-                        <Button variant="outline" size="icon" onClick={() => fetchDetails()} title="Refresh Details">
-                            <RefreshCw className="h-4 w-4" />
-                        </Button>
-                        <Button variant="outline" onClick={() => setSlipDialogOpen(true)} title="Slip Print">
-                            <FileText className="h-4 w-4 mr-2" /> Slip Print
-                        </Button>
-                        <Button variant="outline" onClick={() => generateInvoicePDF(workOrder.id)} title="Download Tax Invoice">
-                            <IndianRupee className="h-4 w-4 mr-2" /> Invoice
+
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end items-center">
+                        {nextStage && (
+                            <Button
+                                size="sm"
+                                className="h-8 text-xs font-semibold gap-1 bg-primary text-primary-foreground"
+                                onClick={() => handleAdvanceStage(nextStage)}
+                            >
+                                Advance to {nextStage} &rarr;
+                            </Button>
+                        )}
+
+                        <Button
+                            size="sm"
+                            className="h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                            onClick={() => navigate(`/admin/invoices?workOrderId=${workOrder.id}`)}
+                            title="Generate or view formal invoice"
+                        >
+                            <Receipt className="h-3.5 w-3.5" />
+                            {billingInfo.totalInvoiced > 0 ? 'View Invoice' : 'Generate Bill'}
                         </Button>
 
-                        <div className="flex flex-col items-end justify-center px-4 border-l ml-2">
-                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Balance</span>
-                            <span className={`text-lg font-black font-mono leading-none ${billingInfo.balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                        <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={() => setSlipDialogOpen(true)} title="Slip Print">
+                            <FileText className="h-3.5 w-3.5" /> Slip
+                        </Button>
+
+                        <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={() => generateInvoicePDF(workOrder.id)} title="Download Tax Invoice">
+                            <IndianRupee className="h-3.5 w-3.5" /> PDF
+                        </Button>
+
+                        <div className="flex flex-col items-end justify-center px-3 border-l ml-1">
+                            <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Balance</span>
+                            <span className={`text-base font-black font-mono leading-none ${billingInfo.balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
                                 ₹{billingInfo.balance.toLocaleString()}
                             </span>
                         </div>
 
-                        {/* Header actions are now mostly stage-specific in the sidebar */}
+                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchDetails()} title="Refresh Details">
+                            <RefreshCw className="h-3.5 w-3.5" />
+                        </Button>
+
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="outline" className="text-destructive hover:bg-destructive/10">
-                                    <Trash2 className="h-4 w-4" />
+                                <Button variant="outline" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                                    <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -1185,10 +1200,37 @@ export default function WorkOrderDetail() {
                     />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Main Content */}
-                    <div className="lg:col-span-2 space-y-6">
-                        {/* Overview Card */}
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
+                    <TabsList className="bg-muted/70 p-1 rounded-xl h-auto flex flex-nowrap overflow-x-auto no-scrollbar gap-1 max-w-full w-full justify-start sm:justify-center">
+                        <TabsTrigger value="overview" className="rounded-lg text-xs font-semibold px-4 py-2 gap-2 shrink-0 whitespace-nowrap">
+                            <ClipboardList className="h-4 w-4" />
+                            Overview & Vehicle
+                        </TabsTrigger>
+                        <TabsTrigger value="tasks" className="rounded-lg text-xs font-semibold px-4 py-2 gap-2 shrink-0 whitespace-nowrap">
+                            <Wrench className="h-4 w-4" />
+                            Tasks & Mechanics
+                            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4">
+                                {details.reduce((acc, s) => acc + (s.tasks?.length || 0), 0)}
+                            </Badge>
+                        </TabsTrigger>
+                        <TabsTrigger value="parts" className="rounded-lg text-xs font-semibold px-4 py-2 gap-2 shrink-0 whitespace-nowrap">
+                            <Package className="h-4 w-4" />
+                            Parts & Materials
+                        </TabsTrigger>
+                        <TabsTrigger value="billing" className="rounded-lg text-xs font-semibold px-4 py-2 gap-2 shrink-0 whitespace-nowrap">
+                            <Receipt className="h-4 w-4" />
+                            Billing & Notes
+                            {billingInfo.balance > 0 && (
+                                <span className="h-2 w-2 rounded-full bg-rose-500 ml-1" />
+                            )}
+                        </TabsTrigger>
+                    </TabsList>
+
+                    {/* Tab 1: Overview & Vehicle */}
+                    <TabsContent value="overview" className="space-y-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="lg:col-span-2 space-y-6">
+                                {/* Overview Card */}
                         <Card>
                             <CardHeader>
                                 <div className="flex items-center justify-between">
@@ -1326,444 +1368,7 @@ export default function WorkOrderDetail() {
                             </div>
                         )}
 
-                        {/* Assignment Overview Container */}
-                        <div className="mb-6">
-                            <Card className="border-l-4 border-l-blue-500 bg-blue-50/10 shadow-sm">
-                                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b">
-                                    <div className="flex items-center gap-2">
-                                        <Users className="h-5 w-5 text-blue-600" />
-                                        <CardTitle className="text-base font-semibold">Staff Assignment Requests</CardTitle>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] font-mono bg-white">
-                                            {details.reduce((acc, s) => acc + (s.employees?.length || 0), 0)} TOTAL
-                                        </Badge>
-                                        {details.some(s => s.employees?.some(e => e.status === 'Assigned')) && (
-                                            <Button
-                                                size="sm"
-                                                variant="default"
-                                                className="h-7 text-[10px] bg-indigo-600 hover:bg-indigo-700 px-3"
-                                                onClick={handleBulkApprove}
-                                                disabled={bulkApproving}
-                                            >
-                                                {bulkApproving ? (
-                                                    <>
-                                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                                        Approving...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                        Approve All Pending
-                                                    </>
-                                                )}
-                                            </Button>
-                                        )}
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="p-0">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 max-h-[300px] overflow-y-auto">
-                                        {details.some(s => s.employees && s.employees.length > 0) ? (
-                                            details.flatMap(s => (s.employees || []).map(emp => (
-                                                <div key={emp.id} className="p-4 border-b border-r last:border-b-0 group flex items-center justify-between hover:bg-muted/30 transition-colors">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="h-10 w-10 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center font-bold text-blue-700 shadow-sm">
-                                                            {emp.employee?.name?.split(' ').map(n => n[0]).join('') || "E"}
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-sm font-bold text-zinc-900">{emp.employee?.name}</div>
-                                                            <div className="text-[10px] text-muted-foreground uppercase font-semibold flex items-center gap-1 bg-muted/50 w-fit px-1.5 rounded">
-                                                                <Wrench className="h-2 w-2" /> {s.service_type}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex flex-col items-end gap-1">
-                                                            {(() => {
-                                                                const isFinished = ['completed', 'delivered', 'cancelled', 'rejected'].includes(workOrder?.status?.toLowerCase() || '') || s.status?.toLowerCase() === 'completed';
-                                                                const displayStatus = isFinished ? 'Completed' : (emp.status === 'Accepted' ? 'Working' : 'Pending');
-                                                                // Use Blue for Completed, Green for Working, Orange for Pending
-                                                                const badgeClass = isFinished
-                                                                    ? 'bg-blue-600 hover:bg-blue-700'
-                                                                    : (emp.status === 'Accepted' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-500 hover:bg-orange-600 text-white');
-
-                                                                return (
-                                                                    <Badge
-                                                                        variant={'default'}
-                                                                        className={`text-[9px] uppercase tracking-tighter px-2 h-4 border-0 ${badgeClass}`}
-                                                                    >
-                                                                        {displayStatus}
-                                                                    </Badge>
-                                                                );
-                                                            })()}
-                                                            {emp.accepted_at && (
-                                                                <span className="text-[9px] text-muted-foreground font-mono">
-                                                                    {format(new Date(emp.accepted_at), "MMM d, h:mm a")}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            {emp.status === 'Assigned' && (
-                                                                <Button
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    className="h-7 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 px-2"
-                                                                    onClick={() => handleAcceptForStaff(emp.id, s.id)}
-                                                                >
-                                                                    <Play className="h-3 w-3 mr-1" /> Release to Staff
-                                                                </Button>
-                                                            )}
-                                                            {emp.status === 'pending_acceptance' && (
-                                                                <Badge variant="outline" className="h-7 text-[9px] bg-orange-50 text-orange-700 border-orange-200">
-                                                                    <Clock className="h-3 w-3 mr-1" /> Waiting for Staff
-                                                                </Badge>
-                                                            )}
-                                                            {(emp.status === 'Accepted' || emp.status === 'In Progress') && (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-8 w-8 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
-                                                                    title="Revert to Assigned"
-                                                                    onClick={() => handleRevertAssignment(emp.id, s.id)}
-                                                                >
-                                                                    <RotateCcw className="h-4 w-4" />
-                                                                </Button>
-                                                            )}
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                onClick={() => handleRemoveEmployee(emp.id)}
-                                                            >
-                                                                <X className="h-4 w-4" />
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )))
-                                        ) : (
-                                            <div className="p-12 text-center text-muted-foreground text-sm col-span-2">
-                                                <Users className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                                                No employees assigned to any services yet.
-                                            </div>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-semibold">Service Details</h3>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 text-xs bg-primary/5 border-primary/20 hover:bg-primary/10"
-                                    onClick={() => setSearchParams({ action: 'add-service' })}
-                                >
-                                    <Plus className="h-3.5 w-3.5 mr-1" />
-                                    Add Service
-                                </Button>
-                            </div>
-                            {details.map((service) => (
-                                <Card key={service.id} className="overflow-hidden border-l-4 border-l-primary">
-                                    <CardHeader className="bg-muted/20 pb-4">
-                                        <div className="flex justify-between items-center">
-                                            <div>
-                                                <CardTitle className="flex items-center gap-2">
-                                                    {service.service_type}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                                        onClick={() => handleDeleteService(service.id)}
-                                                        title="Delete Service"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </CardTitle>
-                                                <CardDescription>Section Status: {service.status}</CardDescription>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-lg font-bold flex items-center justify-end">
-                                                    <IndianRupee className="h-4 w-4" /> {(service.tasks || []).reduce((sum, task) => sum + (task.price || 0), 0) || 0}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="pt-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            {/* Tasks List */}
-                                            <div className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                                        Component Tasks
-                                                    </h4>
-                                                    <div className="flex items-center gap-2">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="h-6 text-[10px] px-2"
-                                                            onClick={() => setAddingTaskToServiceId(service.id)}
-                                                        >
-                                                            <Plus className="h-3 w-3 mr-1" /> Add
-                                                        </Button>
-                                                        <Badge variant="outline">
-                                                            {(service.tasks || []).filter(t => t.completed).length}/{(service.tasks || []).length}
-                                                        </Badge>
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    {(service.tasks || []).map((task) => (
-                                                        <div key={task.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 transition-colors border text-sm group">
-                                                            <div className="flex items-center gap-2 flex-1">
-                                                                <Checkbox
-                                                                    id={`service-task-${task.id}`}
-                                                                    checked={task.completed}
-                                                                    onCheckedChange={(checked) => handleToggleTask(task.id, checked === true)}
-                                                                />
-                                                                <label
-                                                                    htmlFor={`service-task-${task.id}`}
-                                                                    className={cn("cursor-pointer flex-1", task.completed && "line-through text-muted-foreground")}
-                                                                >
-                                                                    {task.task_name}
-                                                                </label>
-                                                                <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1 rounded">₹{task.price || 0}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                {task.completed ? (
-                                                                    <Badge variant="default" className="bg-green-600 text-[10px] h-5">Done</Badge>
-                                                                ) : (
-                                                                    <Badge variant="outline" className="text-[10px] h-5">Pending</Badge>
-                                                                )}
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                    onClick={() => handleDeleteTask(task.id)}
-                                                                    title="Delete Task"
-                                                                >
-                                                                    <Trash2 className="h-3 w-3" />
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {/* Assigned Employees */}
-                                            <div className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                                                        <Users className="h-4 w-4 text-blue-600" />
-                                                        Assigned Personnel
-                                                    </h4>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            setSelectedServiceId(service.id);
-                                                            setEmployeeDialogOpen(true);
-                                                        }}
-                                                    >
-                                                        <Plus className="h-3 w-3 mr-1" />
-                                                        Add
-                                                    </Button>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    {service.employees && service.employees.length > 0 ? (
-                                                        service.employees.map((emp) => (
-                                                            <div key={emp.id} className="flex items-center justify-between p-2 rounded bg-blue-50/50 border border-blue-100 text-sm">
-                                                                <div className="flex items-center gap-2">
-                                                                    <User className="h-4 w-4 text-blue-400" />
-                                                                    <div
-                                                                        className="cursor-pointer hover:underline flex flex-col"
-                                                                        onClick={() => handleOpenTracker(emp)}
-                                                                    >
-                                                                        <span className="font-medium text-blue-700">{emp.employee?.name}</span>
-                                                                        {emp.employee?.position?.name && (
-                                                                            <span className="text-[10px] text-muted-foreground">
-                                                                                {emp.employee.position.name}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <Badge variant="secondary" className="text-[10px]">{emp.status}</Badge>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                                        onClick={() => handleRemoveEmployee(emp.id)}
-                                                                    >
-                                                                        <X className="h-3 w-3" />
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        ))
-                                                    ) : (
-                                                        <p className="text-sm text-muted-foreground text-center py-4">No employees assigned</p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-
-                            {/* [PART REQUEST SYSTEM] */}
-                            <PartRequestList
-                                workOrderId={id!}
-                                isAdmin={user?.role === 'admin' || user?.role === 'manager'}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Sidebar */}
-                    <div className="space-y-6">
-                        {/* Customer & Vehicle Info */}
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className="text-base uppercase tracking-wider text-muted-foreground">Customer & Vehicle</CardTitle>
-                                    <Button variant="ghost" size="sm" onClick={() => setCustomerDialogOpen(true)}>
-                                        <Edit className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="flex items-start gap-3">
-                                    <div className="p-2 bg-primary/10 rounded-lg"><User className="h-5 w-5 text-primary" /></div>
-                                    <div>
-                                        <h4 className="font-bold">
-                                            {workOrder.customer?.name}
-                                            {workOrder.customer?.company_name && (
-                                                <span className="block text-sm font-normal text-muted-foreground">
-                                                    🏢 {workOrder.customer.company_name}
-                                                </span>
-                                            )}
-                                        </h4>
-                                        <p className="text-sm text-muted-foreground">{workOrder.customer?.phone}</p>
-                                        <p className="text-xs text-muted-foreground">{workOrder.customer?.email}</p>
-                                        {workOrder.customer?.address && (
-                                            <p className="text-xs text-muted-foreground mt-1">{workOrder.customer.address}</p>
-                                        )}
-                                    </div>
-                                </div>
-                                <Separator />
-                                <div className="flex items-start gap-3">
-                                    <div className="p-2 bg-primary/10 rounded-lg"><Truck className="h-5 w-5 text-primary" /></div>
-                                    <div>
-                                        <h4 className="font-bold">{workOrder.vehicle?.vehicle_number}</h4>
-                                        <p className="text-sm text-muted-foreground">{workOrder.vehicle?.model}</p>
-                                    </div>
-                                </div>
-                                {(workOrder.advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person) && (
-                                    <>
-                                        <Separator />
-                                        <div className="flex items-start gap-3">
-                                            <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 dark:text-blue-400">
-                                                <User className="h-5 w-5" />
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Service Advisor</p>
-                                                <h4 className="font-bold">
-                                                    {(() => {
-                                                        const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
-                                                        const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
-                                                        return intake?.name || 'Assigned';
-                                                    })()}
-                                                </h4>
-                                                {(() => {
-                                                    const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
-                                                    const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
-                                                    return intake?.phone && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            Ph: {intake.phone}
-                                                        </p>
-                                                    );
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                                {!(workOrder.advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person) && workOrder.assigned_to && (
-                                    <>
-                                        <Separator />
-                                        <div className="flex items-start gap-3 opacity-50">
-                                            <div className="p-2 bg-slate-100 rounded-lg text-slate-400">
-                                                <User className="h-5 w-5" />
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Service Advisor</p>
-                                                <h4 className="font-bold">ID: {workOrder.assigned_to.slice(0, 8)}</h4>
-                                                <p className="text-[10px] text-destructive italic">Join Failed - Check Employee Record</p>
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                                {workOrder.driver && (
-                                    <>
-                                        <Separator />
-                                        <div className="flex items-start gap-3">
-                                            <div className="p-2 bg-indigo-100 rounded-lg"><User className="h-5 w-5 text-indigo-600" /></div>
-                                            <div>
-                                                <h4 className="font-bold flex items-center gap-2">
-                                                    {workOrder.driver.name}
-                                                    <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
-                                                        {workOrder.driver.driver_position || 'Driver'}
-                                                    </Badge>
-                                                </h4>
-                                                <p className="text-sm text-muted-foreground">{workOrder.driver.contact_number || 'No contact number'}</p>
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </CardContent>
-                        </Card>
-
-                        {/* Lifecycle & Metrics */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-base uppercase tracking-wider text-muted-foreground">Lifecycle</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">Priority</span>
-                                    <Badge variant={workOrder.priority === "Urgent" ? "destructive" : "outline"}>{workOrder.priority}</Badge>
-                                </div>
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">Est. Total</span>
-                                    <span className="font-bold flex items-center">
-                                        <IndianRupee className="h-3 w-3" /> {details.reduce((total, service) =>
-                                            total + (service.tasks?.reduce((sum, task) => sum + (task.price || 0), 0) || 0), 0
-                                        )}
-                                    </span>
-                                </div>
-                                <Separator />
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between text-xs">
-                                        <span className="text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Created</span>
-                                        <span>{format(new Date(workOrder.created_at), "MMM d, yyyy h:mm a")}</span>
-                                    </div>
-                                    {workOrder.accepted_at && (
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-muted-foreground flex items-center gap-1"><RefreshCw className="h-3 w-3" /> Accepted</span>
-                                            <span>{format(new Date(workOrder.accepted_at), "MMM d, h:mm a")}</span>
-                                        </div>
-                                    )}
-                                    {workOrder.completed_at && (
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-muted-foreground flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Completed</span>
-                                            <span>{format(new Date(workOrder.completed_at), "MMM d, h:mm a")}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* Workflow Actions */}
+                                {/* Workflow Actions */}
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-base uppercase tracking-wider text-muted-foreground flex items-center justify-between">
@@ -2192,8 +1797,150 @@ export default function WorkOrderDetail() {
                                 )}
                             </CardContent>
                         </Card>
+                            </div>
+                            <div className="space-y-6">
+                                {/* Customer & Vehicle Info */}
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <CardTitle className="text-base uppercase tracking-wider text-muted-foreground">Customer & Vehicle</CardTitle>
+                                    <Button variant="ghost" size="sm" onClick={() => setCustomerDialogOpen(true)}>
+                                        <Edit className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="p-2 bg-primary/10 rounded-lg"><User className="h-5 w-5 text-primary" /></div>
+                                    <div>
+                                        <h4 className="font-bold">
+                                            {workOrder.customer?.name}
+                                            {workOrder.customer?.company_name && (
+                                                <span className="block text-sm font-normal text-muted-foreground">
+                                                    🏢 {workOrder.customer.company_name}
+                                                </span>
+                                            )}
+                                        </h4>
+                                        <p className="text-sm text-muted-foreground">{workOrder.customer?.phone}</p>
+                                        <p className="text-xs text-muted-foreground">{workOrder.customer?.email}</p>
+                                        {workOrder.customer?.address && (
+                                            <p className="text-xs text-muted-foreground mt-1">{workOrder.customer.address}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <Separator />
+                                <div className="flex items-start gap-3">
+                                    <div className="p-2 bg-primary/10 rounded-lg"><Truck className="h-5 w-5 text-primary" /></div>
+                                    <div>
+                                        <h4 className="font-bold">{workOrder.vehicle?.vehicle_number}</h4>
+                                        <p className="text-sm text-muted-foreground">{workOrder.vehicle?.model}</p>
+                                    </div>
+                                </div>
+                                {(workOrder.advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person) && (
+                                    <>
+                                        <Separator />
+                                        <div className="flex items-start gap-3">
+                                            <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 dark:text-blue-400">
+                                                <User className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Service Advisor</p>
+                                                <h4 className="font-bold">
+                                                    {(() => {
+                                                        const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
+                                                        const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
+                                                        return intake?.name || 'Assigned';
+                                                    })()}
+                                                </h4>
+                                                {(() => {
+                                                    const intakeData = (workOrder as any).advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person;
+                                                    const intake = Array.isArray(intakeData) ? intakeData[0] : intakeData;
+                                                    return intake?.phone && (
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Ph: {intake.phone}
+                                                        </p>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                {!(workOrder.advisor || (workOrder as any).assigned_employee || (workOrder as any).intake_person) && workOrder.assigned_to && (
+                                    <>
+                                        <Separator />
+                                        <div className="flex items-start gap-3 opacity-50">
+                                            <div className="p-2 bg-slate-100 rounded-lg text-slate-400">
+                                                <User className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Service Advisor</p>
+                                                <h4 className="font-bold">ID: {workOrder.assigned_to.slice(0, 8)}</h4>
+                                                <p className="text-[10px] text-destructive italic">Join Failed - Check Employee Record</p>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                {workOrder.driver && (
+                                    <>
+                                        <Separator />
+                                        <div className="flex items-start gap-3">
+                                            <div className="p-2 bg-indigo-100 rounded-lg"><User className="h-5 w-5 text-indigo-600" /></div>
+                                            <div>
+                                                <h4 className="font-bold flex items-center gap-2">
+                                                    {workOrder.driver.name}
+                                                    <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+                                                        {workOrder.driver.driver_position || 'Driver'}
+                                                    </Badge>
+                                                </h4>
+                                                <p className="text-sm text-muted-foreground">{workOrder.driver.contact_number || 'No contact number'}</p>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </CardContent>
+                        </Card>
 
-                        {/* Updates & Communication */}
+                                {/* Lifecycle & Metrics */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base uppercase tracking-wider text-muted-foreground">Lifecycle</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Priority</span>
+                                    <Badge variant={workOrder.priority === "Urgent" ? "destructive" : "outline"}>{workOrder.priority}</Badge>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Est. Total</span>
+                                    <span className="font-bold flex items-center">
+                                        <IndianRupee className="h-3 w-3" /> {details.reduce((total, service) =>
+                                            total + (service.tasks?.reduce((sum, task) => sum + (task.price || 0), 0) || 0), 0
+                                        )}
+                                    </span>
+                                </div>
+                                <Separator />
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Created</span>
+                                        <span>{format(new Date(workOrder.created_at), "MMM d, yyyy h:mm a")}</span>
+                                    </div>
+                                    {workOrder.accepted_at && (
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-muted-foreground flex items-center gap-1"><RefreshCw className="h-3 w-3" /> Accepted</span>
+                                            <span>{format(new Date(workOrder.accepted_at), "MMM d, h:mm a")}</span>
+                                        </div>
+                                    )}
+                                    {workOrder.completed_at && (
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-muted-foreground flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Completed</span>
+                                            <span>{format(new Date(workOrder.completed_at), "MMM d, h:mm a")}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                                {/* Updates & Communication */}
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-base uppercase tracking-wider text-muted-foreground">Updates & Comm</CardTitle>
@@ -2222,8 +1969,414 @@ export default function WorkOrderDetail() {
                                 </Button>
                             </CardContent>
                         </Card>
-                    </div>
-                </div>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    {/* Tab 2: Tasks & Mechanics */}
+                    <TabsContent value="tasks" className="space-y-6">
+                        {/* Assignment Overview Container */}
+                        <div className="mb-6">
+                            <Card className="border-l-4 border-l-blue-500 bg-blue-50/10 shadow-sm">
+                                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b">
+                                    <div className="flex items-center gap-2">
+                                        <Users className="h-5 w-5 text-blue-600" />
+                                        <CardTitle className="text-base font-semibold">Staff Assignment Requests</CardTitle>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-[10px] font-mono bg-white">
+                                            {details.reduce((acc, s) => acc + (s.employees?.length || 0), 0)} TOTAL
+                                        </Badge>
+                                        {details.some(s => s.employees?.some(e => e.status === 'Assigned')) && (
+                                            <Button
+                                                size="sm"
+                                                variant="default"
+                                                className="h-7 text-[10px] bg-indigo-600 hover:bg-indigo-700 px-3"
+                                                onClick={handleBulkApprove}
+                                                disabled={bulkApproving}
+                                            >
+                                                {bulkApproving ? (
+                                                    <>
+                                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                        Approving...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                        Approve All Pending
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 max-h-[300px] overflow-y-auto">
+                                        {details.some(s => s.employees && s.employees.length > 0) ? (
+                                            details.flatMap(s => (s.employees || []).map(emp => (
+                                                <div key={emp.id} className="p-4 border-b border-r last:border-b-0 group flex items-center justify-between hover:bg-muted/30 transition-colors">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-10 w-10 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center font-bold text-blue-700 shadow-sm">
+                                                            {emp.employee?.name?.split(' ').map(n => n[0]).join('') || "E"}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-sm font-bold text-zinc-900">{emp.employee?.name}</div>
+                                                            <div className="text-[10px] text-muted-foreground uppercase font-semibold flex items-center gap-1 bg-muted/50 w-fit px-1.5 rounded">
+                                                                <Wrench className="h-2 w-2" /> {s.service_type}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            {(() => {
+                                                                const isFinished = ['completed', 'delivered', 'cancelled', 'rejected'].includes(workOrder?.status?.toLowerCase() || '') || s.status?.toLowerCase() === 'completed';
+                                                                const displayStatus = isFinished ? 'Completed' : (emp.status === 'Accepted' ? 'Working' : 'Pending');
+                                                                // Use Blue for Completed, Green for Working, Orange for Pending
+                                                                const badgeClass = isFinished
+                                                                    ? 'bg-blue-600 hover:bg-blue-700'
+                                                                    : (emp.status === 'Accepted' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-500 hover:bg-orange-600 text-white');
+
+                                                                return (
+                                                                    <Badge
+                                                                        variant={'default'}
+                                                                        className={`text-[9px] uppercase tracking-tighter px-2 h-4 border-0 ${badgeClass}`}
+                                                                    >
+                                                                        {displayStatus}
+                                                                    </Badge>
+                                                                );
+                                                            })()}
+                                                            {emp.accepted_at && (
+                                                                <span className="text-[9px] text-muted-foreground font-mono">
+                                                                    {format(new Date(emp.accepted_at), "MMM d, h:mm a")}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            {emp.status === 'Assigned' && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="h-7 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 px-2"
+                                                                    onClick={() => handleAcceptForStaff(emp.id, s.id)}
+                                                                >
+                                                                    <Play className="h-3 w-3 mr-1" /> Release to Staff
+                                                                </Button>
+                                                            )}
+                                                            {emp.status === 'pending_acceptance' && (
+                                                                <Badge variant="outline" className="h-7 text-[9px] bg-orange-50 text-orange-700 border-orange-200">
+                                                                    <Clock className="h-3 w-3 mr-1" /> Waiting for Staff
+                                                                </Badge>
+                                                            )}
+                                                            {(emp.status === 'Accepted' || emp.status === 'In Progress') && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                                                    title="Revert to Assigned"
+                                                                    onClick={() => handleRevertAssignment(emp.id, s.id)}
+                                                                >
+                                                                    <RotateCcw className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                onClick={() => handleRemoveEmployee(emp.id)}
+                                                            >
+                                                                <X className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )))
+                                        ) : (
+                                            <div className="p-12 text-center text-muted-foreground text-sm col-span-2">
+                                                <Users className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                                No employees assigned to any services yet.
+                                            </div>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-semibold">Service Details</h3>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-xs bg-primary/5 border-primary/20 hover:bg-primary/10"
+                                    onClick={() => setSearchParams({ action: 'add-service' })}
+                                >
+                                    <Plus className="h-3.5 w-3.5 mr-1" />
+                                    Add Service
+                                </Button>
+                            </div>
+                            {details.map((service) => (
+                                <Card key={service.id} className="overflow-hidden border-l-4 border-l-primary">
+                                    <CardHeader className="bg-muted/20 pb-4">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    {service.service_type}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => handleDeleteService(service.id)}
+                                                        title="Delete Service"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </CardTitle>
+                                                <CardDescription>Section Status: {service.status}</CardDescription>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-lg font-bold flex items-center justify-end">
+                                                    <IndianRupee className="h-4 w-4" /> {(service.tasks || []).reduce((sum, task) => sum + (task.price || 0), 0) || 0}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="pt-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            {/* Tasks List */}
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                                        Component Tasks
+                                                    </h4>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-6 text-[10px] px-2"
+                                                            onClick={() => setAddingTaskToServiceId(service.id)}
+                                                        >
+                                                            <Plus className="h-3 w-3 mr-1" /> Add
+                                                        </Button>
+                                                        <Badge variant="outline">
+                                                            {(service.tasks || []).filter(t => t.completed).length}/{(service.tasks || []).length}
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {(service.tasks || []).map((task) => (
+                                                        <div key={task.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 transition-colors border text-sm group">
+                                                            <div className="flex items-center gap-2 flex-1">
+                                                                <Checkbox
+                                                                    id={`service-task-${task.id}`}
+                                                                    checked={task.completed}
+                                                                    onCheckedChange={(checked) => handleToggleTask(task.id, checked === true)}
+                                                                />
+                                                                <label
+                                                                    htmlFor={`service-task-${task.id}`}
+                                                                    className={cn("cursor-pointer flex-1", task.completed && "line-through text-muted-foreground")}
+                                                                >
+                                                                    {task.task_name}
+                                                                </label>
+                                                                <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1 rounded">₹{task.price || 0}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                {task.completed ? (
+                                                                    <Badge variant="default" className="bg-green-600 text-[10px] h-5">Done</Badge>
+                                                                ) : (
+                                                                    <Badge variant="outline" className="text-[10px] h-5">Pending</Badge>
+                                                                )}
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    onClick={() => handleDeleteTask(task.id)}
+                                                                    title="Delete Task"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Assigned Employees */}
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                                                        <Users className="h-4 w-4 text-blue-600" />
+                                                        Assigned Personnel
+                                                    </h4>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setSelectedServiceId(service.id);
+                                                            setEmployeeDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <Plus className="h-3 w-3 mr-1" />
+                                                        Add
+                                                    </Button>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {service.employees && service.employees.length > 0 ? (
+                                                        service.employees.map((emp) => (
+                                                            <div key={emp.id} className="flex items-center justify-between p-2 rounded bg-blue-50/50 border border-blue-100 text-sm">
+                                                                <div className="flex items-center gap-2">
+                                                                    <User className="h-4 w-4 text-blue-400" />
+                                                                    <div
+                                                                        className="cursor-pointer hover:underline flex flex-col"
+                                                                        onClick={() => handleOpenTracker(emp)}
+                                                                    >
+                                                                        <span className="font-medium text-blue-700">{emp.employee?.name}</span>
+                                                                        {emp.employee?.position?.name && (
+                                                                            <span className="text-[10px] text-muted-foreground">
+                                                                                {emp.employee.position.name}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Badge variant="secondary" className="text-[10px]">{emp.status}</Badge>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                        onClick={() => handleRemoveEmployee(emp.id)}
+                                                                    >
+                                                                        <X className="h-3 w-3" />
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-sm text-muted-foreground text-center py-4">No employees assigned</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </TabsContent>
+
+                    {/* Tab 3: Parts & Materials */}
+                    <TabsContent value="parts" className="space-y-6">
+                        <div className="space-y-6">
+                            <PartRequestList
+                                workOrderId={id!}
+                                isAdmin={user?.role === 'admin' || user?.role === 'manager'}
+                            />
+                        </div>
+                    </TabsContent>
+
+                    {/* Tab 4: Billing & Notes */}
+                    <TabsContent value="billing" className="space-y-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="lg:col-span-2 space-y-6">
+                                <Card className="border-border/70 shadow-sm">
+                                    <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
+                                        <div>
+                                            <CardTitle className="text-base font-bold flex items-center gap-2">
+                                                <Receipt className="h-5 w-5 text-emerald-600" />
+                                                Billing & Payment Summary
+                                            </CardTitle>
+                                            <CardDescription className="text-xs">
+                                                Invoice status, customer ledger link, and balance breakdown
+                                            </CardDescription>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                size="sm"
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 gap-1.5"
+                                                onClick={() => navigate(`/admin/invoices?workOrderId=${workOrder.id}`)}
+                                            >
+                                                <Receipt className="h-4 w-4" />
+                                                {billingInfo.totalInvoiced > 0 ? 'Open Invoice' : 'Create Invoice'}
+                                            </Button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="p-6 space-y-6">
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                            <div className="p-4 rounded-xl bg-muted/40 border">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">Total Invoiced</span>
+                                                <span className="text-xl font-extrabold text-foreground font-mono mt-1 block">
+                                                    ₹{billingInfo.totalInvoiced.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="p-4 rounded-xl bg-muted/40 border">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">Collected</span>
+                                                <span className="text-xl font-extrabold text-emerald-600 font-mono mt-1 block">
+                                                    ₹{billingInfo.totalPaid.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="p-4 rounded-xl bg-muted/40 border">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">Adjustments</span>
+                                                <span className="text-xl font-extrabold text-amber-600 font-mono mt-1 block">
+                                                    ₹{billingInfo.totalDeductions.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="p-4 rounded-xl bg-muted/40 border">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">Balance Due</span>
+                                                <span className={`text-xl font-extrabold font-mono mt-1 block ${billingInfo.balance > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                                                    ₹{billingInfo.balance.toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-muted/20 border">
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-bold text-foreground">Formal Invoice & Documents</p>
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    Print workshop job slip or download computer-generated GST tax invoice.
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button variant="outline" size="sm" onClick={() => setSlipDialogOpen(true)} className="h-8 text-xs gap-1">
+                                                    <FileText className="h-3.5 w-3.5" /> Print Work Slip
+                                                </Button>
+                                                <Button variant="outline" size="sm" onClick={() => generateInvoicePDF(workOrder.id)} className="h-8 text-xs gap-1">
+                                                    <IndianRupee className="h-3.5 w-3.5" /> Download Tax Invoice
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
+                            <div className="space-y-6">
+                                <Card className="border-border/70 shadow-sm">
+                                    <CardHeader className="pb-3 border-b">
+                                        <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                            Customer Account
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="p-4 space-y-3">
+                                        <div>
+                                            <h4 className="font-bold text-sm">{workOrder.customer?.name}</h4>
+                                            {workOrder.customer?.company_name && (
+                                                <p className="text-xs text-muted-foreground">{workOrder.customer.company_name}</p>
+                                            )}
+                                        </div>
+                                        {workOrder.customer?.id && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full text-xs font-semibold h-8"
+                                                onClick={() => navigate(`/admin/customers/${workOrder.customer?.id}/ledger`)}
+                                            >
+                                                View Customer Statement / Ledger &rarr;
+                                            </Button>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </div>
+                    </TabsContent>
+                </Tabs>
             </div>
 
             {/* Approval/Rejection Dialog */}

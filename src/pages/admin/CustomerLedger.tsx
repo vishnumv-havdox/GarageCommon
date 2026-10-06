@@ -286,9 +286,9 @@ export default function CustomerLedger() {
     return (
         <div className="flex flex-col lg:flex-row bg-background min-h-screen">
             <AdminSidebar />
-            <main className="flex-1 p-8 space-y-6 overflow-y-auto h-screen">
+            <main className="flex-1 p-4 md:p-6 lg:p-8 space-y-6 min-h-screen">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
                             <ArrowLeft className="h-4 w-4" />
@@ -300,7 +300,7 @@ export default function CustomerLedger() {
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 no-print">
+                    <div className="flex flex-wrap items-center gap-2 no-print">
                         <Button variant="outline" onClick={() => window.print()}>
                             <Printer className="mr-2 h-4 w-4" /> Print
                         </Button>

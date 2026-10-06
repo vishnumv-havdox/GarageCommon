@@ -63,6 +63,7 @@ import {
     Loader2
 } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { ServicesTabsNav } from "@/components/layout/ServicesTabsNav";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { format } from "date-fns";
 
@@ -723,13 +724,13 @@ export default function ServicesMaster() {
     return (
         <div className="flex flex-col lg:flex-row min-h-screen bg-background">
             <AdminSidebar />
-            <main className="flex-1 p-8">
+            <main className="flex-1 p-4 md:p-6 lg:p-8">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
                     <div>
                         <h1 className="text-3xl font-bold">Services Master</h1>
                         <p className="text-muted-foreground">Manage service types, pricing, and tasks centrally</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Button variant="outline" size="icon" onClick={() => fetchServices()} disabled={loading} title="Refresh Services">
                             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                         </Button>
@@ -739,16 +740,20 @@ export default function ServicesMaster() {
                     </div>
                 </div>
 
+                <div className="mb-6">
+                    <ServicesTabsNav />
+                </div>
+
                 {/* Filters */}
                 <div className="flex flex-col gap-4 mb-6">
                     {/* View Toggle */}
-                    <div className="flex justify-start">
-                        <div className="bg-muted p-1 rounded-lg flex gap-1">
+                    <div className="flex justify-start overflow-x-auto no-scrollbar">
+                        <div className="bg-muted p-1 rounded-lg flex gap-1 shrink-0">
                             <Button
                                 variant={fcFilter === 'all' ? 'default' : 'ghost'}
                                 size="sm"
                                 onClick={() => setFcFilter('all')}
-                                className="h-7 text-xs"
+                                className="h-7 text-xs shrink-0 whitespace-nowrap"
                             >
                                 All Services
                             </Button>
@@ -756,7 +761,7 @@ export default function ServicesMaster() {
                                 variant={fcFilter === 'normal' ? 'default' : 'ghost'}
                                 size="sm"
                                 onClick={() => setFcFilter('normal')}
-                                className="h-7 text-xs"
+                                className="h-7 text-xs shrink-0 whitespace-nowrap"
                             >
                                 Normal Services
                             </Button>
@@ -764,7 +769,7 @@ export default function ServicesMaster() {
                                 variant={fcFilter === 'fc' ? 'default' : 'ghost'}
                                 size="sm"
                                 onClick={() => setFcFilter('fc')}
-                                className="h-7 text-xs"
+                                className="h-7 text-xs shrink-0 whitespace-nowrap"
                             >
                                 FC Work
                             </Button>

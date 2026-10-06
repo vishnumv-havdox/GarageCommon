@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { TeamTabsNav } from "@/components/layout/TeamTabsNav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -137,6 +138,10 @@ export default function AccessControlPage() {
               <RefreshCw className="h-4 w-4 mr-2" />
               Reset to Default
             </Button>
+          </div>
+
+          <div className="mb-6">
+            <TeamTabsNav />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

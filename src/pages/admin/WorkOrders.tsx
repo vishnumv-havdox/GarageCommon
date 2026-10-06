@@ -13,7 +13,7 @@ import {
   Trash2, Eye, ArrowLeft, Calendar, FileText, Wrench, IndianRupee,
   CheckCircle2, XCircle, Clock, User, Truck, RefreshCw, AlertTriangle,
   BarChart3, Activity, MoreVertical, Play, CheckCircle,
-  ClipboardCheck, Clock5, Plus
+  ClipboardCheck, Clock5, Plus, Receipt
 } from "lucide-react";
 import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -195,7 +195,9 @@ export default function AdminWorkOrders() {
     pending: 0,
     inProgress: 0,
     pendingApproval: 0,
-    completed: 0
+    ready: 0,
+    completed: 0,
+    all: 0
   });
 
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
@@ -217,7 +219,7 @@ export default function AdminWorkOrders() {
 
   useEffect(() => { fetchWorkOrders(); }, []);
 
-  const [activeTab, setActiveTab] = useState<"active" | "completed">("active");
+  const [activeTab, setActiveTab] = useState<"in_progress" | "ready" | "completed" | "all">("in_progress");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
     key: "created_at",
     direction: "desc",
@@ -263,16 +265,17 @@ export default function AdminWorkOrders() {
 
       setWorkOrders(mapped as any);
 
-      const pending = mapped.filter((o: WorkOrder) => o.status === "Pending").length;
+      const pending = mapped.filter((o: WorkOrder) => ["Pending", "New"].includes(o.status)).length;
       const inProgress = mapped.filter((o: WorkOrder) =>
-        ["In Progress", "Accepted", "Under QC", "Inspection", "Repair", "Review", "Quality Check"].includes(o.status)
+        ["In Progress", "Accepted", "Under QC", "Inspection", "Repair", "Review", "Quality Check", "Pending Approval"].includes(o.status)
       ).length;
       const pendingApproval = mapped.filter((o: WorkOrder) => o.status === "Pending Approval").length;
+      const ready = mapped.filter((o: WorkOrder) => ["Ready", "Ready for Delivery"].includes(o.status)).length;
       const completed = mapped.filter((o: WorkOrder) =>
-        ["Approved", "Completed", "Delivered"].includes(o.status)
+        ["Approved", "Completed", "Delivered", "Finalized"].includes(o.status)
       ).length;
 
-      setStats({ pending, inProgress, pendingApproval, completed });
+      setStats({ pending, inProgress, pendingApproval, ready, completed, all: mapped.length });
 
       // Fetch confirmed appointments as "Scheduled Jobs"
       const { data: appData } = await supabase
@@ -383,16 +386,21 @@ export default function AdminWorkOrders() {
       });
     }
 
-    // Filter by Active/Completed Tab
-    if (activeTab === 'active') {
+    // Filter by Segmented Tab
+    if (activeTab === 'in_progress') {
       filtered = filtered.filter(o =>
-        !['completed', 'delivered', 'approved', 'cancelled', 'rejected'].includes(o.status.toLowerCase())
+        !['completed', 'delivered', 'approved', 'cancelled', 'rejected', 'ready', 'ready for delivery', 'finalized'].includes(o.status.toLowerCase())
       );
-    } else {
+    } else if (activeTab === 'ready') {
       filtered = filtered.filter(o =>
-        ['completed', 'delivered', 'approved', 'cancelled', 'rejected'].includes(o.status.toLowerCase())
+        ['ready', 'ready for delivery'].includes(o.status.toLowerCase())
+      );
+    } else if (activeTab === 'completed') {
+      filtered = filtered.filter(o =>
+        ['completed', 'delivered', 'approved', 'finalized'].includes(o.status.toLowerCase())
       );
     }
+    // 'all' includes all statuses
 
     // Then filter by delivery date
     if (deliveryFilter !== 'all') {
@@ -510,49 +518,68 @@ export default function AdminWorkOrders() {
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending</p>
-                    <p className="text-2xl font-bold">{stats.pending}</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-muted-foreground/30" />
+          {/* Clean Modern Metric Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Card
+              className="bg-card border-border/70 shadow-sm hover:border-blue-500/40 transition-all cursor-pointer"
+              onClick={() => setActiveTab("in_progress")}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">In Progress</p>
+                  <p className="text-2xl font-extrabold text-foreground mt-1">{stats.inProgress}</p>
+                  <p className="text-[11px] text-blue-600 font-medium mt-0.5">{stats.pending} awaiting triage</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
+                  <Wrench className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">In Progress</p>
-                    <p className="text-2xl font-bold">{stats.inProgress}</p>
-                  </div>
-                  <RefreshCw className="h-8 w-8 text-blue-500/30" />
+
+            <Card
+              className="bg-card border-border/70 shadow-sm hover:border-emerald-500/40 transition-all cursor-pointer"
+              onClick={() => setActiveTab("ready")}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ready for Pickup</p>
+                  <p className="text-2xl font-extrabold text-foreground mt-1">{stats.ready}</p>
+                  <p className="text-[11px] text-emerald-600 font-medium mt-0.5">Ready for billing</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
+                  <Truck className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending Approval</p>
-                    <p className="text-2xl font-bold">{stats.pendingApproval}</p>
-                  </div>
-                  <AlertTriangle className="h-8 w-8 text-orange-500/30" />
+
+            <Card
+              className="bg-card border-border/70 shadow-sm hover:border-amber-500/40 transition-all cursor-pointer"
+              onClick={() => navigate("/admin/requests?tab=work-approvals")}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Needs Approval</p>
+                  <p className="text-2xl font-extrabold text-foreground mt-1">{stats.pendingApproval}</p>
+                  <p className="text-[11px] text-amber-600 font-medium mt-0.5">Pending review</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Finalized</p>
-                    <p className="text-2xl font-bold">{stats.completed}</p>
-                  </div>
-                  <CheckCircle2 className="h-8 w-8 text-green-500/30" />
+
+            <Card
+              className="bg-card border-border/70 shadow-sm hover:border-purple-500/40 transition-all cursor-pointer"
+              onClick={() => setActiveTab("completed")}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Completed</p>
+                  <p className="text-2xl font-extrabold text-foreground mt-1">{stats.completed}</p>
+                  <p className="text-[11px] text-purple-600 font-medium mt-0.5">{stats.all} total jobs</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 flex items-center justify-center">
+                  <CheckCircle2 className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
@@ -699,62 +726,66 @@ export default function AdminWorkOrders() {
             </div>
           </div>
 
+          {/* Segmented Status Views */}
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="active" className="relative">
-                Active Orders
-                <Badge variant="secondary" className="ml-2 h-5 px-1.5 min-w-[20px]">{stats.pending + stats.inProgress + stats.pendingApproval}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="completed">
-                Completed / History
-                <Badge variant="secondary" className="ml-2 h-5 px-1.5 min-w-[20px]">{stats.completed}</Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <TabsList className="bg-muted/70 p-1 rounded-xl h-auto flex flex-nowrap overflow-x-auto no-scrollbar max-w-full">
+                <TabsTrigger value="in_progress" className="rounded-lg text-xs font-semibold px-3 py-1.5 shrink-0 whitespace-nowrap">
+                  In Progress
+                  <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 min-w-[20px] text-[10px]">
+                    {stats.inProgress}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="ready" className="rounded-lg text-xs font-semibold px-3 py-1.5 shrink-0 whitespace-nowrap">
+                  Ready for Pickup
+                  <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 min-w-[20px] text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                    {stats.ready}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="completed" className="rounded-lg text-xs font-semibold px-3 py-1.5 shrink-0 whitespace-nowrap">
+                  Completed
+                  <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 min-w-[20px] text-[10px]">
+                    {stats.completed}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="all" className="rounded-lg text-xs font-semibold px-3 py-1.5 shrink-0 whitespace-nowrap">
+                  All Orders
+                  <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 min-w-[20px] text-[10px]">
+                    {stats.all}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="active" className="space-y-4">
-              {/* Delivery Filter Tabs - Only custom ones for active */}
-              <div className="flex gap-2 flex-wrap mb-4">
+              {/* Delivery Filter Pills */}
+              <div className="flex gap-1.5 flex-nowrap overflow-x-auto no-scrollbar max-w-full pb-1 sm:pb-0">
                 <Button
                   variant={deliveryFilter === 'all' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setDeliveryFilter('all')}
-                  className="text-xs"
+                  className="text-xs h-8 px-2.5 rounded-lg shrink-0 whitespace-nowrap"
                 >
-                  All Active
+                  All Dates
                 </Button>
                 <Button
-                  variant={deliveryFilter === 'overdue' ? 'default' : 'outline'}
+                  variant={deliveryFilter === 'overdue' ? 'destructive' : 'outline'}
                   size="sm"
                   onClick={() => setDeliveryFilter('overdue')}
-                  className={deliveryFilter === 'overdue' ? 'bg-red-600 hover:bg-red-700' : 'text-xs'}
+                  className="text-xs h-8 px-2.5 rounded-lg gap-1 shrink-0 whitespace-nowrap"
                 >
-                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  <AlertTriangle className="h-3 w-3" />
                   Overdue
                 </Button>
                 <Button
                   variant={deliveryFilter === 'today' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setDeliveryFilter('today')}
-                  className={deliveryFilter === 'today' ? 'bg-orange-600 hover:bg-orange-700' : 'text-xs'}
+                  className={deliveryFilter === 'today' ? 'bg-orange-600 hover:bg-orange-700 text-xs h-8 px-2.5 rounded-lg shrink-0 whitespace-nowrap' : 'text-xs h-8 px-2.5 rounded-lg shrink-0 whitespace-nowrap'}
                 >
                   <Clock5 className="h-3 w-3 mr-1" />
                   Due Today
                 </Button>
-                <Button
-                  variant={deliveryFilter === 'week' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setDeliveryFilter('week')}
-                  className="text-xs"
-                >
-                  <Calendar className="h-3 w-3 mr-1" />
-                  Due This Week
-                </Button>
               </div>
-            </TabsContent>
-
-            <TabsContent value="completed">
-              {/* No specific sub-filters for completed yet, maybe date range later */}
-            </TabsContent>
+            </div>
           </Tabs>
 
           <Card>
@@ -886,6 +917,17 @@ export default function AdminWorkOrders() {
                               </DropdownMenu>
                             </div>
                             <div className="flex gap-2 mt-0 sm:mt-2">
+                              {['ready', 'ready for delivery', 'completed', 'delivered', 'approved', 'finalized'].includes(order.status.toLowerCase()) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-xs font-semibold border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                  onClick={() => navigate(`/admin/invoices?workOrderId=${order.id}`)}
+                                  title="1-Click Create / View Invoice"
+                                >
+                                  <Receipt className="h-3.5 w-3.5 mr-1" /> Invoice
+                                </Button>
+                              )}
                               <Button size="sm" variant="outline" onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
                                 <Eye className="h-4 w-4 mr-1" /> View Details
                               </Button>

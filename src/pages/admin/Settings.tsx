@@ -441,16 +441,18 @@ export default function Settings() {
                     </div>
 
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                        <TabsList>
-                            <TabsTrigger value="profile">Company Profile</TabsTrigger>
-                            <TabsTrigger value="users">User Management</TabsTrigger>
-                            <TabsTrigger value="signatures">Digital Signatures</TabsTrigger>
-                            <TabsTrigger value="workforce">Workforce</TabsTrigger>
-                            <TabsTrigger value="workslip">Work Slip Config</TabsTrigger>
-                            <TabsTrigger value="invoice">Invoice Config</TabsTrigger>
-                            <TabsTrigger value="payment">Payment Config</TabsTrigger>
-                            <TabsTrigger value="tally">Tally Config</TabsTrigger>
-                        </TabsList>
+                        <div className="overflow-x-auto no-scrollbar pb-1">
+                            <TabsList className="w-full sm:w-auto flex overflow-x-auto no-scrollbar p-1">
+                                <TabsTrigger value="profile" className="shrink-0 whitespace-nowrap">Company Profile</TabsTrigger>
+                                <TabsTrigger value="users" className="shrink-0 whitespace-nowrap">User Management</TabsTrigger>
+                                <TabsTrigger value="signatures" className="shrink-0 whitespace-nowrap">Digital Signatures</TabsTrigger>
+                                <TabsTrigger value="workforce" className="shrink-0 whitespace-nowrap">Workforce</TabsTrigger>
+                                <TabsTrigger value="workslip" className="shrink-0 whitespace-nowrap">Work Slip Config</TabsTrigger>
+                                <TabsTrigger value="invoice" className="shrink-0 whitespace-nowrap">Invoice Config</TabsTrigger>
+                                <TabsTrigger value="payment" className="shrink-0 whitespace-nowrap">Payment Config</TabsTrigger>
+                                <TabsTrigger value="tally" className="shrink-0 whitespace-nowrap">Tally Config</TabsTrigger>
+                            </TabsList>
+                        </div>
 
                         {/* Company Profile Tab */}
                         <TabsContent value="profile">

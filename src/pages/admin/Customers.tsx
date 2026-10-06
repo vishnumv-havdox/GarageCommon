@@ -740,9 +740,9 @@ export default function AdminCustomers() {
                         const isExpanded = expandedCustomers.has(customer.id);
                         return (
                           <div key={customer.id} className="border p-4 rounded-lg">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
+                            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
                                   <h3 className="font-semibold text-lg">{customer.name}</h3>
                                   <Badge variant="secondary">Customer</Badge>
                                   {customerWorkOrders.length > 0 && (
@@ -758,8 +758,9 @@ export default function AdminCustomers() {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                                   {customer.email && (
-                                    <p className="flex items-center gap-2 text-muted-foreground">
-                                      <Mail className="h-4 w-4" />
+                                    <p className="flex items-center gap-2 text-muted-foreground truncate">
+                                      <Mail className="h-4 w-4 shrink-0" />
+                                      <span className="truncate">{customer.email}</span>
                                     </p>
                                   )}
                                   {customer.phone && (
@@ -1021,7 +1022,7 @@ export default function AdminCustomers() {
                                   </div>
                                 )}
                               </div>
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 self-end sm:self-start shrink-0">
                                 <Button
                                   variant="outline"
                                   size="sm"

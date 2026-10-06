@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { ServicesTabsNav } from "@/components/layout/ServicesTabsNav";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -190,7 +191,7 @@ export default function BookingCatalog() {
     return (
         <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50/50 dark:bg-background">
             <AdminSidebar />
-            <main className="flex-1 p-8">
+            <main className="flex-1 p-4 md:p-6 lg:p-8">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Booking Catalog</h1>
@@ -199,6 +200,10 @@ export default function BookingCatalog() {
                     <Button onClick={() => handleOpenDialog()}>
                         <Plus className="h-4 w-4 mr-2" /> Add New Item
                     </Button>
+                </div>
+
+                <div className="mb-6">
+                    <ServicesTabsNav />
                 </div>
 
                 <div className="flex flex-col gap-6">

@@ -269,12 +269,12 @@ export default function Appointments() {
 
     return (
         <>
-            <div className="flex flex-col lg:flex-row h-screen bg-background">
+            <div className="flex flex-col lg:flex-row min-h-screen bg-background">
                 <AdminSidebar />
-                <main className="flex-1 overflow-y-auto bg-background/50">
-                    <div className="flex flex-col gap-4 p-4 md:flex-row md:gap-8 lg:p-8 min-h-full">
+                <main className="flex-1 bg-background/50">
+                    <div className="flex flex-col gap-6 p-4 md:p-6 lg:flex-row lg:gap-8 lg:p-8 min-h-full">
                         {/* Sidebar / Calendar */}
-                        <div className="flex w-full flex-col gap-4 md:w-80 lg:w-96 shrink-0">
+                        <div className="flex w-full flex-col gap-4 lg:w-80 xl:w-96 shrink-0">
                             <Card className="border-border shadow-sm">
                                 <CardHeader>
                                     <CardTitle>Schedule</CardTitle>

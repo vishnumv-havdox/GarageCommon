@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { AttendanceTabsNav } from "@/components/layout/AttendanceTabsNav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -681,7 +682,7 @@ export default function AttendancePage() {
     return (
         <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40 font-inter">
             <AdminSidebar />
-            <main className="flex-1 p-4 md:p-8 pt-6 overflow-y-auto">
+            <main className="flex-1 p-4 md:p-8">
                 <div className="flex flex-col gap-6 max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
@@ -698,6 +699,8 @@ export default function AttendancePage() {
                             </Tabs>
                         </div>
                     </div>
+
+                    <AttendanceTabsNav />
 
                     <Tabs value={viewMode} className="w-full space-y-6">
                         <TabsContent value="daily" className="space-y-6 m-0 focus-visible:ring-0">
@@ -741,7 +744,7 @@ export default function AttendancePage() {
                                             }}><ChevronRight className="h-4 w-4" /></Button>
                                         </div>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         <AlertDialog>
                                             <AlertDialogTrigger asChild>
                                                 <Button variant="outline" size="sm" className="h-9 px-4 font-black transition-all hover:bg-slate-900 hover:text-white">

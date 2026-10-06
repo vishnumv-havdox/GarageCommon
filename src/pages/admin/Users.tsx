@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/adminClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { TeamTabsNav } from "@/components/layout/TeamTabsNav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -415,7 +416,7 @@ export default function AdminUsers() {
               <h1 className="text-3xl font-bold">Users Management</h1>
               <p className="text-muted-foreground">Manage Admins, Employees, and Customers</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button onClick={() => setShowForm(true)}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Add Admin
@@ -425,6 +426,10 @@ export default function AdminUsers() {
                 Refresh
               </Button>
             </div>
+          </div>
+
+          <div className="mb-6">
+            <TeamTabsNav />
           </div>
 
           {/* Search */}
@@ -459,17 +464,17 @@ export default function AdminUsers() {
           <Card>
             <CardHeader className="pb-2">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <div className="flex items-center justify-between">
-                  <TabsList>
-                    <TabsTrigger value="admins" className="gap-2">
+                <div className="flex items-center justify-between overflow-x-auto no-scrollbar">
+                  <TabsList className="w-full sm:w-auto flex overflow-x-auto no-scrollbar p-1">
+                    <TabsTrigger value="admins" className="gap-2 shrink-0 whitespace-nowrap">
                       <Shield className="h-4 w-4" />
                       Admins ({admins.length})
                     </TabsTrigger>
-                    <TabsTrigger value="employees" className="gap-2">
+                    <TabsTrigger value="employees" className="gap-2 shrink-0 whitespace-nowrap">
                       <UserCog className="h-4 w-4" />
                       Employees ({employees.length})
                     </TabsTrigger>
-                    <TabsTrigger value="customers" className="gap-2">
+                    <TabsTrigger value="customers" className="gap-2 shrink-0 whitespace-nowrap">
                       <Users className="h-4 w-4" />
                       Customers ({customers.length})
                     </TabsTrigger>

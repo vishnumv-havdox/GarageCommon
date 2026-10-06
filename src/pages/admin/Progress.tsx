@@ -236,8 +236,8 @@ export default function AdminProgress() {
   return (
     <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40">
       <AdminSidebar />
-      <main className="flex-1 p-8">
-        <div className="flex items-center justify-between mb-8">
+      <main className="flex-1 p-4 md:p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Activity className="h-8 w-8 text-primary" />
@@ -245,7 +245,7 @@ export default function AdminProgress() {
             </h1>
             <p className="text-muted-foreground mt-1">Real-time status overview of all workshop operations</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button onClick={fetchRealtimeData} variant="outline" size="sm">
               <RefreshCw className="h-4 w-4 mr-2" />
               Live Refresh

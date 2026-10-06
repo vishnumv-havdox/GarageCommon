@@ -73,13 +73,13 @@ export default function AdminAnalytics() {
     return (
         <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40">
             <AdminSidebar />
-            <main className="flex-1 p-8 overflow-y-auto max-h-screen">
-                <div className="flex items-center justify-between mb-8">
+            <main className="flex-1 p-4 md:p-6 lg:p-8 min-h-screen">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
                     <div>
                         <h1 className="text-3xl font-bold">Company Performance</h1>
                         <p className="text-muted-foreground">Operational and financial analytics for the last 30 days</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={fetchAnalytics}>
                             <RefreshCw className="h-4 w-4 mr-2" /> Refresh
                         </Button>

@@ -12,7 +12,7 @@ import {
   Users, Truck, Layers,
   Package, QrCode,
   UserCheck, CalendarCheck, Settings,
-  Briefcase, User
+  Briefcase, User, BellRing, StickyNote
 } from "lucide-react";
 import { navConfig } from "@/config/accessControl";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -56,6 +56,20 @@ const adminSections: SidebarSection[] = [
         badgeKey: "activeWorkOrders",
         badgeVariant: "secondary",
         isActiveMatch: (p) => p.startsWith("/admin/work-orders") || p === "/admin/progress",
+      },
+      {
+        label: "Service Due",
+        path: "/admin/service-due",
+        icon: BellRing,
+        roles: ["admin", "manager"],
+        isActiveMatch: (p) => p.startsWith("/admin/service-due"),
+      },
+      {
+        label: "Reminders & Notes",
+        path: "/admin/reminders",
+        icon: StickyNote,
+        roles: ["admin", "manager"],
+        isActiveMatch: (p) => p.startsWith("/admin/reminders"),
       },
       {
         label: "Appointments",

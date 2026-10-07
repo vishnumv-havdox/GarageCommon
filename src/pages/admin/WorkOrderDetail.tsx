@@ -23,7 +23,7 @@ import {
     Bell, ShieldCheck, FileText, Calendar as CalendarIcon,
     ListOrdered, Search, TrendingUp, Info, Loader2, RotateCcw,
     Wrench, ArrowLeft, Users, ClipboardList, IndianRupee, Package, Camera,
-    Receipt
+    Receipt, Gauge, Phone, MessageSquare, Star
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProgressTracker } from "@/components/work-orders/ProgressTracker";
@@ -143,6 +143,19 @@ interface WorkOrder {
         phone?: string;
     }> | null;
     assigned_to?: string | null;
+    odometer_reading?: number | null;
+    next_service_due_km?: number | null;
+    next_service_due_date?: string | null;
+    contact_id?: string | null;
+    contact?: {
+        id: string;
+        name: string;
+        designation?: string;
+        phone: string;
+        alternate_phone?: string;
+        email?: string;
+        is_primary?: boolean;
+    } | null;
 }
 
 interface Employee {
@@ -205,6 +218,56 @@ export default function WorkOrderDetail() {
     // New Extension States
     const [belongings, setBelongings] = useState<any[]>([]);
     const [photos, setPhotos] = useState<any[]>([]);
+
+    // Next Service Targets Dialog States
+    const [showServiceTargetDialog, setShowServiceTargetDialog] = useState(false);
+    const [targetOdometer, setTargetOdometer] = useState<number>(0);
+    const [targetNextKm, setTargetNextKm] = useState<number>(0);
+    const [targetNextDate, setTargetNextDate] = useState<string>("");
+    const [savingTargets, setSavingTargets] = useState(false);
+
+    const handleOpenServiceTargetDialog = () => {
+        setTargetOdometer(workOrder?.odometer_reading || 0);
+        setTargetNextKm(workOrder?.next_service_due_km || 0);
+        setTargetNextDate(workOrder?.next_service_due_date || "");
+        setShowServiceTargetDialog(true);
+    };
+
+    const handleSaveServiceTargets = async () => {
+        if (!id) return;
+        setSavingTargets(true);
+        try {
+            const { error } = await supabase
+                .from("work_orders")
+                .update({
+                    odometer_reading: targetOdometer || null,
+                    next_service_due_km: targetNextKm || null,
+                    next_service_due_date: targetNextDate || null
+                } as any)
+                .eq("id", id);
+
+            if (error) throw error;
+
+            if (workOrder?.vehicle_id) {
+                await supabase
+                    .from("vehicles")
+                    .update({
+                        kilometers_driven: targetOdometer || undefined,
+                        next_service_km: targetNextKm || undefined,
+                        next_service_date: targetNextDate || undefined
+                    } as any)
+                    .eq("id", workOrder.vehicle_id);
+            }
+
+            toast({ title: "Service Targets Updated", description: "Odometer & next service schedule saved." });
+            setShowServiceTargetDialog(false);
+            fetchDetails();
+        } catch (err: any) {
+            toast({ variant: "destructive", title: "Error", description: err.message });
+        } finally {
+            setSavingTargets(false);
+        }
+    };
     const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
     const [confirmedItems, setConfirmedItems] = useState<Record<string, boolean>>({});
     const [isConfirmingBelongings, setIsConfirmingBelongings] = useState(false);
@@ -406,7 +469,16 @@ export default function WorkOrderDetail() {
             contact_number,
             driver_position
           ),
-          advisor:employees!assigned_to(id, name, phone)
+          advisor:employees!assigned_to(id, name, phone),
+          contact:customer_contacts(
+            id,
+            name,
+            designation,
+            phone,
+            alternate_phone,
+            email,
+            is_primary
+          )
         `)
                 .eq("id", id)
                 .single();
@@ -1900,6 +1972,80 @@ export default function WorkOrderDetail() {
                             </CardContent>
                         </Card>
 
+                        {/* Next Service & Mileage Tracking */}
+                        <Card className="border-primary/20 shadow-sm">
+                            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                                <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                                    <Gauge className="h-4 w-4 text-primary" />
+                                    Next Service Tracking
+                                </CardTitle>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                                    onClick={handleOpenServiceTargetDialog}
+                                >
+                                    <Edit className="h-3 w-3" /> Update
+                                </Button>
+                            </CardHeader>
+                            <CardContent className="space-y-3 pt-0">
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="p-2.5 rounded-lg bg-muted/40 border">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-bold">Odometer</p>
+                                        <p className="font-bold text-sm text-foreground mt-0.5">
+                                            {workOrder.odometer_reading ? `${workOrder.odometer_reading.toLocaleString()} KM` : '—'}
+                                        </p>
+                                    </div>
+                                    <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                                        <p className="text-[10px] text-primary uppercase font-bold">Next Service @</p>
+                                        <p className="font-bold text-sm text-primary mt-0.5">
+                                            {workOrder.next_service_due_km ? `${workOrder.next_service_due_km.toLocaleString()} KM` : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="p-2.5 rounded-lg bg-muted/40 border text-xs flex items-center justify-between">
+                                    <span className="text-muted-foreground flex items-center gap-1.5">
+                                        <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" /> Next Due Date
+                                    </span>
+                                    <span className="font-bold">
+                                        {workOrder.next_service_due_date ? format(new Date(workOrder.next_service_due_date), 'dd MMM yyyy') : 'Not scheduled'}
+                                    </span>
+                                </div>
+                                {workOrder.contact && (
+                                    <div className="p-2.5 rounded-lg border bg-muted/30 text-xs">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase">Relevant Contact</p>
+                                            <Badge variant="outline" className="text-[9px] py-0 px-1 border-primary/30 text-primary uppercase font-bold">
+                                                {workOrder.contact.designation || 'Contact'}
+                                            </Badge>
+                                        </div>
+                                        <p className="font-semibold">{workOrder.contact.name}</p>
+                                        <div className="flex items-center justify-between mt-2 pt-1 border-t">
+                                            <span className="text-muted-foreground">{workOrder.contact.phone}</span>
+                                            <div className="flex gap-1">
+                                                <a
+                                                    href={`tel:${workOrder.contact.phone}`}
+                                                    className="p-1 rounded hover:bg-green-100 text-green-700 dark:hover:bg-green-950/40"
+                                                    title={`Call ${workOrder.contact.name}`}
+                                                >
+                                                    <Phone className="h-3 w-3" />
+                                                </a>
+                                                <a
+                                                    href={`https://wa.me/91${workOrder.contact.phone.replace(/\D/g, '')}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="p-1 rounded hover:bg-emerald-100 text-emerald-700 dark:hover:bg-emerald-950/40"
+                                                    title={`WhatsApp ${workOrder.contact.name}`}
+                                                >
+                                                    <MessageSquare className="h-3 w-3" />
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
                                 {/* Lifecycle & Metrics */}
                         <Card>
                             <CardHeader>
@@ -3027,6 +3173,83 @@ export default function WorkOrderDetail() {
                         >
                             {isConfirmingBelongings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                             Confirm & Complete Delivery
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Update Next Service Targets Dialog */}
+            <Dialog open={showServiceTargetDialog} onOpenChange={setShowServiceTargetDialog}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Gauge className="h-5 w-5 text-primary" />
+                            Update Vehicle Service Targets
+                        </DialogTitle>
+                        <DialogDescription>
+                            Record the vehicle odometer reading and configure when the next service is due.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">Current Odometer (KM)</Label>
+                            <Input
+                                type="number"
+                                value={targetOdometer || ''}
+                                onChange={(e) => {
+                                    const km = parseInt(e.target.value) || 0;
+                                    setTargetOdometer(km);
+                                    if (!targetNextKm || targetNextKm <= km) {
+                                        setTargetNextKm(km + 10000);
+                                    }
+                                }}
+                                placeholder="e.g. 50000"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-semibold">Next Service Target (KM)</Label>
+                                <div className="flex gap-1.5 text-[11px] text-primary">
+                                    <button type="button" onClick={() => setTargetNextKm((targetOdometer || 0) + 5000)} className="hover:underline font-medium">+5,000</button>
+                                    <button type="button" onClick={() => setTargetNextKm((targetOdometer || 0) + 10000)} className="hover:underline font-medium ml-1">+10,000</button>
+                                </div>
+                            </div>
+                            <Input
+                                type="number"
+                                value={targetNextKm || ''}
+                                onChange={(e) => setTargetNextKm(parseInt(e.target.value) || 0)}
+                                placeholder="e.g. 60000"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-semibold">Next Service Due Date</Label>
+                                <div className="flex gap-1.5 text-[11px] text-primary">
+                                    <button type="button" onClick={() => {
+                                        const d = new Date();
+                                        d.setMonth(d.getMonth() + 3);
+                                        setTargetNextDate(d.toISOString().split('T')[0]);
+                                    }} className="hover:underline font-medium">+3 Months</button>
+                                    <button type="button" onClick={() => {
+                                        const d = new Date();
+                                        d.setMonth(d.getMonth() + 6);
+                                        setTargetNextDate(d.toISOString().split('T')[0]);
+                                    }} className="hover:underline font-medium ml-1">+6 Months</button>
+                                </div>
+                            </div>
+                            <Input
+                                type="date"
+                                value={targetNextDate}
+                                onChange={(e) => setTargetNextDate(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowServiceTargetDialog(false)} disabled={savingTargets}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleSaveServiceTargets} disabled={savingTargets}>
+                            {savingTargets ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</> : "Save Targets"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

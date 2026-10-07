@@ -32,6 +32,8 @@ import AdminSalary from "./pages/admin/SalaryManagement";
 import AdminServices from "./pages/admin/ServicesMaster";
 import BookingCatalog from "./pages/admin/BookingCatalog";
 import Appointments from "./pages/admin/Appointments";
+import ServiceDue from "./pages/admin/ServiceDue";
+import RemindersNotes from "./pages/admin/RemindersNotes";
 import InventoryLogin from "./pages/inventory/Login";
 import InventoryRoom from "./pages/inventory/InventoryRoom";
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -43,6 +45,8 @@ import RequestConfirmation from "./pages/admin/RequestConfirmation";
 import { accessControlConfig } from "@/config/accessControl";
 import { RequestsProvider } from "@/contexts/RequestsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { RemindersProvider } from "@/contexts/RemindersContext";
+import { GlobalAlarmModal } from "@/components/reminders/GlobalAlarmModal";
 import { GlobalHUD } from "@/components/dashboard/GlobalHUD";
 
 const queryClient = new QueryClient();
@@ -55,6 +59,8 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/admin/customers": AdminCustomers,
   "/admin/vehicles": AdminVehicles,
   "/admin/vehicles/:id": AdminVehicleDetail,
+  "/admin/service-due": ServiceDue,
+  "/admin/reminders": RemindersNotes,
   "/admin/work-orders": AdminWorkOrders,
   "/admin/work-orders/:id": AdminWorkOrderDetail,
   "/admin/analytics": AdminAnalytics,
@@ -91,33 +97,36 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <RequestsProvider>
-            <Toaster />
-            <Sonner />
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/auth" element={<Login />} />
-              <Route path="/inventory/login" element={<InventoryLogin />} />
+            <RemindersProvider>
+              <Toaster />
+              <Sonner />
+              <GlobalAlarmModal />
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/auth" element={<Login />} />
+                <Route path="/inventory/login" element={<InventoryLogin />} />
 
-              {/* Generate routes from centralized access control config */}
-              {accessControlConfig
-                .filter(rule => rule.path !== "*" && rule.path !== "/inventory/login" && routeComponents[rule.path])
-                .map(rule => (
-                  <Route
-                    key={rule.path}
-                    path={rule.path}
-                    element={
-                      <ProtectedRoute allowedRoles={rule.allowedRoles}>
-                        <GlobalHUD>
-                          {React.createElement(routeComponents[rule.path])}
-                        </GlobalHUD>
-                      </ProtectedRoute>
-                    }
-                  />
-                ))}
+                {/* Generate routes from centralized access control config */}
+                {accessControlConfig
+                  .filter(rule => rule.path !== "*" && rule.path !== "/inventory/login" && routeComponents[rule.path])
+                  .map(rule => (
+                    <Route
+                      key={rule.path}
+                      path={rule.path}
+                      element={
+                        <ProtectedRoute allowedRoles={rule.allowedRoles}>
+                          <GlobalHUD>
+                            {React.createElement(routeComponents[rule.path])}
+                          </GlobalHUD>
+                        </ProtectedRoute>
+                      }
+                    />
+                  ))}
 
-              {/* Catch-all route */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+                {/* Catch-all route */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </RemindersProvider>
           </RequestsProvider>
         </AuthProvider>
       </BrowserRouter>

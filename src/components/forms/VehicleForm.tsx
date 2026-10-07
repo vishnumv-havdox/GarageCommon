@@ -37,6 +37,8 @@ interface Vehicle {
   notes?: string
   kilometers_driven?: number
   next_service_km?: number
+  next_service_date?: string
+  primary_contact_id?: string
   vehicle_type?: string // legacy
   model?: string // legacy
   photo_url?: string // legacy
@@ -56,8 +58,10 @@ interface VehicleFormProps {
 
 export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormProps) {
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [customerContacts, setCustomerContacts] = useState<any[]>([])
   const [formData, setFormData] = useState({
     customer_id: initialData?.customer_id || "",
+    primary_contact_id: (initialData as any)?.primary_contact_id || "",
     vehicle_number: initialData?.vehicle_number || "",
     manufacturer_id: initialData?.manufacturer_id || (initialData as any)?.vehicle_models?.manufacturer_id || "",
     category_id: initialData?.category_id || (initialData as any)?.vehicle_models?.vehicle_types?.category_id || "",
@@ -73,6 +77,22 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
     next_service_date: initialData?.next_service_date || "",
     photos: initialData?.photos || (initialData?.photo_url ? [initialData.photo_url] : [])
   })
+
+  // Load customer contacts when selected customer changes
+  useEffect(() => {
+    if (formData.customer_id) {
+      supabase
+        .from('customer_contacts')
+        .select('id, name, designation, phone, is_primary')
+        .eq('customer_id', formData.customer_id)
+        .order('is_primary', { ascending: false })
+        .then(({ data }) => {
+          setCustomerContacts(data || []);
+        });
+    } else {
+      setCustomerContacts([]);
+    }
+  }, [formData.customer_id])
 
   // Normalized catalogs
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
@@ -160,6 +180,7 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
 
       const payload = {
         ...cleanFormData,
+        primary_contact_id: cleanFormData.primary_contact_id || null,
         next_service_date: formData.next_service_date || null,
         ...(initialData ? {} : { status: 'active', entry_date: new Date().toISOString() })
       }
@@ -272,12 +293,45 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
               <Combobox
                 items={customers.map(c => ({ value: c.id, label: `${c.name} ${c.company_name ? `(${c.company_name})` : ''}` }))}
                 value={formData.customer_id}
-                onSelect={(val) => handleChange('customer_id', val)}
+                onSelect={(val) => {
+                  handleChange('customer_id', val);
+                  handleChange('primary_contact_id', '');
+                }}
                 placeholder="Select customer"
                 searchPlaceholder="Search customers..."
               />
             )}
           </div>
+
+          {/* Assigned Contact Person for this Vehicle */}
+          {formData.customer_id && customerContacts.length > 0 && (
+            <div className="space-y-1.5 p-3 rounded-lg border bg-muted/30">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="primary_contact" className="text-xs font-semibold">
+                  Assigned Contact Person (Optional)
+                </Label>
+                <span className="text-[10px] text-muted-foreground">
+                  Person to contact for service updates & reminders
+                </span>
+              </div>
+              <Select
+                value={formData.primary_contact_id || "none"}
+                onValueChange={(val) => handleChange('primary_contact_id', val === "none" ? "" : val)}
+              >
+                <SelectTrigger id="primary_contact" className="h-9 text-xs">
+                  <SelectValue placeholder="Select contact person..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Default Company Phone / No Specific Contact</SelectItem>
+                  {customerContacts.map((ct) => (
+                    <SelectItem key={ct.id} value={ct.id}>
+                      {ct.name} ({ct.designation || "Contact"}) • {ct.phone} {ct.is_primary ? "★ Primary" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-3 rounded-md bg-muted/20">
             {/* Vehicle Photos Upload */}

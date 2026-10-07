@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Trash2, Edit, Mail, Phone, Building2, MapPin, Calendar, Car, ChevronDown, ChevronUp, Receipt, Users, History } from "lucide-react";
+import { Plus, Search, Trash2, Edit, Mail, Phone, Building2, MapPin, Calendar, Car, ChevronDown, ChevronUp, Receipt, Users, History, MessageSquare, Star, PhoneCall, UserCheck } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,20 @@ import { format } from "date-fns";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 import { DriverHistoryDialog } from "@/components/drivers/DriverHistoryDialog";
+
+export interface CustomerContact {
+  id: string;
+  customer_id: string;
+  name: string;
+  designation: string;
+  phone: string;
+  alternate_phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  preferred_contact_method?: string | null;
+  is_primary: boolean;
+  created_at: string;
+}
 
 interface Customer {
   id: string;
@@ -103,6 +117,22 @@ export default function AdminCustomers() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+
+  // Company Contacts state
+  const [companyContacts, setCompanyContacts] = useState<Record<string, CustomerContact[]>>({});
+  const [showContactDialog, setShowContactDialog] = useState(false);
+  const [editingContact, setEditingContact] = useState<CustomerContact | null>(null);
+  const [selectedCustomerForContact, setSelectedCustomerForContact] = useState<string | null>(null);
+  const [contactFormData, setContactFormData] = useState({
+    name: "",
+    designation: "Manager",
+    phone: "",
+    alternate_phone: "",
+    email: "",
+    notes: "",
+    preferred_contact_method: "phone",
+    is_primary: false
+  });
 
   // Driver management state
   const [showDriverDialog, setShowDriverDialog] = useState(false);
@@ -276,6 +306,24 @@ export default function AdminCustomers() {
         });
         setDrivers(driversByCustomer);
 
+        // Customer Contacts
+        const { data: contactsData, error: contactsError } = await supabase
+          .from("customer_contacts")
+          .select("*")
+          .in("customer_id", customerIds)
+          .order("is_primary", { ascending: false });
+
+        if (contactsError) console.error("Error fetching contacts:", contactsError);
+
+        const contactsByCustomer: Record<string, CustomerContact[]> = {};
+        (contactsData || []).forEach((contact: CustomerContact) => {
+          if (!contactsByCustomer[contact.customer_id]) {
+            contactsByCustomer[contact.customer_id] = [];
+          }
+          contactsByCustomer[contact.customer_id].push(contact);
+        });
+        setCompanyContacts(contactsByCustomer);
+
         // [NEW] Active Work Orders
         const { data: woData, error: woError } = await supabase
           .from("work_orders")
@@ -397,6 +445,120 @@ export default function AdminCustomers() {
     } finally {
       setIsDeleteDialogOpen(false);
       setDeletingCustomer(null);
+    }
+  };
+
+  // Company Contact Management Functions
+  const handleAddCompanyContact = (customerId: string) => {
+    setSelectedCustomerForContact(customerId);
+    setEditingContact(null);
+    setContactFormData({
+      name: "",
+      designation: "Manager",
+      phone: "",
+      alternate_phone: "",
+      email: "",
+      notes: "",
+      preferred_contact_method: "phone",
+      is_primary: (companyContacts[customerId]?.length || 0) === 0
+    });
+    setShowContactDialog(true);
+  };
+
+  const handleEditCompanyContact = (contact: CustomerContact) => {
+    setEditingContact(contact);
+    setSelectedCustomerForContact(contact.customer_id);
+    setContactFormData({
+      name: contact.name,
+      designation: contact.designation || "Contact",
+      phone: contact.phone,
+      alternate_phone: contact.alternate_phone || "",
+      email: contact.email || "",
+      notes: contact.notes || "",
+      preferred_contact_method: contact.preferred_contact_method || "phone",
+      is_primary: contact.is_primary || false
+    });
+    setShowContactDialog(true);
+  };
+
+  const handleSaveCompanyContact = async () => {
+    if (!selectedCustomerForContact) return;
+    if (!contactFormData.name.trim() || !contactFormData.phone.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Contact name and phone number are required"
+      });
+      return;
+    }
+
+    const phoneValidation = validateIndianPhoneNumber(contactFormData.phone);
+    if (!phoneValidation.isValid) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Phone Number",
+        description: phoneValidation.error || "Please enter a valid 10-digit Indian phone number"
+      });
+      return;
+    }
+
+    try {
+      if (contactFormData.is_primary) {
+        await supabase
+          .from("customer_contacts")
+          .update({ is_primary: false } as any)
+          .eq("customer_id", selectedCustomerForContact);
+      }
+
+      const payload = {
+        customer_id: selectedCustomerForContact,
+        name: contactFormData.name.trim(),
+        designation: contactFormData.designation.trim() || "Contact",
+        phone: contactFormData.phone.trim(),
+        alternate_phone: contactFormData.alternate_phone.trim() || null,
+        email: contactFormData.email.trim() || null,
+        notes: contactFormData.notes.trim() || null,
+        preferred_contact_method: contactFormData.preferred_contact_method,
+        is_primary: contactFormData.is_primary
+      };
+
+      if (editingContact) {
+        const { error } = await supabase
+          .from("customer_contacts")
+          .update(payload as any)
+          .eq("id", editingContact.id);
+
+        if (error) throw error;
+        toast({ title: "Success", description: "Contact person updated" });
+      } else {
+        const { error } = await supabase
+          .from("customer_contacts")
+          .insert([payload] as any);
+
+        if (error) throw error;
+        toast({ title: "Success", description: "Contact person added" });
+      }
+
+      setShowContactDialog(false);
+      fetchCustomers();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err.message });
+    }
+  };
+
+  const handleDeleteCompanyContact = async (contactId: string) => {
+    if (!confirm("Are you sure you want to delete this contact person?")) return;
+    try {
+      const { error } = await supabase
+        .from("customer_contacts")
+        .delete()
+        .eq("id", contactId);
+
+      if (error) throw error;
+      toast({ title: "Success", description: "Contact person deleted" });
+      fetchCustomers();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err.message });
     }
   };
 
@@ -788,13 +950,45 @@ export default function AdminCustomers() {
                                 </div>
                                 {customer.address && (
                                   <p className="flex items-start gap-2 text-sm text-muted-foreground mt-2">
-                                    <MapPin className="h-4 w-4 mt-0.5" />
+                                    <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
                                     {customer.address}
                                   </p>
                                 )}
 
-                                {/* Vehicles & Invoices Section */}
-                                {(customerVehicles.length > 0 || (invoices[customer.id]?.length || 0) > 0) && (
+                                {/* Quick Company Contacts Preview */}
+                                {companyContacts[customer.id] && companyContacts[customer.id].length > 0 && (
+                                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1 mr-1">
+                                      <UserCheck className="h-3.5 w-3.5 text-primary" /> Contacts:
+                                    </span>
+                                    {companyContacts[customer.id].map(ct => (
+                                      <div key={ct.id} className="flex items-center gap-1.5 bg-muted/70 hover:bg-muted border rounded-lg px-2 py-0.5 text-xs transition-colors">
+                                        {ct.is_primary && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
+                                        <span className="font-medium text-foreground">{ct.name}</span>
+                                        <Badge variant="outline" className="text-[9px] py-0 px-1 border-primary/30 text-primary uppercase font-bold">
+                                          {ct.designation}
+                                        </Badge>
+                                        <a href={`tel:${ct.phone}`} className="text-muted-foreground hover:text-green-600 p-0.5 ml-0.5" title={`Call ${ct.name} (${ct.phone})`}>
+                                          <Phone className="h-3 w-3" />
+                                        </a>
+                                        <a href={`https://wa.me/91${ct.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-green-600 p-0.5" title={`WhatsApp ${ct.name}`}>
+                                          <MessageSquare className="h-3 w-3" />
+                                        </a>
+                                      </div>
+                                    ))}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 text-[10px] px-1.5 text-primary hover:text-primary hover:bg-primary/10 gap-0.5"
+                                      onClick={() => handleAddCompanyContact(customer.id)}
+                                    >
+                                      <Plus className="h-3 w-3" /> Add
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {/* Vehicles, Invoices & Contacts Section */}
+                                {(customerVehicles.length > 0 || (invoices[customer.id]?.length || 0) > 0 || (companyContacts[customer.id]?.length || 0) > 0) && (
                                   <div className="mt-4">
                                     <Button
                                       variant="ghost"
@@ -804,6 +998,12 @@ export default function AdminCustomers() {
                                     >
                                       <Car className="h-4 w-4" />
                                       <span>{customerVehicles.length} Vehicle{customerVehicles.length > 1 ? 's' : ''}</span>
+                                      
+                                      <span className="flex items-center gap-1 ml-2 text-primary font-semibold">
+                                        <Users className="h-3.5 w-3.5" />
+                                        {companyContacts[customer.id]?.length || 0} Contact{(companyContacts[customer.id]?.length || 0) !== 1 ? 's' : ''}
+                                      </span>
+
                                       {/* Also show invoice count if any */}
                                       {(invoices[customer.id]?.length || 0) > 0 && (
                                         <span className="flex items-center gap-1 ml-2">
@@ -935,6 +1135,118 @@ export default function AdminCustomers() {
                                             ))}
                                           </div>
                                         )}
+
+                                        {/* Company Contacts Section */}
+                                        <div className="space-y-2">
+                                          <div className="flex items-center justify-between mt-4">
+                                            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
+                                              <Users className="h-4 w-4 text-primary" />
+                                              Company Contacts ({(companyContacts[customer.id]?.length || 0)})
+                                            </h4>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-7 text-xs"
+                                              onClick={() => handleAddCompanyContact(customer.id)}
+                                            >
+                                              <Plus className="h-3 w-3 mr-1" />
+                                              Add Contact
+                                            </Button>
+                                          </div>
+                                          {(companyContacts[customer.id]?.length || 0) > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                              {companyContacts[customer.id]?.map((contact) => (
+                                                <div key={contact.id} className="bg-muted/40 border p-3 rounded-lg flex flex-col justify-between gap-2 hover:bg-muted/60 transition-colors">
+                                                  <div>
+                                                    <div className="flex items-center justify-between gap-1 mb-1">
+                                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="font-semibold text-sm">{contact.name}</span>
+                                                        <Badge variant={contact.is_primary ? "default" : "secondary"} className="text-[10px] h-5">
+                                                          {contact.designation || "Contact"}
+                                                        </Badge>
+                                                        {contact.is_primary && (
+                                                          <Badge variant="outline" className="text-[10px] h-5 border-amber-500 text-amber-600 gap-1">
+                                                            <Star className="h-2.5 w-2.5 fill-current" /> Primary
+                                                          </Badge>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                    <div className="space-y-1 text-xs text-muted-foreground">
+                                                      <p className="flex items-center gap-1.5">
+                                                        <Phone className="h-3 w-3 text-muted-foreground" />
+                                                        <span>{contact.phone}</span>
+                                                        {contact.alternate_phone && (
+                                                          <span className="opacity-70 text-[11px]">(Alt: {contact.alternate_phone})</span>
+                                                        )}
+                                                      </p>
+                                                      {contact.email && (
+                                                        <p className="flex items-center gap-1.5 truncate">
+                                                          <Mail className="h-3 w-3 text-muted-foreground shrink-0" />
+                                                          <span className="truncate">{contact.email}</span>
+                                                        </p>
+                                                      )}
+                                                      {contact.notes && (
+                                                        <p className="text-[11px] italic text-muted-foreground/80 mt-1">
+                                                          {contact.notes}
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-center justify-between border-t pt-2 mt-1">
+                                                    <div className="flex items-center gap-1">
+                                                      <a
+                                                        href={`tel:${contact.phone}`}
+                                                        className="inline-flex items-center gap-1 text-[11px] px-2 py-1 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300 rounded font-medium hover:opacity-80 transition-opacity"
+                                                      >
+                                                        <Phone className="h-2.5 w-2.5" /> Call
+                                                      </a>
+                                                      <a
+                                                        href={`https://wa.me/91${contact.phone.replace(/\D/g, '')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-[11px] px-2 py-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 rounded font-medium hover:opacity-80 transition-opacity"
+                                                      >
+                                                        <MessageSquare className="h-2.5 w-2.5" /> WhatsApp
+                                                      </a>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                                        onClick={() => handleEditCompanyContact(contact)}
+                                                        title="Edit contact"
+                                                      >
+                                                        <Edit className="h-3 w-3" />
+                                                      </Button>
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => handleDeleteCompanyContact(contact.id)}
+                                                        title="Delete contact"
+                                                      >
+                                                        <Trash2 className="h-3 w-3" />
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <div className="bg-muted/30 p-3 rounded-md text-center">
+                                              <p className="text-xs text-muted-foreground">No additional contacts registered.</p>
+                                              <Button
+                                                variant="link"
+                                                size="sm"
+                                                className="h-auto text-xs mt-0.5"
+                                                onClick={() => handleAddCompanyContact(customer.id)}
+                                              >
+                                                Add company contact
+                                              </Button>
+                                            </div>
+                                          )}
+                                        </div>
 
                                         {/* Drivers Section */}
                                         <div className="space-y-2">
@@ -1516,6 +1828,119 @@ export default function AdminCustomers() {
             </Button>
             <Button variant="destructive" onClick={confirmDeletePosition}>
               Delete Position
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add / Edit Company Contact Dialog */}
+      <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              {editingContact ? "Edit Contact Person" : "Add Company Contact Person"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Full Name *</Label>
+              <Input
+                placeholder="e.g. Ramesh Kumar"
+                value={contactFormData.name}
+                onChange={(e) => setContactFormData(p => ({ ...p, name: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Role / Designation *</Label>
+                <Input
+                  placeholder="Owner, Manager, etc."
+                  value={contactFormData.designation}
+                  onChange={(e) => setContactFormData(p => ({ ...p, designation: e.target.value }))}
+                  list="dlg-designations"
+                />
+                <datalist id="dlg-designations">
+                  <option value="Owner" />
+                  <option value="Manager" />
+                  <option value="Service Coordinator" />
+                  <option value="Accounts" />
+                  <option value="Fleet Supervisor" />
+                  <option value="Driver In-Charge" />
+                </datalist>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Phone Number *</Label>
+                <Input
+                  type="tel"
+                  placeholder="10-digit number"
+                  value={contactFormData.phone}
+                  onChange={(e) => setContactFormData(p => ({ ...p, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                  maxLength={10}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Alternate Phone</Label>
+                <Input
+                  type="tel"
+                  placeholder="Landline / Alt"
+                  value={contactFormData.alternate_phone}
+                  onChange={(e) => setContactFormData(p => ({ ...p, alternate_phone: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Preferred Method</Label>
+                <Select
+                  value={contactFormData.preferred_contact_method}
+                  onValueChange={(val) => setContactFormData(p => ({ ...p, preferred_contact_method: val }))}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="phone">Phone Call</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Email Address</Label>
+              <Input
+                type="email"
+                placeholder="contact@company.com"
+                value={contactFormData.email}
+                onChange={(e) => setContactFormData(p => ({ ...p, email: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Notes / Availability</Label>
+              <Input
+                placeholder="e.g. Speaks Hindi & English"
+                value={contactFormData.notes}
+                onChange={(e) => setContactFormData(p => ({ ...p, notes: e.target.value }))}
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="is_primary_check"
+                checked={contactFormData.is_primary}
+                onChange={(e) => setContactFormData(p => ({ ...p, is_primary: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <Label htmlFor="is_primary_check" className="text-xs cursor-pointer font-medium">
+                Set as Primary Contact for this company
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowContactDialog(false)}>Cancel</Button>
+            <Button onClick={handleSaveCompanyContact}>
+              {editingContact ? "Update Contact" : "Add Contact"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -13,8 +13,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Briefcase, X, CheckCircle } from "lucide-react";
+import { Loader2, UserPlus, Briefcase, X, CheckCircle, FileText, Upload, Shield, Trash2, Calendar, Plus } from "lucide-react";
 import { createUser, updateUser, getUserConfig } from "@/config/userCreation";
 import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 
@@ -24,6 +25,16 @@ interface Position {
   department: string;
   access_level: string;
 }
+
+interface StagedDocument {
+  id: string;
+  type: string;
+  name: string;
+  file: File;
+  expiryDate?: string;
+  notes?: string;
+}
+
 interface EmployeeFormProps {
   onSuccess: () => void;
   onCancel: () => void;
@@ -32,6 +43,17 @@ interface EmployeeFormProps {
   onPositionAdd: (position: Position) => void;
 }
 const USER_TYPE: "employee" = "employee";
+
+const DOCUMENT_TYPES = [
+  { value: "Aadhaar", label: "Aadhaar Card" },
+  { value: "PAN", label: "PAN Card" },
+  { value: "Driving Licence", label: "Driving Licence" },
+  { value: "Passport", label: "Passport" },
+  { value: "Employee ID", label: "Employee ID" },
+  { value: "Address Proof", label: "Address Proof" },
+  { value: "Safety/Compliance", label: "Safety & Compliance Certificate" },
+  { value: "Other", label: "Other Document" },
+];
 
 export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, onPositionAdd }: EmployeeFormProps) {
   const config = getUserConfig(USER_TYPE);
@@ -58,6 +80,96 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingPosition, setIsSavingPosition] = useState(false);
   const { toast } = useToast();
+
+  // Document staging state
+  const [stagedDocs, setStagedDocs] = useState<StagedDocument[]>([]);
+  const [showDocUploadFields, setShowDocUploadFields] = useState(false);
+  const [docTypeInput, setDocTypeInput] = useState("Aadhaar");
+  const [docNameInput, setDocNameInput] = useState("");
+  const [docExpiryInput, setDocExpiryInput] = useState("");
+  const [docNotesInput, setDocNotesInput] = useState("");
+  const [docFileInput, setDocFileInput] = useState<File | null>(null);
+
+  const handleAddStagedDoc = () => {
+    if (!docFileInput) {
+      toast({
+        title: "File Required",
+        description: "Please select a file to attach.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newDoc: StagedDocument = {
+      id: Math.random().toString(),
+      type: docTypeInput,
+      name: docNameInput.trim() || `${docTypeInput} - ${formData.name || "Employee"}`,
+      file: docFileInput,
+      expiryDate: docExpiryInput || undefined,
+      notes: docNotesInput.trim() || undefined,
+    };
+
+    setStagedDocs((prev) => [...prev, newDoc]);
+    setDocFileInput(null);
+    setDocNameInput("");
+    setDocExpiryInput("");
+    setDocNotesInput("");
+    setShowDocUploadFields(false);
+    toast({
+      title: "Document Staged",
+      description: `${newDoc.name} will be uploaded when saving.`,
+    });
+  };
+
+  const uploadStagedDocs = async (empId: string) => {
+    for (const doc of stagedDocs) {
+      try {
+        const sanitized = doc.file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const storagePath = `${empId}/${Date.now()}_${sanitized}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from("employee-documents")
+          .upload(storagePath, doc.file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (uploadErr) {
+          console.error("Storage upload error:", uploadErr);
+          continue;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from("employee-documents")
+          .getPublicUrl(storagePath);
+
+        let docStatus = "Active";
+        if (doc.expiryDate) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const exp = new Date(doc.expiryDate);
+          const daysLeft = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+          if (daysLeft < 0) docStatus = "Expired";
+          else if (daysLeft <= 30) docStatus = "Expiring Soon";
+        }
+
+        await supabase.from("employee_documents").insert({
+          employee_id: empId,
+          document_type: doc.type,
+          document_name: doc.name,
+          file_url: urlData.publicUrl,
+          file_type: doc.file.type,
+          file_size: doc.file.size,
+          upload_date: new Date().toISOString(),
+          expiry_date: doc.expiryDate ? doc.expiryDate : null,
+          notes: doc.notes || null,
+          status: docStatus,
+        });
+      } catch (err) {
+        console.error("Failed uploading staged doc:", err);
+      }
+    }
+  };
 
   useEffect(() => {
     if (editingEmployee) {
@@ -128,6 +240,7 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
 
       // Sync Salary Config on Update
       const { data: emp } = await supabase.from("employees").select("id").eq("user_id", editingEmployee.user_id).single();
+      const targetEmpId = emp?.id || editingEmployee.id;
       if (emp) {
         await supabase.from("employee_salary_configs").upsert({
           employee_id: emp.id,
@@ -135,6 +248,11 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
           base_amount: parseFloat(formData.salary) || 0,
           is_active: true
         }, { onConflict: 'employee_id' });
+      }
+
+      // Upload staged documents if any
+      if (stagedDocs.length > 0 && targetEmpId) {
+        await uploadStagedDocs(targetEmpId);
       }
 
       toast({ title: "Success", description: "Employee updated successfully" });
@@ -162,7 +280,7 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
         return;
       }
 
-      // Upsert Salary Config
+      // Upsert Salary Config & Upload documents
       if (result.authUserId) {
         const { data: emp } = await supabase.from("employees").select("id").eq("user_id", result.authUserId).single();
         if (emp) {
@@ -172,6 +290,11 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
             base_amount: parseFloat(formData.salary) || 0,
             is_active: true
           });
+
+          // Upload staged documents if any
+          if (stagedDocs.length > 0) {
+            await uploadStagedDocs(emp.id);
+          }
         }
       }
 
@@ -268,6 +391,146 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
               onCheckedChange={(checked) => handleChange("attendance_self_service", checked)}
               disabled={isLoading}
             />
+          </div>
+
+          {/* Employee Documents Staging Section */}
+          <div className="sm:col-span-2 border rounded-xl p-4 bg-muted/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" />
+                <h4 className="font-semibold text-xs sm:text-sm text-foreground">
+                  Employee Documents & Identity Uploads (Optional)
+                </h4>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => setShowDocUploadFields(!showDocUploadFields)}
+              >
+                <Plus className="h-3 w-3" />
+                {showDocUploadFields ? "Cancel" : "Attach Document"}
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Attach official identification (Aadhaar, PAN, Driving Licence, Passport, Address Proof) for secure storage and expiry tracking.
+            </p>
+
+            {/* List of currently staged docs */}
+            {stagedDocs.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                {stagedDocs.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between p-2 rounded-lg border bg-background text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-4 w-4 text-primary shrink-0" />
+                      <span className="font-semibold truncate">{doc.name}</span>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {doc.type}
+                      </Badge>
+                      {doc.expiryDate && (
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Exp: {doc.expiryDate}
+                        </span>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-rose-500 hover:text-rose-600"
+                      onClick={() => setStagedDocs((prev) => prev.filter((d) => d.id !== doc.id))}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Document Form Trigger */}
+            {showDocUploadFields && (
+              <div className="p-3 rounded-lg border bg-background space-y-3 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Document Type</Label>
+                    <Select value={docTypeInput} onValueChange={setDocTypeInput}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DOCUMENT_TYPES.map((dt) => (
+                          <SelectItem key={dt.value} value={dt.value} className="text-xs">
+                            {dt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Document Name / Title</Label>
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder={`e.g. ${docTypeInput} Front & Back`}
+                      value={docNameInput}
+                      onChange={(e) => setDocNameInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Expiry Date (if applicable)</Label>
+                    <Input
+                      type="date"
+                      className="h-8 text-xs"
+                      value={docExpiryInput}
+                      onChange={(e) => setDocExpiryInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Select Document File *</Label>
+                    <Input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp"
+                      className="h-8 text-xs cursor-pointer file:text-xs file:py-0.5 file:px-1.5"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setDocFileInput(e.target.files[0]);
+                          if (!docNameInput) {
+                            setDocNameInput(`${docTypeInput} - ${formData.name || "Employee"}`);
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1 border-t">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setShowDocUploadFields(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleAddStagedDoc}
+                  >
+                    Add Document
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

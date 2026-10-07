@@ -41,6 +41,8 @@ interface Vehicle {
   customer_name: string
   kilometers_driven?: number
   next_service_km?: number
+  next_service_date?: string
+  primary_contact_id?: string
   vehicle_type_name?: string
   vehicle_category_name?: string
   manufacturer_name?: string
@@ -205,9 +207,15 @@ export function WorkOrderForm({
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState<Date | undefined>(undefined)
   const [estimatedDeliveryTime, setEstimatedDeliveryTime] = useState("18:00")
 
+  // Company Contacts for this work order
+  const [companyContacts, setCompanyContacts] = useState<any[]>([])
+  const [contactId, setContactId] = useState<string>("")
+
   const [lifecycleData, setLifecycleData] = useState({
     odometer_reading: 0,
     next_service_due_km: 0,
+    next_service_due_date: "",
+    service_notes: "",
     is_fc_renewal: false
   })
 
@@ -765,6 +773,27 @@ export function WorkOrderForm({
     fetchDriverSuggestions(id)
   }
 
+  // Load company contacts whenever customer changes
+  useEffect(() => {
+    if (customerId) {
+      supabase
+        .from('customer_contacts')
+        .select('id, name, designation, phone, is_primary')
+        .eq('customer_id', customerId)
+        .order('is_primary', { ascending: false })
+        .then(({ data }) => {
+          setCompanyContacts(data || []);
+          if (!contactId && data && data.length > 0) {
+            const primary = data.find(c => c.is_primary) || data[0];
+            setContactId(primary.id);
+          }
+        });
+    } else {
+      setCompanyContacts([]);
+      setContactId("");
+    }
+  }, [customerId]);
+
   const fetchDriverSuggestions = async (companyId: string) => {
     try {
       const { data, error } = await supabase.rpc('suggest_drivers', {
@@ -808,9 +837,14 @@ export function WorkOrderForm({
     if (selectedVehicle) {
       setLifecycleData(prev => ({
         ...prev,
-        odometer_reading: 0, // Force fresh entry as per requirement
-        next_service_due_km: 0 // Force fresh entry as per requirement
+        odometer_reading: selectedVehicle.kilometers_driven || 0,
+        next_service_due_km: selectedVehicle.next_service_km || 0,
+        next_service_due_date: selectedVehicle.next_service_date || ""
       }))
+
+      if (selectedVehicle.primary_contact_id) {
+        setContactId(selectedVehicle.primary_contact_id);
+      }
 
       setApplicableServiceIds(null); // Reset as we are using client-side calculation now
       // The filtered list is calculated below in the render or via a memo
@@ -913,8 +947,14 @@ export function WorkOrderForm({
       setLifecycleData({
         odometer_reading: wo.odometer_reading || 0,
         next_service_due_km: wo.next_service_due_km || 0,
+        next_service_due_date: wo.next_service_due_date || "",
+        service_notes: "",
         is_fc_renewal: wo.is_fc_renewal || false
       });
+
+      if (wo.contact_id) {
+        setContactId(wo.contact_id);
+      }
 
       // 2. Fetch Services and joined data
       const { data: services, error: sError } = await supabase
@@ -1818,6 +1858,8 @@ export function WorkOrderForm({
         }),
         odometer_reading: lifecycleData.odometer_reading || null,
         next_service_due_km: lifecycleData.next_service_due_km || null,
+        next_service_due_date: lifecycleData.next_service_due_date || null,
+        contact_id: contactId || null,
         is_fc_renewal: lifecycleData.is_fc_renewal,
         estimated_delivery_date: deliveryDateTime.toISOString()
       };
@@ -3176,28 +3218,122 @@ export function WorkOrderForm({
                 Service Tracking & Lifecycle
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="odometer">Current Odometer (KM)</Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="odometer" className="text-xs">Current Odometer (KM)</Label>
                   <Input
                     id="odometer"
                     type="number"
                     value={lifecycleData.odometer_reading || ''}
-                    onChange={(e) => setLifecycleData(prev => ({ ...prev, odometer_reading: parseInt(e.target.value) || 0 }))}
+                    onChange={(e) => {
+                      const km = parseInt(e.target.value) || 0;
+                      setLifecycleData(prev => ({
+                        ...prev,
+                        odometer_reading: km,
+                        next_service_due_km: prev.next_service_due_km && prev.next_service_due_km > km ? prev.next_service_due_km : (km > 0 ? km + 10000 : 0)
+                      }));
+                    }}
                     placeholder="e.g. 50000"
+                    className="h-9 text-xs"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="next_service">Next Service Due (KM)</Label>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="next_service" className="text-xs">Next Service Due (KM)</Label>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setLifecycleData(p => ({ ...p, next_service_due_km: (p.odometer_reading || 0) + 5000 }))}
+                        className="text-[10px] text-primary hover:underline font-medium"
+                      >
+                        +5k
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLifecycleData(p => ({ ...p, next_service_due_km: (p.odometer_reading || 0) + 10000 }))}
+                        className="text-[10px] text-primary hover:underline font-medium"
+                      >
+                        +10k
+                      </button>
+                    </div>
+                  </div>
                   <Input
                     id="next_service"
                     type="number"
                     value={lifecycleData.next_service_due_km || ''}
                     onChange={(e) => setLifecycleData(prev => ({ ...prev, next_service_due_km: parseInt(e.target.value) || 0 }))}
-                    placeholder="e.g. 55000"
+                    placeholder="e.g. 60000"
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="next_service_date" className="text-xs">Next Service Due Date</Label>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setMonth(d.getMonth() + 3);
+                          setLifecycleData(p => ({ ...p, next_service_due_date: d.toISOString().split('T')[0] }));
+                        }}
+                        className="text-[10px] text-primary hover:underline font-medium"
+                      >
+                        +3m
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setMonth(d.getMonth() + 6);
+                          setLifecycleData(p => ({ ...p, next_service_due_date: d.toISOString().split('T')[0] }));
+                        }}
+                        className="text-[10px] text-primary hover:underline font-medium"
+                      >
+                        +6m
+                      </button>
+                    </div>
+                  </div>
+                  <Input
+                    id="next_service_date"
+                    type="date"
+                    value={lifecycleData.next_service_due_date || ''}
+                    onChange={(e) => setLifecycleData(prev => ({ ...prev, next_service_due_date: e.target.value }))}
+                    className="h-9 text-xs"
                   />
                 </div>
               </div>
+
+              {/* Relevant Contact Person for this service */}
+              {companyContacts.length > 0 && (
+                <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="service_contact" className="text-xs font-semibold flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-primary" />
+                      Relevant Contact Person for this Work Order
+                    </Label>
+                    <span className="text-[10px] text-muted-foreground">
+                      Person to notify upon service completion & reminders
+                    </span>
+                  </div>
+                  <Select
+                    value={contactId || "none"}
+                    onValueChange={(val) => setContactId(val === "none" ? "" : val)}
+                  >
+                    <SelectTrigger id="service_contact" className="h-9 text-xs">
+                      <SelectValue placeholder="Select contact person..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Use Company Default</SelectItem>
+                      {companyContacts.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name} ({c.designation || 'Contact'}) • {c.phone} {c.is_primary ? "★ Primary" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
 
             </div>

@@ -86,6 +86,18 @@ export const accessControlConfig: AccessRule[] = [
     description: "Vehicle detail view",
   },
   {
+    path: "/admin/service-due",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Vehicle Service Due & Reminders - admin and manager only",
+  },
+  {
+    path: "/admin/reminders",
+    allowedRoles: ["admin", "manager"],
+    redirectTo: "/dashboard",
+    description: "Operational Reminders, Notes, and Alarms - admin and manager",
+  },
+  {
     path: "/admin/work-orders",
     allowedRoles: ["admin", "manager"],
     redirectTo: "/dashboard",
@@ -355,11 +367,13 @@ export const navConfig: NavItem[] = [
   { label: "Staff Portal", path: "/staff", icon: Briefcase, roles: ["staff"] },
   { label: "Attendance", path: "/staff/attendance", icon: CalendarCheck, roles: ["staff"] },
   { label: "My Portal", path: "/customer", icon: User, roles: ["customer"] },
+  { label: "Reminders & Notes", path: "/admin/reminders", icon: BellRing, roles: ["admin", "manager"] },
 ];
 
 // Import icons
 import {
   Shield, UserCog, Users, Truck, FileText, Package, Receipt,
   Briefcase, User, Settings, Activity, BarChart3, PieChart, QrCode,
-  CalendarCheck, Banknote, Wrench, Inbox, BookText, BookOpen, Calendar
+  CalendarCheck, Banknote, Wrench, Inbox, BookText, BookOpen, Calendar,
+  BellRing
 } from "lucide-react";

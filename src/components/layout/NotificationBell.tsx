@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Calendar, AlertCircle, Package, FileText, ArrowRight, CheckCheck, X } from "lucide-react";
+import { Bell, Calendar, AlertCircle, Package, FileText, ArrowRight, CheckCheck, X, Wrench, Phone, Check } from "lucide-react";
 import { useRequests } from "@/contexts/RequestsContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,20 +13,37 @@ import { formatDistanceToNow } from "date-fns";
 
 interface NotificationItem {
   id: string;
-  type: "appointment" | "urgent" | "part" | "approval";
+  type: "appointment" | "urgent" | "part" | "approval" | "service_due";
   title: string;
   description: string;
   time: string;
   link: string;
+  vehicleId?: string;
+  vehicleNumber?: string;
+  dueDate?: string | null;
+  dueKm?: number | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
 }
 
 export function NotificationBell() {
   const navigate = useNavigate();
-  const { totalPending, urgentAppointments, pendingAppointments, pendingPartRequests, pendingWorkApprovals } = useRequests();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const {
+    totalPending,
+    urgentAppointments,
+    pendingAppointments,
+    pendingPartRequests,
+    pendingWorkApprovals,
+    serviceDueReminders,
+    refreshCounts,
+  } = useRequests();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [ackingIds, setAckingIds] = useState<string[]>([]);
 
   const fetchNotificationDetails = async () => {
     if (loading) return;
@@ -116,6 +135,68 @@ export function NotificationBell() {
         });
       }
 
+      // 5. Service Due Reminders (due within 2 days or past date, or remaining km <= 500)
+      if (serviceDueReminders > 0 || true) {
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + 2);
+        const targetDateStr = targetDate.toISOString().split("T")[0];
+
+        const { data: dueVehicles } = await supabase
+          .from("vehicles")
+          .select(`
+            id, vehicle_number, model, kilometers_driven, next_service_km, next_service_date,
+            customer:customers(id, name, company_name, phone),
+            primary_contact:customer_contacts(id, name, designation, phone)
+          `)
+          .or(`next_service_date.lte.${targetDateStr},next_service_km.not.is.null`)
+          .limit(10);
+
+        // Fetch existing 'informed' reminders to exclude acknowledged ones
+        const { data: informedReminders } = await supabase
+          .from("service_reminders")
+          .select("vehicle_id, due_date, due_km")
+          .eq("status", "informed");
+
+        const informedSet = new Set(
+          (informedReminders || []).map((r) => `${r.vehicle_id}_${r.due_date || ""}_${r.due_km || ""}`)
+        );
+
+        (dueVehicles || []).forEach((v: any) => {
+          const isDateDue = v.next_service_date && v.next_service_date <= targetDateStr;
+          const remainingKm = (v.next_service_km || 0) - (v.kilometers_driven || 0);
+          const isKmDue = v.next_service_km && remainingKm <= 500;
+
+          if (isDateDue || isKmDue) {
+            const key = `${v.id}_${v.next_service_date || ""}_${v.next_service_km || ""}`;
+            if (!informedSet.has(key)) {
+              const compName = v.customer?.company_name || v.customer?.name || "Customer";
+              const contactName = v.primary_contact?.name || v.customer?.name || "Customer Contact";
+              const contactPhone = v.primary_contact?.phone || v.customer?.phone || null;
+
+              let reason = "";
+              if (isDateDue && isKmDue) reason = `Due on ${v.next_service_date} & ${remainingKm} km left`;
+              else if (isDateDue) reason = `Due on ${v.next_service_date}`;
+              else reason = `${remainingKm <= 0 ? "Overdue by " + Math.abs(remainingKm) : remainingKm} km left`;
+
+              items.push({
+                id: `serv-${v.id}`,
+                type: "service_due",
+                title: `Service Due: ${v.vehicle_number}`,
+                description: `${compName} • ${reason} • Contact: ${contactName}`,
+                time: v.next_service_date ? new Date(v.next_service_date).toISOString() : new Date().toISOString(),
+                link: "/admin/service-due",
+                vehicleId: v.id,
+                vehicleNumber: v.vehicle_number,
+                dueDate: v.next_service_date,
+                dueKm: v.next_service_km,
+                contactName,
+                contactPhone,
+              });
+            }
+          }
+        });
+      }
+
       setNotifications(items.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()));
     } catch (err) {
       console.error("Error fetching notification details:", err);
@@ -137,8 +218,51 @@ export function NotificationBell() {
     setDismissedIds((prev) => [...prev, id]);
   };
 
+  const handleAcknowledgeService = async (e: React.MouseEvent, item: NotificationItem) => {
+    e.stopPropagation();
+    if (!item.vehicleId) return;
+
+    setAckingIds((prev) => [...prev, item.id]);
+    try {
+      const { error } = await supabase.from("service_reminders").insert({
+        vehicle_id: item.vehicleId,
+        due_date: item.dueDate || null,
+        due_km: item.dueKm || null,
+        service_type: "Routine Service",
+        service_description: `Acknowledged via Notification Center by ${user?.full_name || "Admin"}`,
+        trigger_type: item.dueKm ? "kilometer" : "date",
+        status: "informed",
+        informed_at: new Date().toISOString(),
+        informed_by: user?.id,
+        notes: `Customer contacted (${item.contactName || ""}). Confirmed informed.`,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Service Reminder Acknowledged",
+        description: `Marked as Informed / Okay for ${item.vehicleNumber}. Archived to audit log.`,
+      });
+
+      // Remove from current list
+      setNotifications((prev) => prev.filter((n) => n.id !== item.id));
+      await refreshCounts();
+    } catch (err: any) {
+      console.error("Error acknowledging service reminder:", err);
+      toast({
+        title: "Acknowledgment Failed",
+        description: err.message || "Could not save acknowledgment",
+        variant: "destructive",
+      });
+    } finally {
+      setAckingIds((prev) => prev.filter((id) => id !== item.id));
+    }
+  };
+
   const getIcon = (type: NotificationItem["type"]) => {
     switch (type) {
+      case "service_due":
+        return <Wrench className="h-4 w-4 text-amber-500" />;
       case "appointment":
         return <Calendar className="h-4 w-4 text-blue-500" />;
       case "urgent":
@@ -164,9 +288,9 @@ export function NotificationBell() {
           <Bell className="h-5 w-5" />
           {totalPending > 0 && (
             <span className="absolute -top-1 -right-1 flex h-4 w-4">
-              {urgentAppointments > 0 && (
+              {urgentAppointments > 0 || serviceDueReminders > 0 ? (
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-              )}
+              ) : null}
               <span className="relative inline-flex rounded-full h-4 w-4 bg-rose-600 text-[9px] font-black text-white items-center justify-center">
                 {totalPending > 9 ? "9+" : totalPending}
               </span>
@@ -187,6 +311,11 @@ export function NotificationBell() {
                 {totalPending} pending
               </Badge>
             )}
+            {serviceDueReminders > 0 && (
+              <Badge className="bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 border-amber-300 dark:border-amber-800 text-[10px] px-1.5 py-0">
+                {serviceDueReminders} service due
+              </Badge>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -202,7 +331,7 @@ export function NotificationBell() {
           </Button>
         </div>
 
-        <ScrollArea className="max-h-[340px]">
+        <ScrollArea className="max-h-[380px]">
           {activeItems.length === 0 ? (
             <div className="py-10 px-4 text-center">
               <div className="h-10 w-10 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center mx-auto mb-2">
@@ -210,7 +339,7 @@ export function NotificationBell() {
               </div>
               <p className="text-xs font-semibold text-foreground">Inbox Zero</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                All requests, appointments, and approvals are up to date!
+                All requests, appointments, and service reminders are up to date!
               </p>
             </div>
           ) : (
@@ -222,7 +351,7 @@ export function NotificationBell() {
                     setOpen(false);
                     navigate(item.link);
                   }}
-                  className="p-3 hover:bg-muted/50 cursor-pointer transition-colors flex items-start gap-3 group"
+                  className="p-3 hover:bg-muted/50 cursor-pointer transition-colors flex items-start gap-3 group relative"
                 >
                   <div className="p-2 rounded-xl bg-muted shrink-0 mt-0.5">
                     {getIcon(item.type)}
@@ -236,9 +365,34 @@ export function NotificationBell() {
                         {item.time ? formatDistanceToNow(new Date(item.time), { addSuffix: true }) : ""}
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
+                    <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
                       {item.description}
                     </p>
+
+                    {item.type === "service_due" && (
+                      <div className="flex items-center gap-2 mt-2 pt-1 border-t border-border/40">
+                        {item.contactPhone && (
+                          <a
+                            href={`tel:${item.contactPhone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-md transition-colors"
+                          >
+                            <Phone className="h-3 w-3" />
+                            Call
+                          </a>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={ackingIds.includes(item.id)}
+                          onClick={(e) => handleAcknowledgeService(e, item)}
+                          className="h-6 text-[10px] px-2 font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60"
+                        >
+                          <Check className="h-3 w-3 mr-1 text-emerald-600" />
+                          {ackingIds.includes(item.id) ? "Saving..." : "Informed / Okay"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={(e) => handleDismiss(e, item.id)}
@@ -253,17 +407,29 @@ export function NotificationBell() {
           )}
         </ScrollArea>
 
-        <div className="p-2.5 border-t bg-muted/20 text-center">
+        <div className="p-2.5 border-t bg-muted/20 flex items-center justify-between gap-2">
           <Button
             variant="ghost"
             size="sm"
-            className="w-full text-xs font-medium text-muted-foreground hover:text-foreground h-8"
+            className="flex-1 text-xs font-medium text-muted-foreground hover:text-foreground h-8"
+            onClick={() => {
+              setOpen(false);
+              navigate("/admin/service-due");
+            }}
+          >
+            <Wrench className="h-3.5 w-3.5 mr-1 text-amber-500" />
+            Service Due ({serviceDueReminders})
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-1 text-xs font-medium text-muted-foreground hover:text-foreground h-8"
             onClick={() => {
               setOpen(false);
               navigate("/admin/requests");
             }}
           >
-            Go to Approvals & Inbox
+            Approvals & Inbox
           </Button>
         </div>
       </PopoverContent>

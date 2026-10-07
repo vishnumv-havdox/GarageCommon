@@ -28,10 +28,12 @@ import {
   CalendarCheck,
   Zap,
   Clock,
-  Loader2
+  Loader2,
+  FileText,
 } from "lucide-react";
 import { EmployeeForm } from "@/components/forms/EmployeeForm";
 import { EmployeeTracker } from "@/components/employees/EmployeeTracker";
+import { EmployeeDocumentsModal } from "@/components/employees/EmployeeDocumentsModal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { format, isToday } from "date-fns";
@@ -82,6 +84,9 @@ export default function AdminEmployees() {
   const [todayAttendance, setTodayAttendance] = useState<Record<string, any>>({});
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [workforceSettings, setWorkforceSettings] = useState<any>(null);
+  const [selectedEmployeeForDocs, setSelectedEmployeeForDocs] = useState<Employee | null>(null);
+  const [isDocsModalOpen, setIsDocsModalOpen] = useState(false);
+  const [employeeDocStats, setEmployeeDocStats] = useState<Record<string, { total: number; hasExpired: boolean; hasExpiringSoon: boolean }>>({});
 
   useEffect(() => {
     fetchData();
@@ -132,6 +137,29 @@ export default function AdminEmployees() {
         .eq("is_active", true)
         .maybeSingle();
       setWorkforceSettings(wfSettings);
+
+      // Fetch document stats
+      const { data: docData } = await supabase
+        .from("employee_documents")
+        .select("id, employee_id, expiry_date, status");
+
+      const todayDate = new Date();
+      todayDate.setHours(0, 0, 0, 0);
+      const docStatsMap: Record<string, { total: number; hasExpired: boolean; hasExpiringSoon: boolean }> = {};
+
+      (docData || []).forEach((d) => {
+        if (!docStatsMap[d.employee_id]) {
+          docStatsMap[d.employee_id] = { total: 0, hasExpired: false, hasExpiringSoon: false };
+        }
+        docStatsMap[d.employee_id].total += 1;
+        if (d.expiry_date) {
+          const exp = new Date(d.expiry_date);
+          const diffDays = (exp.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24);
+          if (diffDays < 0) docStatsMap[d.employee_id].hasExpired = true;
+          else if (diffDays <= 30) docStatsMap[d.employee_id].hasExpiringSoon = true;
+        }
+      });
+      setEmployeeDocStats(docStatsMap);
 
     } catch (error: any) {
       console.error("Error fetching data:", error);
@@ -616,14 +644,46 @@ export default function AdminEmployees() {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleEdit(employee)}>
+                    <div className="flex items-center gap-1.5">
+                      {/* Document Management Button */}
+                      {(() => {
+                        const dStats = employeeDocStats[employee.id];
+                        return (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              "h-8 text-xs px-2 gap-1 font-medium transition-colors",
+                              dStats?.hasExpired
+                                ? "border-rose-300 text-rose-600 bg-rose-50/70 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/30"
+                                : dStats?.hasExpiringSoon
+                                ? "border-amber-300 text-amber-600 bg-amber-50/70 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                            onClick={() => {
+                              setSelectedEmployeeForDocs(employee);
+                              setIsDocsModalOpen(true);
+                            }}
+                            title="Manage identity documents, licenses, and expiry tracking"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            <span>{dStats?.total || 0} Docs</span>
+                            {dStats?.hasExpired ? (
+                              <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                            ) : dStats?.hasExpiringSoon ? (
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            ) : null}
+                          </Button>
+                        );
+                      })()}
+
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleEdit(employee)} title="Edit Employee">
                         <Edit className="h-4 w-4 text-muted-foreground" />
                       </Button>
                       <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => {
                         setSelectedEmployeeForTracker(employee);
                         setIsTrackerOpen(true);
-                      }}>
+                      }} title="Attendance Tracker">
                         <TrendingUp className="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </div>
@@ -670,6 +730,13 @@ export default function AdminEmployees() {
         employee={selectedEmployeeForTracker}
         open={isTrackerOpen}
         onOpenChange={setIsTrackerOpen}
+      />
+
+      <EmployeeDocumentsModal
+        isOpen={isDocsModalOpen}
+        onClose={() => setIsDocsModalOpen(false)}
+        employee={selectedEmployeeForDocs}
+        onDocumentsUpdated={fetchData}
       />
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

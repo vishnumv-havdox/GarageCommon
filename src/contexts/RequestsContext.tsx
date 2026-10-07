@@ -9,6 +9,7 @@ interface RequestsContextType {
     pendingAppointments: number;
     urgentAppointments: number;
     activeWorkOrders: number;
+    serviceDueReminders: number;
     totalPending: number;
     refreshCounts: () => Promise<void>;
 }
@@ -22,6 +23,7 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
     const [pendingAppointments, setPendingAppointments] = useState(0);
     const [urgentAppointments, setUrgentAppointments] = useState(0);
     const [activeWorkOrders, setActiveWorkOrders] = useState(0);
+    const [serviceDueReminders, setServiceDueReminders] = useState(0);
     const { toast } = useToast();
 
     const fetchCounts = useCallback(async () => {
@@ -76,6 +78,42 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
 
             if (activeError) console.error("Error fetching active work orders count:", activeError);
             setActiveWorkOrders(activeCount || 0);
+
+            // 6. Service Due Reminders (due within 2 days or past date, or remaining km <= 500)
+            const targetDate = new Date();
+            targetDate.setDate(targetDate.getDate() + 2);
+            const targetDateStr = targetDate.toISOString().split('T')[0];
+
+            const { data: dueVehicles } = await supabase
+                .from("vehicles")
+                .select("id, kilometers_driven, next_service_km, next_service_date")
+                .or(`next_service_date.lte.${targetDateStr},next_service_km.not.is.null`);
+
+            // Fetch existing 'informed' reminders to exclude acknowledged ones
+            const { data: informedReminders } = await supabase
+                .from("service_reminders")
+                .select("vehicle_id, due_date, due_km")
+                .eq("status", "informed");
+
+            const informedSet = new Set(
+                (informedReminders || []).map(r => `${r.vehicle_id}_${r.due_date || ''}_${r.due_km || ''}`)
+            );
+
+            let activeDueCount = 0;
+            (dueVehicles || []).forEach(v => {
+                const isDateDue = v.next_service_date && v.next_service_date <= targetDateStr;
+                const remainingKm = (v.next_service_km || 0) - (v.kilometers_driven || 0);
+                const isKmDue = v.next_service_km && remainingKm <= 500;
+
+                if (isDateDue || isKmDue) {
+                    const key = `${v.id}_${v.next_service_date || ''}_${v.next_service_km || ''}`;
+                    if (!informedSet.has(key)) {
+                        activeDueCount++;
+                    }
+                }
+            });
+
+            setServiceDueReminders(activeDueCount);
 
         } catch (error) {
             console.error("Error fetching request counts:", error);
@@ -140,6 +178,17 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
             )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "service_reminders"
+                },
+                () => {
+                    fetchCounts();
+                }
+            )
             .subscribe();
 
         return () => {
@@ -153,7 +202,8 @@ export function RequestsProvider({ children }: { children: React.ReactNode }) {
         pendingAppointments,
         urgentAppointments,
         activeWorkOrders,
-        totalPending: pendingPartRequests + pendingWorkApprovals + pendingAppointments + urgentAppointments,
+        serviceDueReminders,
+        totalPending: pendingPartRequests + pendingWorkApprovals + pendingAppointments + urgentAppointments + serviceDueReminders,
         refreshCounts: fetchCounts
     };
 

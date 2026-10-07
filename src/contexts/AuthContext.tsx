@@ -28,6 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isMounted = useRef(true);
   const initRef = useRef(false);
 
+  const currentUserRef = useRef<AuthUser | null>(null);
+
+  const updateUserState = (newUser: AuthUser | null) => {
+    currentUserRef.current = newUser;
+    setUser(newUser);
+  };
+
   const fetchUserRoleData = async (userId: string): Promise<{ role: UserRole; full_name?: string }> => {
     try {
       console.log("[AuthContext] Fetching role for:", userId);
@@ -68,59 +75,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isMounted.current) return;
 
     setSession(currentSession);
-    const authUser = currentSession?.user ? { ...currentSession.user } as AuthUser : null;
+    const authUser = currentSession?.user ? ({ ...currentSession.user } as AuthUser) : null;
     
     if (!authUser) {
-      setUser(null);
-      // Only set loading false if we finished the initial check, otherwise
-      // let the fallback in initial check handle it to avoid flickering.
-      if (initRef.current) {
-        setLoading(false);
-      }
+      updateUserState(null);
+      setLoading(false);
       return;
     }
 
-    // Only ensure we are in a loading state if we don't have a user yet
-    if (!user) {
+    // PREVENT TAB-SWITCH RELOAD / DATA LOSS:
+    // If user is already authenticated and has the same user ID (e.g. tab switch, window focus,
+    // TOKEN_REFRESHED, or storage sync), NEVER toggle loading to true!
+    // Setting loading = true unmounts ProtectedRoute and wipes all user-entered form data.
+    if (currentUserRef.current && currentUserRef.current.id === authUser.id) {
+      const existingRole = currentUserRef.current.role;
+      const existingFullName = currentUserRef.current.full_name;
+      const updatedUser: AuthUser = {
+        ...authUser,
+        role: existingRole,
+        full_name: existingFullName,
+      };
+      updateUserState(updatedUser);
+      setLoading(false);
+      return;
+    }
+
+    // Only set loading = true during initial cold boot when no user is known yet
+    if (!currentUserRef.current) {
       setLoading(true);
     }
     
-    // Fetch role and profile data
+    // Fetch role and profile data for newly signed in user
     const { role, full_name } = await fetchUserRoleData(authUser.id);
     
     if (!isMounted.current) return;
 
-    // Set the complete user object and finish loading in one go or side-by-side
-    // React 18 will batch these updates.
-    setUser({
+    const fullUser: AuthUser = {
       ...authUser,
       role,
-      full_name
-    });
+      full_name,
+    };
+    updateUserState(fullUser);
     setLoading(false);
   };
 
   useEffect(() => {
     isMounted.current = true;
 
-    // Use onAuthStateChange as the primary source of truth.
-    // It fires INITIAL_SESSION on setup in modern Supabase.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
         handleAuthStateChange(event, currentSession);
       }
     );
 
-    // Backup check in case INITIAL_SESSION doesn't fire or we need immediate session
+    // Initial session check
     if (!initRef.current) {
       supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
         if (isMounted.current && !initRef.current) {
+          initRef.current = true;
           if (initialSession) {
             handleAuthStateChange("INITIAL_SESSION", initialSession);
           } else {
             setLoading(false);
           }
-          initRef.current = true;
         }
       });
     }
@@ -133,16 +150,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    setUser(null);
+    updateUserState(null);
     setSession(null);
+    setLoading(false);
     navigate("/auth");
   };
 
   const refreshUser = async () => {
-    if (session?.user) {
-      const { role, full_name } = await fetchUserRoleData(session.user.id);
-      if (isMounted.current) {
-        setUser(prev => prev ? { ...prev, role, full_name } : null);
+    const currentId = currentUserRef.current?.id || session?.user?.id;
+    if (currentId) {
+      const { role, full_name } = await fetchUserRoleData(currentId);
+      if (isMounted.current && currentUserRef.current) {
+        const updated = { ...currentUserRef.current, role, full_name };
+        updateUserState(updated);
       }
     }
   };

@@ -11,7 +11,8 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  // Only show full screen loader during initial auth resolution when user is not yet known
+  if (loading && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

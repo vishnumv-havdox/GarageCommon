@@ -11,6 +11,7 @@ import { LogOut, Users, Shield, Plus, Search, Truck, Trash2 } from "lucide-react
 import { VehicleForm } from "@/components/forms/VehicleForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { SearchInput } from "@/components/shared/SearchInput";
+import { ModernVehicleCard } from "@/components/vehicles/ModernVehicleCard";
 import {
   Dialog,
   DialogContent,
@@ -64,112 +65,7 @@ interface Vehicle {
   photos?: string[];
 }
 
-function VehicleCardItem({ 
-  vehicle, 
-  onView, 
-  onEdit, 
-  onDelete 
-}: { 
-  vehicle: Vehicle, 
-  onView: () => void, 
-  onEdit: () => void, 
-  onDelete: () => void 
-}) {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const images = vehicle.photos && vehicle.photos.length > 0 ? vehicle.photos : (vehicle.photo_url ? [vehicle.photo_url] : []);
-  const hasMultipleImages = images.length > 1;
 
-  useEffect(() => {
-    if (!hasMultipleImages) return;
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prev) => (prev + 1) % images.length);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [hasMultipleImages, images.length]);
-
-  return (
-    <Card className="overflow-hidden hover:shadow-lg transition-all group border-slate-200 dark:border-slate-800 flex flex-col h-full">
-      {/* Vehicle Image */}
-      <div className="relative h-40 bg-muted/30 border-b border-slate-100 dark:border-slate-800 overflow-hidden group/image">
-        {images.length > 0 ? (
-            <img 
-                src={images[currentImageIndex]} 
-                alt={vehicle.vehicle_number}
-                className="w-full h-full object-cover transition-transform duration-500"
-            />
-        ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground/40 bg-slate-50 dark:bg-slate-900/50">
-                <Truck className="h-12 w-12 mb-2 opacity-50" />
-                <span className="text-[10px] uppercase tracking-widest font-bold">No Photo</span>
-            </div>
-        )}
-        <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
-          <Badge variant="outline" className="bg-background/80 backdrop-blur-sm border-white/20 text-[10px] uppercase font-bold">
-            {vehicle.status}
-          </Badge>
-          {hasMultipleImages && (
-            <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm text-[10px] font-bold shadow-sm">
-              {currentImageIndex + 1}/{images.length} Photos
-            </Badge>
-          )}
-        </div>
-        
-        {/* Manual Image Navigation Controls */}
-        {hasMultipleImages && (
-            <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover/image:opacity-100 transition-opacity">
-                {images.map((_, idx) => (
-                    <button
-                        key={idx}
-                        onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(idx); }}
-                        className={`w-2 h-2 rounded-full border border-white/50 transition-all ${currentImageIndex === idx ? 'bg-white scale-125' : 'bg-black/50 hover:bg-white/50'}`}
-                    />
-                ))}
-            </div>
-        )}
-      </div>
-
-      {/* Card Content */}
-      <CardContent className="p-4 flex flex-col flex-1">
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <h3 className="font-black text-lg tracking-tight">{vehicle.vehicle_number}</h3>
-            <p className="text-xs text-muted-foreground font-medium mt-0.5">
-                {vehicle.vehicle_models?.vehicle_types?.name} • {vehicle.vehicle_models?.name} {vehicle.year ? `• ${vehicle.year}` : ''}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-2 space-y-1 mb-4 flex-1">
-            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700"></span>
-              <span className="font-semibold text-foreground/80">{vehicle.vehicle_models?.vehicle_manufacturers?.name}</span> • {vehicle.vehicle_models?.vehicle_types?.vehicle_categories?.name}
-            </p>
-            {vehicle.customer && (
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                <Users className="h-3 w-3" />
-                Owner: <span className="font-semibold text-foreground/80 truncate">{vehicle.customer.name}</span>
-              </p>
-            )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100 dark:border-slate-800">
-          <Link to={`/admin/vehicles/${vehicle.id}`} className="flex-1">
-            <Button variant="outline" size="sm" className="w-full h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary">
-              View
-            </Button>
-          </Link>
-          <Button variant="outline" size="sm" onClick={onEdit} className="flex-1 h-8 text-xs">
-            Edit
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onDelete} className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function AdminVehicles() {
   const { user, signOut } = useAuth();
@@ -281,11 +177,36 @@ export default function AdminVehicles() {
             </Button>
           </div>
 
-          {showForm && (
-            <div className="mb-8">
-              <VehicleForm onSuccess={handleFormSuccess} onCancel={() => { setShowForm(false); setEditingVehicle(null); }} initialData={editingVehicle || undefined} />
-            </div>
-          )}
+          <Dialog
+            open={showForm}
+            onOpenChange={(open) => {
+              setShowForm(open);
+              if (!open) {
+                setEditingVehicle(null);
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete('edit');
+                setSearchParams(newParams);
+              }
+            }}
+          >
+            <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0 border-none shadow-2xl bg-transparent">
+              <VehicleForm
+                onSuccess={() => {
+                  handleFormSuccess();
+                  setShowForm(false);
+                  setEditingVehicle(null);
+                }}
+                onCancel={() => {
+                  setShowForm(false);
+                  setEditingVehicle(null);
+                  const newParams = new URLSearchParams(searchParams);
+                  newParams.delete('edit');
+                  setSearchParams(newParams);
+                }}
+                initialData={editingVehicle || undefined}
+              />
+            </DialogContent>
+          </Dialog>
 
           <div className="mb-6">
             <div className="relative max-w-md">
@@ -310,7 +231,7 @@ export default function AdminVehicles() {
               ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {filteredVehicles.map((vehicle) => (
-                    <VehicleCardItem 
+                    <ModernVehicleCard 
                       key={vehicle.id} 
                       vehicle={vehicle} 
                       onView={() => setViewingVehicle(vehicle)}

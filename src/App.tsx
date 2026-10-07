@@ -49,7 +49,16 @@ import { RemindersProvider } from "@/contexts/RemindersContext";
 import { GlobalAlarmModal } from "@/components/reminders/GlobalAlarmModal";
 import { GlobalHUD } from "@/components/dashboard/GlobalHUD";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+      staleTime: 5 * 60 * 1000,
+    },
+  },
+});
 
 // Map route paths to components
 const routeComponents: Record<string, React.ComponentType> = {
@@ -91,7 +100,24 @@ const routeComponents: Record<string, React.ComponentType> = {
   "/customer": CustomerPortal,
 };
 
-const App = () => (
+const App = () => {
+  React.useEffect(() => {
+    // Prevent browser default behavior (which navigates away or opens the dropped file in the current tab)
+    const preventUncaughtDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const preventUncaughtDrop = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("dragover", preventUncaughtDragOver);
+    window.addEventListener("drop", preventUncaughtDrop);
+    return () => {
+      window.removeEventListener("dragover", preventUncaughtDragOver);
+      window.removeEventListener("drop", preventUncaughtDrop);
+    };
+  }, []);
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <BrowserRouter>
@@ -132,6 +158,7 @@ const App = () => (
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;

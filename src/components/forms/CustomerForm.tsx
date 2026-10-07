@@ -2,7 +2,7 @@
  * Customer User Creation Form
  * Creates customer users with centralized user creation logic.
  * Role is AUTO-ASSIGNED to "customer" - no manual selection.
- * Creates: Auth user → Role → Profile → Customer record
+ * Creates: Auth user -> Role -> Profile -> Customer record
  */
 import { useState, useEffect } from "react";
 import { supabaseAdmin } from "@/integrations/supabase/adminClient";
@@ -10,11 +10,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Users, CheckCircle, Plus, Trash2, Star, Phone, Mail, ShieldAlert } from "lucide-react";
+import {
+  Loader2,
+  UserPlus,
+  Users,
+  CheckCircle2,
+  Plus,
+  Trash2,
+  Star,
+  Phone,
+  Mail,
+  Building2,
+  MapPin,
+  Lock,
+  FileCheck,
+  ShieldCheck,
+  User,
+  X
+} from "lucide-react";
 import { createUser, getUserConfig } from "@/config/userCreation";
 import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 
@@ -35,9 +52,18 @@ interface CustomerFormProps {
   onCancel: () => void;
   initialData?: any; // For editing
 }
+
 const USER_TYPE: "customer" = "customer";
 const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-const COMMON_DESIGNATIONS = ["Owner", "Manager", "Service Coordinator", "Accounts", "Fleet Supervisor", "Driver In-Charge"];
+const COMMON_DESIGNATIONS = [
+  "Owner",
+  "Managing Director",
+  "Manager",
+  "Service Coordinator",
+  "Accounts / Billing",
+  "Fleet Supervisor",
+  "Driver In-Charge"
+];
 
 export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormProps) {
   const config = getUserConfig(USER_TYPE);
@@ -147,19 +173,19 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
 
     // Validation
     if (!initialData && (!formData.name || !formData.email || !formData.phone || !formData.password)) {
-      toast({ title: "Error", description: "Please fill in all required customer fields", variant: "destructive" });
+      toast({ title: "Required Fields Missing", description: "Please complete all mandatory customer fields.", variant: "destructive" });
       return;
     }
 
     if (!initialData && formData.password.length < 6) {
-      toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" });
+      toast({ title: "Weak Password", description: "Password must be at least 6 characters.", variant: "destructive" });
       return;
     }
 
     if (formData.gst_number && !GST_REGEX.test(formData.gst_number)) {
       toast({
-        title: "Invalid GSTIN",
-        description: "Format: 22AAAAA0000A1Z5 (State + PAN + Entity + Z + Checksum)",
+        title: "Invalid GSTIN Format",
+        description: "Standard 15-character GST format: 22AAAAA0000A1Z5",
         variant: "destructive"
       });
       return;
@@ -171,7 +197,7 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
       if (!phoneValidation.isValid) {
         toast({
           title: "Invalid Phone Number",
-          description: phoneValidation.error || "Please enter a valid 10-digit Indian phone number",
+          description: phoneValidation.error || "Please enter a valid 10-digit Indian phone number.",
           variant: "destructive"
         });
         return;
@@ -204,11 +230,11 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
         const { error } = await supabaseAdmin
           .from("customers")
           .update({
-            name: formData.name,
-            phone: formData.phone,
-            company_name: formData.company_name,
-            address: formData.address,
-            gst_number: formData.gst_number
+            name: formData.name.trim(),
+            phone: formData.phone.trim(),
+            company_name: formData.company_name.trim() || null,
+            address: formData.address.trim() || null,
+            gst_number: formData.gst_number.trim() || null
           })
           .eq("id", initialData.id);
 
@@ -216,12 +242,12 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
       } else {
         // Handle Create
         const result = await createUser(USER_TYPE, {
-          email: formData.email,
+          email: formData.email.trim(),
           password: formData.password,
-          fullName: formData.name,
-          phone: formData.phone || undefined,
-          companyName: formData.company_name || undefined,
-          address: formData.address || undefined,
+          fullName: formData.name.trim(),
+          phone: formData.phone.trim() || undefined,
+          companyName: formData.company_name.trim() || undefined,
+          address: formData.address.trim() || undefined,
         }, supabaseAdmin);
 
         if (!result.success) {
@@ -241,7 +267,7 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
           }
 
           if (formData.gst_number) {
-            await supabaseAdmin.from("customers").update({ gst_number: formData.gst_number }).eq("user_id", result.authUserId);
+            await supabaseAdmin.from("customers").update({ gst_number: formData.gst_number.trim() }).eq("user_id", result.authUserId);
           }
         }
       }
@@ -286,7 +312,7 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
 
       toast({
         title: "Success",
-        description: initialData ? "Customer and contacts updated successfully" : "Customer and contacts created successfully"
+        description: initialData ? "Customer and contacts updated successfully" : "Customer and contacts registered successfully"
       });
 
       onSuccess();
@@ -310,274 +336,468 @@ export function CustomerForm({ onSuccess, onCancel, initialData }: CustomerFormP
     });
   };
 
+  const displayName = formData.company_name || formData.name;
+  const initials = displayName
+    ? displayName
+        .split(" ")
+        .map(n => n[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "CU";
+
   return (
-    <Card className="w-full max-w-4xl mx-auto shadow-md">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {initialData ? <Users className="w-5 h-5 text-primary" /> : <UserPlus className="w-5 h-5 text-primary" />}
-          {initialData ? "Edit Customer / Company Profile" : "Register New Customer & Contacts"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="bg-muted/50 p-3.5 rounded-xl">
-            <div className="flex items-center gap-2 text-sm">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="font-medium">Role is automatically assigned:</span>
-              <span className="px-2 py-0.5 bg-primary text-primary-foreground text-xs rounded font-bold">{config.role.toUpperCase()}</span>
+    <div className="w-full bg-background rounded-2xl overflow-hidden border border-border shadow-xl">
+      {/* Premium Header */}
+      <div className="p-6 bg-gradient-to-r from-card via-card to-muted/40 border-b border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-base shadow-sm">
+            {displayName ? initials : <Building2 className="w-6 h-6 text-primary" />}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
+                {initialData ? "Edit Customer Profile" : "Register New Customer"}
+              </h2>
+              <Badge variant="secondary" className="text-[11px] font-semibold bg-primary/10 text-primary border-primary/20">
+                <ShieldCheck className="w-3 h-3 mr-1" />
+                {config.role.toUpperCase()}
+              </Badge>
             </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {initialData
+                ? "Update enterprise records, login credentials, and contact persons"
+                : "Create customer profile, portal credentials, and designated fleet coordinators"}
+            </p>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onCancel}
+          disabled={isLoading}
+          className="self-end sm:self-center h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        {/* Section 1: Company & Account Identity */}
+        <div className="rounded-xl border border-border/80 bg-card/60 p-4 sm:p-5 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2 pb-2 border-b border-border/60">
+            <Building2 className="w-4 h-4 text-primary" />
+            <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">
+              Company & Account Identity
+            </h3>
           </div>
 
-          {/* Company / Customer Details */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Company & Account Details</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="company">Company / Enterprise Name</Label>
-                <Input id="company" placeholder="e.g. SRM Logistics Pvt Ltd" value={formData.company_name} onChange={(e) => handleChange("company_name", e.target.value)} disabled={isLoading} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="company" className="text-xs font-semibold text-foreground/90">
+                Company / Enterprise Name
+              </Label>
+              <div className="relative">
+                <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/60" />
+                <Input
+                  id="company"
+                  placeholder="e.g. SRM Logistics Pvt Ltd"
+                  value={formData.company_name}
+                  onChange={(e) => handleChange("company_name", e.target.value)}
+                  disabled={isLoading}
+                  className="pl-9 text-sm"
+                />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="name">Primary Representative Name *</Label>
-                <Input id="name" placeholder="Contact person name" value={formData.name} onChange={(e) => handleChange("name", e.target.value)} disabled={isLoading} />
+              <p className="text-[11px] text-muted-foreground">Leave blank if individual customer</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="name" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
+                <span>Primary Representative Name</span>
+                <span className="text-[10px] text-destructive font-bold">Required</span>
+              </Label>
+              <div className="relative">
+                <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/60" />
+                <Input
+                  id="name"
+                  placeholder="e.g. Ramesh Kumar"
+                  value={formData.name}
+                  onChange={(e) => handleChange("name", e.target.value)}
+                  disabled={isLoading}
+                  className="pl-9 text-sm"
+                  required
+                />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="phone">Primary Phone Number *</Label>
+            </div>
+
+            <div className="md:col-span-2 space-y-1.5">
+              <Label htmlFor="address" className="text-xs font-semibold text-foreground/90">
+                Registered Address / Garage Location
+              </Label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/60" />
+                <Textarea
+                  id="address"
+                  placeholder="Street address, industrial area, city, pincode..."
+                  value={formData.address}
+                  onChange={(e) => handleChange("address", e.target.value)}
+                  disabled={isLoading}
+                  rows={2}
+                  className="pl-9 text-sm resize-none"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Portal Login & Compliance */}
+        <div className="rounded-xl border border-border/80 bg-card/60 p-4 sm:p-5 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2 pb-2 border-b border-border/60">
+            <Lock className="w-4 h-4 text-primary" />
+            <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">
+              Portal Access & GST Compliance
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="phone" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
+                <span>Primary Mobile Number</span>
+                <span className="text-[10px] text-destructive font-bold">Required</span>
+              </Label>
+              <div className="flex rounded-md shadow-sm">
+                <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-muted text-xs font-semibold text-muted-foreground">
+                  +91
+                </span>
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="10-digit mobile number"
+                  placeholder="10-digit mobile"
                   value={formData.phone}
                   onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    const value = e.target.value.replace(/\D/g, "").slice(0, 10);
                     handleChange("phone", value);
                   }}
                   disabled={isLoading}
                   maxLength={10}
                   pattern="[0-9]*"
                   inputMode="numeric"
+                  className="rounded-l-none text-sm font-mono"
+                  required
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email Address *</Label>
-                <Input id="email" type="email" placeholder="contact@example.com" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} disabled={isLoading || !!initialData} />
+              {formData.phone && (
+                <p className={`text-[11px] ${formData.phone.length === 10 && /^[6-9]/.test(formData.phone) ? "text-emerald-600 font-medium" : "text-muted-foreground"}`}>
+                  {formData.phone.length === 10 && /^[6-9]/.test(formData.phone)
+                    ? "Valid 10-digit mobile format"
+                    : `${formData.phone.length}/10 digits (must start with 6, 7, 8, or 9)`}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
+                <span>Email Address (Login Username)</span>
+                <span className="text-[10px] text-destructive font-bold">Required</span>
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/60" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="contact@company.com"
+                  value={formData.email}
+                  onChange={(e) => handleChange("email", e.target.value)}
+                  disabled={isLoading || !!initialData}
+                  className="pl-9 text-sm"
+                  required
+                />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Login Password {initialData ? "(Leave blank to keep current)" : "*"}</Label>
-                <Input id="password" type="password" placeholder={initialData ? "Unchanged" : "Min 6 characters"} value={formData.password} onChange={(e) => handleChange("password", e.target.value)} disabled={isLoading} />
+              {initialData && (
+                <p className="text-[10px] text-muted-foreground">Email login username cannot be altered after creation.</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
+                <span>Login Password</span>
+                <span className="text-[10px] font-medium text-muted-foreground">
+                  {initialData ? "Leave blank to keep unchanged" : "Min 6 characters"}
+                </span>
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/60" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder={initialData ? "••••••••" : "Enter secure password"}
+                  value={formData.password}
+                  onChange={(e) => handleChange("password", e.target.value)}
+                  disabled={isLoading}
+                  className="pl-9 text-sm font-mono"
+                  required={!initialData}
+                />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="gst">GST Number (Optional)</Label>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="gst" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
+                <span>GSTIN / Tax Number</span>
+                <span className="text-[10px] text-muted-foreground">Optional</span>
+              </Label>
+              <div className="relative">
+                <FileCheck className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/60" />
                 <Input
                   id="gst"
-                  placeholder="Ex: 22AAAAA0000A1Z5"
+                  placeholder="e.g. 22AAAAA0000A1Z5"
                   value={formData.gst_number}
                   onChange={(e) => handleChange("gst_number", e.target.value.toUpperCase())}
                   disabled={isLoading}
                   maxLength={15}
-                  className={formData.gst_number && !GST_REGEX.test(formData.gst_number) ? "border-destructive focus-visible:ring-destructive" : ""}
+                  className={`pl-9 text-sm font-mono tracking-wider ${
+                    formData.gst_number && !GST_REGEX.test(formData.gst_number)
+                      ? "border-destructive focus-visible:ring-destructive"
+                      : ""
+                  }`}
                 />
-                {formData.gst_number && !GST_REGEX.test(formData.gst_number) && (
-                  <p className="text-[10px] text-destructive">
-                    Must be 15 chars: State(2) + PAN(10) + Entity(1) + Z + Checksum(1)
-                  </p>
-                )}
               </div>
-              <div className="md:col-span-2 space-y-1.5">
-                <Label htmlFor="address">Address</Label>
-                <Textarea id="address" placeholder="Registered office / garage address" value={formData.address} onChange={(e) => handleChange("address", e.target.value)} disabled={isLoading} rows={2} />
-              </div>
+              {formData.gst_number && !GST_REGEX.test(formData.gst_number) ? (
+                <p className="text-[11px] text-destructive font-medium">
+                  Invalid GST format: Must be 15 chars (e.g. 22AAAAA0000A1Z5)
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">Enables automated GST tax invoices</p>
+              )}
             </div>
           </div>
+        </div>
 
-          {/* Multiple Company Contacts Section */}
-          <div className="border-t pt-5 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h4 className="text-sm font-semibold uppercase tracking-wider text-primary flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Multiple Company Contact Persons ({contacts.length})
-                </h4>
-                <p className="text-xs text-muted-foreground">
-                  Add designated contacts for Service Coordination, Billing/Accounts, Management, etc.
-                </p>
+        {/* Section 3: Multiple Contact Persons */}
+        <div className="rounded-xl border border-border/80 bg-card/60 p-4 sm:p-5 space-y-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
+            <div>
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" />
+                <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">
+                  Designated Contact Persons
+                </h3>
+                <Badge variant="outline" className="text-[11px] font-semibold h-5">
+                  {contacts.length}
+                </Badge>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={handleAddContact} className="gap-1 text-xs font-semibold">
-                <Plus className="h-3.5 w-3.5" />
-                Add Contact Person
-              </Button>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Assign specific personnel for Service Updates, Billing, Workshop Coordination, or Driver In-Charge
+              </p>
             </div>
 
-            {contacts.length === 0 ? (
-              <div className="border border-dashed rounded-lg p-6 text-center bg-muted/20">
-                <p className="text-xs text-muted-foreground mb-2">No contact persons added yet.</p>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddContact}>
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add Primary Contact
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {contacts.map((contact, index) => (
-                  <div
-                    key={index}
-                    className={`p-4 rounded-xl border transition-all ${
-                      contact.is_primary ? "border-primary/50 bg-primary/[0.02] shadow-sm" : "border-border bg-card"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-3 pb-2 border-b">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={contact.is_primary ? "default" : "secondary"} className="text-[11px] gap-1">
-                          {contact.is_primary && <Star className="h-3 w-3 fill-current" />}
-                          {contact.is_primary ? "Primary Contact" : `Contact Person #${index + 1}`}
-                        </Badge>
-                        <span className="text-xs font-bold text-foreground">
-                          {contact.designation || "Designation"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!contact.is_primary && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-muted-foreground hover:text-primary"
-                            onClick={() => handleContactChange(index, "is_primary", true)}
-                          >
-                            Set as Primary
-                          </Button>
-                        )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddContact}
+              className="gap-1.5 text-xs font-semibold self-start sm:self-center border-primary/30 text-primary hover:bg-primary/10"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Contact Person
+            </Button>
+          </div>
+
+          {contacts.length === 0 ? (
+            <div className="border border-dashed rounded-xl p-6 text-center bg-muted/20">
+              <Users className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground mb-3">No contact persons registered yet.</p>
+              <Button type="button" variant="outline" size="sm" onClick={handleAddContact}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Primary Contact
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {contacts.map((contact, index) => (
+                <div
+                  key={index}
+                  className={`p-4 rounded-xl border transition-all ${
+                    contact.is_primary
+                      ? "border-amber-400/60 bg-amber-50/20 dark:bg-amber-950/10 shadow-sm"
+                      : "border-border/80 bg-background/80"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-border/60">
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={contact.is_primary ? "default" : "secondary"}
+                        className={`text-[11px] font-bold gap-1 ${
+                          contact.is_primary
+                            ? "bg-amber-500 hover:bg-amber-600 text-amber-950 border-amber-600/30"
+                            : ""
+                        }`}
+                      >
+                        {contact.is_primary && <Star className="h-3 w-3 fill-current" />}
+                        {contact.is_primary ? "Primary Contact" : `Contact Person #${index + 1}`}
+                      </Badge>
+                      <Badge variant="outline" className="text-[11px] font-semibold text-foreground">
+                        {contact.designation || "Contact"}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {!contact.is_primary && (
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleRemoveContact(index)}
-                          title="Remove contact"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-amber-600"
+                          onClick={() => handleContactChange(index, "is_primary", true)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Star className="h-3 w-3 mr-1" />
+                          Set Primary
                         </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Full Name *</Label>
-                        <Input
-                          placeholder="e.g. Ramesh Kumar"
-                          value={contact.name}
-                          onChange={(e) => handleContactChange(index, "name", e.target.value)}
-                          className="h-9 text-xs"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs">Role / Designation *</Label>
-                        <Input
-                          placeholder="Owner, Manager, etc."
-                          value={contact.designation}
-                          onChange={(e) => handleContactChange(index, "designation", e.target.value)}
-                          className="h-9 text-xs"
-                          list={`designations-${index}`}
-                        />
-                        <datalist id={`designations-${index}`}>
-                          {COMMON_DESIGNATIONS.map((d) => (
-                            <option key={d} value={d} />
-                          ))}
-                        </datalist>
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs">Phone Number *</Label>
-                        <Input
-                          type="tel"
-                          placeholder="10-digit number"
-                          value={contact.phone}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                            handleContactChange(index, "phone", val);
-                          }}
-                          className="h-9 text-xs"
-                          maxLength={10}
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs">Preferred Method</Label>
-                        <Select
-                          value={contact.preferred_contact_method || "phone"}
-                          onValueChange={(val: any) => handleContactChange(index, "preferred_contact_method", val)}
-                        >
-                          <SelectTrigger className="h-9 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="phone">Phone Call</SelectItem>
-                            <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                            <SelectItem value="email">Email</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs">Alternate Phone</Label>
-                        <Input
-                          type="tel"
-                          placeholder="Landline / Alt"
-                          value={contact.alternate_phone || ""}
-                          onChange={(e) => handleContactChange(index, "alternate_phone", e.target.value)}
-                          className="h-9 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1 sm:col-span-2">
-                        <Label className="text-xs">Email Address</Label>
-                        <Input
-                          type="email"
-                          placeholder="person@company.com"
-                          value={contact.email || ""}
-                          onChange={(e) => handleContactChange(index, "email", e.target.value)}
-                          className="h-9 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs">Notes / Availability</Label>
-                        <Input
-                          placeholder="e.g. Call after 2 PM"
-                          value={contact.notes || ""}
-                          onChange={(e) => handleContactChange(index, "notes", e.target.value)}
-                          className="h-9 text-xs"
-                        />
-                      </div>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleRemoveContact(index)}
+                        title="Remove contact"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
 
-          <div className="flex gap-2 justify-end pt-4 border-t">
-            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {initialData ? "Updating..." : "Creating..."}
-                </>
-              ) : (
-                <>
-                  {initialData ? <CheckCircle className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                  {initialData ? "Update Customer & Contacts" : "Create Customer & Contacts"}
-                </>
-              )}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Full Name *</Label>
+                      <Input
+                        placeholder="e.g. Ramesh Kumar"
+                        value={contact.name}
+                        onChange={(e) => handleContactChange(index, "name", e.target.value)}
+                        className="h-9 text-xs"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Role / Designation *</Label>
+                      <Input
+                        placeholder="Owner, Manager, etc."
+                        value={contact.designation}
+                        onChange={(e) => handleContactChange(index, "designation", e.target.value)}
+                        className="h-9 text-xs"
+                        list={`designations-${index}`}
+                      />
+                      <datalist id={`designations-${index}`}>
+                        {COMMON_DESIGNATIONS.map((d) => (
+                          <option key={d} value={d} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Phone Number *</Label>
+                      <Input
+                        type="tel"
+                        placeholder="10-digit number"
+                        value={contact.phone}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                          handleContactChange(index, "phone", val);
+                        }}
+                        className="h-9 text-xs font-mono"
+                        maxLength={10}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Preferred Channel</Label>
+                      <Select
+                        value={contact.preferred_contact_method || "phone"}
+                        onValueChange={(val: any) => handleContactChange(index, "preferred_contact_method", val)}
+                      >
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="phone">Phone Call</SelectItem>
+                          <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Alternate Phone</Label>
+                      <Input
+                        type="tel"
+                        placeholder="Secondary / Landline"
+                        value={contact.alternate_phone || ""}
+                        onChange={(e) => handleContactChange(index, "alternate_phone", e.target.value)}
+                        className="h-9 text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-xs font-semibold">Email Address</Label>
+                      <Input
+                        type="email"
+                        placeholder="contact@company.com"
+                        value={contact.email || ""}
+                        onChange={(e) => handleContactChange(index, "email", e.target.value)}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Notes / Shift</Label>
+                      <Input
+                        placeholder="e.g. Call after 2 PM"
+                        value={contact.notes || ""}
+                        onChange={(e) => handleContactChange(index, "notes", e.target.value)}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Action Controls */}
+        <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 pt-4 border-t border-border">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="w-full sm:w-auto text-xs font-semibold"
+          >
+            Cancel
+          </Button>
+
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="w-full sm:w-auto text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {initialData ? "Updating Customer..." : "Registering Customer..."}
+              </>
+            ) : (
+              <>
+                {initialData ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                {initialData ? "Update Customer Profile" : "Register Customer & Contacts"}
+              </>
+            )}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }
-

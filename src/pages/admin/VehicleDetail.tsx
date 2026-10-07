@@ -12,7 +12,7 @@ import {
     Truck, User, Calendar, Shield, Phone,
     FileText, ArrowLeft, Loader2, Info,
     Wrench, CheckCircle2, MapPin, ClipboardList,
-    Clock, ExternalLink, Expand, Edit2, ImageIcon
+    Clock, ExternalLink, Expand, Edit2, ImageIcon, Plus
 } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { generateVehicleHistoryPDF, parseNotes } from "@/utils/pdfGenerator";
@@ -220,12 +220,19 @@ export default function AdminVehicleDetail() {
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                            <Button 
+                                onClick={() => navigate(`/admin/work-orders?create=true&vehicleId=${vehicle.id}&customerId=${vehicle.customer_id || vehicle.customer?.id || ''}`)}
+                                className="gap-1.5 font-semibold bg-primary hover:bg-primary/90"
+                            >
+                                <Plus className="h-4 w-4" />
+                                Create Job Card
+                            </Button>
                             <Button onClick={() => id && generateVehicleHistoryPDF(id, 'preview')} variant="outline">
                                 <FileText className="h-4 w-4 mr-2" />
                                 Print History
                             </Button>
                             <Link to={`/admin/vehicles?edit=${vehicle.id}`}>
-                                <Button>Edit Vehicle</Button>
+                                <Button variant="outline">Edit Vehicle</Button>
                             </Link>
                         </div>
                     </div>

@@ -18,6 +18,7 @@ import {
 import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { CompactProgressTracker } from "@/components/work-orders/ProgressTracker";
+import { ModernWorkOrderCard } from "@/components/work-orders/ModernWorkOrderCard";
 import { SearchInput } from "@/components/shared/SearchInput";
 import {
   DropdownMenu,
@@ -184,6 +185,8 @@ export default function AdminWorkOrders() {
   const [searchParams, setSearchParams] = useSearchParams();
   const editId = searchParams.get('editId');
   const isCreating = searchParams.get('create') === 'true';
+  const paramVehicleId = searchParams.get('vehicleId');
+  const paramCustomerId = searchParams.get('customerId');
   const showForm = isCreating || !!editId;
   const urlFilter = searchParams.get('filter');
 
@@ -611,30 +614,40 @@ export default function AdminWorkOrders() {
             </div>
           )}
 
-          {showForm && (
-            <div className="mb-8 p-6 bg-card rounded-xl border-2 border-primary/20 shadow-xl animate-in slide-in-from-top-4 duration-300">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Plus className="h-5 w-5" />
-                  {selectedAppointment ? 'Convert Appointment to Work Order' : 'Create New Work Order'}
-                </h2>
-                <Button variant="ghost" size="sm" onClick={() => { setSearchParams({}); setSelectedAppointment(null); }}>
-                  <XCircle className="h-4 w-4 mr-2" /> Cancel
-                </Button>
-              </div>
+          <Dialog
+            open={showForm}
+            onOpenChange={(open) => {
+              if (!open) {
+                setSearchParams({});
+                setSelectedAppointment(null);
+              }
+            }}
+          >
+            <DialogContent className="max-w-[95vw] xl:max-w-6xl w-full max-h-[92vh] overflow-y-auto p-0 border-none shadow-2xl bg-transparent">
               <WorkOrderForm
-                onSuccess={handleFormSuccess}
-                onCancel={() => { setSearchParams({}); setSelectedAppointment(null); }}
+                onSuccess={() => {
+                  handleFormSuccess();
+                  setSearchParams({});
+                  setSelectedAppointment(null);
+                }}
+                onCancel={() => {
+                  setSearchParams({});
+                  setSelectedAppointment(null);
+                }}
                 initialData={selectedAppointment ? {
                   customerId: selectedAppointment.customer?.id || selectedAppointment.customer_id,
                   vehicleId: selectedAppointment.vehicle?.id || selectedAppointment.vehicle_id,
                   description: selectedAppointment.notes,
                   serviceTypeNames: selectedAppointment.services?.map((s: any) => s.service_name) || [],
                   requestedServices: selectedAppointment.services?.map((s: any) => s.service_name) || []
+                } : (paramVehicleId || paramCustomerId) ? {
+                  vehicleId: paramVehicleId || undefined,
+                  customerId: paramCustomerId || undefined
                 } : undefined}
+                initialWorkOrderId={editId || undefined}
               />
-            </div>
-          )}
+            </DialogContent>
+          </Dialog>
 
 
           {/* Scheduled Appointments Section */}
@@ -816,159 +829,21 @@ export default function AdminWorkOrders() {
                 <div className="space-y-4">
                   {filteredOrders.map((order) => {
                     const deliveryInfo = getDeliveryStatus(order.estimated_delivery_date, currentTime);
-                    const isOverdueOrUrgent = deliveryInfo.status === 'overdue' || deliveryInfo.status === 'urgent';
-                    const isFinalized = ['completed', 'approved', 'delivered', 'finalized'].includes(order.status.toLowerCase());
-
-                    // Determine background color based on status
-                    let bgClass = '';
-                    if (isFinalized) {
-                      bgClass = 'bg-green-50/50 border-green-200';
-                    } else if (isOverdueOrUrgent) {
-                      bgClass = 'border-red-300 bg-red-50/30';
-                    }
-
                     return (
-                      <div
+                      <ModernWorkOrderCard
                         key={order.id}
-                        className={`border p-4 rounded-lg hover:bg-muted/50 transition-colors ${bgClass}`}
-                      >
-                        <div className="flex flex-col sm:flex-row justify-between items-start">
-                          <div className="cursor-pointer flex-1 w-full" onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <h3 className="font-semibold text-lg">{order.service_type}</h3>
-                              <Badge variant="outline" className="text-xs font-normal">#{order.id.slice(0, 6)}</Badge>
-                              {getStatusBadge(order)}
-                              {!['completed', 'approved', 'delivered'].includes(order.status.toLowerCase()) && deliveryInfo.status === 'overdue' && (
-                                <Badge className="bg-red-600 text-white text-xs animate-pulse">
-                                  <AlertTriangle className="h-3 w-3 mr-1" />
-                                  OVERDUE
-                                </Badge>
-                              )}
-                              {!['completed', 'approved', 'delivered'].includes(order.status.toLowerCase()) && deliveryInfo.status === 'urgent' && (
-                                <Badge className="bg-red-600 text-white text-xs">
-                                  <Clock5 className="h-3 w-3 mr-1" />
-                                  URGENT
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-foreground mb-1">{order.description}</p>
-                            <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2 flex-wrap">
-                              <span>
-                                <User className="h-3 w-3 inline mr-1" /> {order.customer?.name}
-                                {order.customer?.company_name && (
-                                  <span className="font-medium text-foreground ml-1">• {order.customer.company_name}</span>
-                                )}
-                              </span>
-                              <span>
-                                <Truck className="h-3 w-3 inline mr-1" /> {order.vehicle?.vehicle_number}
-                              </span>
-                              {(order as any).driver && (
-                                <span className="flex items-center gap-1">
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                                  <span className="font-medium text-foreground">{(order as any).driver.name}</span>
-                                  {(order as any).driver.driver_position && (
-                                    <span className="text-xs">({(order as any).driver.driver_position})</span>
-                                  )}
-                                </span>
-                              )}
-                              {!['completed', 'approved', 'delivered'].includes(order.status.toLowerCase()) && order.estimated_delivery_date && (
-                                <span className={`flex items-center gap-1 font-semibold ${deliveryInfo.color}`}>
-                                  <Clock5 className="h-3 w-3" />
-                                  {deliveryInfo.formatted}
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-3 max-w-sm">
-                              <CompactProgressTracker
-                                currentStage={order.current_stage}
-                                status={order.status}
-                              />
-                            </div>
-                          </div>
-                          <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 mt-4 sm:mt-0 w-full sm:w-auto ml-0 sm:ml-4 border-t sm:border-t-0 pt-3 sm:pt-0 flex-wrap sm:flex-nowrap">
-                            <div className="flex items-center gap-2">
-                              <Badge variant={order.priority === "Urgent" ? "destructive" : "secondary"}>{order.priority}</Badge>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  {order.status === 'Pending' && (
-                                    <DropdownMenuItem onClick={() => handleUpdateStatus(order.id, 'In Progress')}>
-                                      <Play className="h-4 w-4 mr-2" /> Accept Order
-                                    </DropdownMenuItem>
-                                  )}
-                                  {order.status === 'Pending Approval' && (
-                                    <DropdownMenuItem onClick={() => handleUpdateStatus(order.id, 'Approved')}>
-                                      <CheckCircle className="h-4 w-4 mr-2" /> Approve Work
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuItem onClick={() => handleAdvanceStageFromList(order.id, order.current_stage)}>
-                                    <RefreshCw className="h-4 w-4 mr-2" /> Advance Stage
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
-                                    <ClipboardCheck className="h-4 w-4 mr-2" /> Full Details
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                            <div className="flex gap-2 mt-0 sm:mt-2">
-                              {['ready', 'ready for delivery', 'completed', 'delivered', 'approved', 'finalized'].includes(order.status.toLowerCase()) && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-xs font-semibold border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                                  onClick={() => navigate(`/admin/invoices?workOrderId=${order.id}`)}
-                                  title="1-Click Create / View Invoice"
-                                >
-                                  <Receipt className="h-3.5 w-3.5 mr-1" /> Invoice
-                                </Button>
-                              )}
-                              <Button size="sm" variant="outline" onClick={() => navigate(`/admin/work-orders/${order.id}`)}>
-                                <Eye className="h-4 w-4 mr-1" /> View Details
-                              </Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive/90 hover:bg-destructive/10">
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Work Order?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This will permanently delete work order <strong>#{order.id.slice(0, 8)}</strong>.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDelete(order.id)} className="bg-destructive hover:bg-destructive/90">
-                                      Delete
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
-                            {["approved", "completed", "delivered"].includes(order.status.toLowerCase()) && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                className="w-full mt-0 sm:mt-1 bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200"
-                                onClick={() => {
-                                  setReopenOrderId(order.id);
-                                  setReopenDialogOpen(true);
-                                }}
-                              >
-                                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reopen Work Order
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                        order={order}
+                        deliveryInfo={deliveryInfo}
+                        onViewDetails={(id) => navigate(`/admin/work-orders/${id}`)}
+                        onUpdateStatus={handleUpdateStatus}
+                        onAdvanceStage={handleAdvanceStageFromList}
+                        onDelete={handleDelete}
+                        onInvoice={(id) => navigate(`/admin/invoices?workOrderId=${id}`)}
+                        onReopen={(id) => {
+                          setReopenOrderId(id);
+                          setReopenDialogOpen(true);
+                        }}
+                      />
                     );
                   })}
                 </div>

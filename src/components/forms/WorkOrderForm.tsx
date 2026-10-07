@@ -26,6 +26,8 @@ import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { calculateServicePrice, checkServiceApplicability } from "@/utils/pricingEngine"
+import { useFileDropzone } from "@/hooks/useFileDropzone"
+import { VehiclePlateBadge } from "@/components/shared/VehiclePlateBadge"
 
 interface Customer {
   id: string
@@ -486,6 +488,30 @@ export function WorkOrderForm({
     }
   };
 
+  // Drag and Drop handlers for vehicle and belongings photos
+  const { isDragging: isArrivalDragging, dropzoneProps: arrivalDropProps } = useFileDropzone({
+    onFilesDropped: (files) => {
+      files.forEach(f => handleAddPhoto('arrival', f));
+      toast({ title: `${files.length} Arrival Photo(s) Attached` });
+    },
+  });
+
+  const { isDragging: isIssueDragging, dropzoneProps: issueDropProps } = useFileDropzone({
+    onFilesDropped: (files) => {
+      files.forEach(f => handleAddPhoto('issue_area', f));
+      toast({ title: `${files.length} Issue Photo(s) Attached` });
+    },
+  });
+
+  const { isDragging: isBelongingDragging, dropzoneProps: belongingDropProps } = useFileDropzone({
+    onFilesDropped: (files) => {
+      if (files.length > 0) {
+        setBelongingFile(files[0]);
+        toast({ title: "Belonging Photo Attached" });
+      }
+    },
+  });
+
   const handleAddBelongingItem = () => {
     if (!newBelonging.name || !belongingFile) {
       toast({
@@ -652,7 +678,9 @@ export function WorkOrderForm({
           customer_id,
           kilometers_driven,
           next_service_km,
-          customers(name),
+          next_service_date,
+          primary_contact_id,
+          customers(id, name, company_name),
           vehicle_models (
             id,
             name,
@@ -709,6 +737,8 @@ export function WorkOrderForm({
             customer_name: v.customers?.name || "Unknown",
             kilometers_driven: v.kilometers_driven,
             next_service_km: v.next_service_km,
+            next_service_date: v.next_service_date,
+            primary_contact_id: v.primary_contact_id,
             vehicle_type_name: t?.name,
             vehicle_category_name: t?.vehicle_categories?.name,
             manufacturer_name: m?.vehicle_manufacturers?.name
@@ -827,29 +857,107 @@ export function WorkOrderForm({
     }
   }
 
-  const handleVehicleSelect = async (id: string) => {
-    setVehicleId(id)
-    setVehicleSearch("")
-    setVehicleSearchOpen(false)
+  const syncVehicleDetails = useCallback(async (vId: string, currentVehicles?: Vehicle[]) => {
+    if (!vId) return;
 
-    // Pre-fill lifecycle data
-    const selectedVehicle = vehicles.find(v => v.id === id)
-    if (selectedVehicle) {
-      setLifecycleData(prev => ({
-        ...prev,
-        odometer_reading: selectedVehicle.kilometers_driven || 0,
-        next_service_due_km: selectedVehicle.next_service_km || 0,
-        next_service_due_date: selectedVehicle.next_service_date || ""
-      }))
+    let target = (currentVehicles || vehicles).find(v => v.id === vId);
 
-      if (selectedVehicle.primary_contact_id) {
-        setContactId(selectedVehicle.primary_contact_id);
+    // If not found in vehicles state yet, fetch directly from database
+    if (!target) {
+      try {
+        const { data: vRecord } = await supabase
+          .from('vehicles')
+          .select(`
+            id,
+            vehicle_number,
+            model_id,
+            customer_id,
+            kilometers_driven,
+            next_service_km,
+            next_service_date,
+            primary_contact_id,
+            customers(id, name, company_name),
+            vehicle_models (
+              id,
+              name,
+              manufacturer_id,
+              vehicle_type_id,
+              vehicle_manufacturers (id, name),
+              vehicle_types (
+                id,
+                name,
+                category_id,
+                vehicle_categories (id, name)
+              )
+            )
+          `)
+          .eq('id', vId)
+          .single();
+
+        if (vRecord) {
+          const rawModel = vRecord.vehicle_models;
+          const m = Array.isArray(rawModel) ? rawModel[0] : rawModel;
+          const rawType = m?.vehicle_types;
+          const t = Array.isArray(rawType) ? rawType[0] : rawType;
+
+          target = {
+            id: vRecord.id,
+            vehicle_number: vRecord.vehicle_number,
+            model: m?.name || "Unknown",
+            model_id: vRecord.model_id,
+            vehicle_type_id: m?.vehicle_type_id || t?.id,
+            vehicle_category_id: t?.category_id || t?.vehicle_categories?.id,
+            manufacturer_id: m?.manufacturer_id || m?.vehicle_manufacturers?.id,
+            customer_id: vRecord.customer_id,
+            customer_name: (vRecord.customers as any)?.name || "Unknown",
+            kilometers_driven: vRecord.kilometers_driven,
+            next_service_km: vRecord.next_service_km,
+            next_service_date: vRecord.next_service_date,
+            primary_contact_id: vRecord.primary_contact_id,
+            vehicle_type_name: t?.name,
+            vehicle_category_name: t?.vehicle_categories?.name,
+            manufacturer_name: m?.vehicle_manufacturers?.name
+          };
+
+          setVehicles(prev => {
+            if (prev.some(x => x.id === target!.id)) return prev;
+            return [...prev, target!];
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching vehicle details for sync:", err);
+      }
+    }
+
+    if (target) {
+      // 1. Sync Customer
+      if (target.customer_id) {
+        setCustomerId(target.customer_id);
       }
 
-      setApplicableServiceIds(null); // Reset as we are using client-side calculation now
-      // The filtered list is calculated below in the render or via a memo
+      // 2. Sync Odometer and Service Lifecycle
+      setLifecycleData(prev => ({
+        ...prev,
+        odometer_reading: target.kilometers_driven || 0,
+        next_service_due_km: target.next_service_km || (target.kilometers_driven ? target.kilometers_driven + 10000 : 0),
+        next_service_due_date: target.next_service_date || ""
+      }));
+
+      // 3. Sync Assigned Contact
+      if (target.primary_contact_id) {
+        setContactId(target.primary_contact_id);
+      }
+
+      setApplicableServiceIds(null);
     }
-  }
+  }, [vehicles]);
+
+  const handleVehicleSelect = async (id: string) => {
+    setVehicleId(id);
+    setVehicleSearch("");
+    setVehicleSearchOpen(false);
+    await syncVehicleDetails(id);
+  };
   // Effect to resync prices when vehicle/customer changes
   useEffect(() => {
     if (Object.keys(serviceSections).length === 0 || (!vehicleId && !customerId)) return;
@@ -1104,15 +1212,15 @@ export function WorkOrderForm({
     }
   }
 
-  // Handle Initial Data (from Appointment) - Moved here to avoid hoisting issues
+  // Handle Initial Data (from Appointment or 1-Click Job Card on Vehicle)
   useEffect(() => {
-    if (initialData && !isLoading && !loadingCustomers && !loadingVehicles) {
-      if (initialData.customerId) {
-        setCustomerId(initialData.customerId);
-      }
+    if (initialData && !isLoading) {
       if (initialData.vehicleId) {
         setVehicleId(initialData.vehicleId);
-        setLifecycleData(prev => ({ ...prev, odometer_reading: 0, next_service_due_km: 0 }));
+        syncVehicleDetails(initialData.vehicleId);
+      }
+      if (initialData.customerId) {
+        setCustomerId(initialData.customerId);
       }
       if (initialData.description) {
         setGeneralDescription(initialData.description);
@@ -1132,7 +1240,7 @@ export function WorkOrderForm({
         if (exists) handleServiceToggle(initialData.serviceType, true);
       }
     }
-  }, [initialData, isLoading, loadingCustomers, loadingVehicles, dbServiceTypes]);
+  }, [initialData, isLoading, dbServiceTypes, syncVehicleDetails]);
 
   const handleAddCustomService = async () => {
     if (!newServiceName.trim()) return;
@@ -2139,15 +2247,24 @@ export function WorkOrderForm({
         }
       }
 
-      // Update vehicle status
+      // Update vehicle status and sync odometer / service lifecycle to vehicle table
+      const vehicleUpdatePayload: any = {
+        status: 'In Progress',
+      };
+      if (lifecycleData.odometer_reading !== undefined && lifecycleData.odometer_reading !== null && Number(lifecycleData.odometer_reading) > 0) {
+        vehicleUpdatePayload.kilometers_driven = Number(lifecycleData.odometer_reading);
+      }
+      if (lifecycleData.next_service_due_km !== undefined && lifecycleData.next_service_due_km !== null && Number(lifecycleData.next_service_due_km) > 0) {
+        vehicleUpdatePayload.next_service_km = Number(lifecycleData.next_service_due_km);
+      }
+      if (lifecycleData.next_service_due_date) {
+        vehicleUpdatePayload.next_service_date = lifecycleData.next_service_due_date;
+      }
+
       await supabase
         .from('vehicles')
-        .update({
-          status: 'In Progress',
-          kilometers_driven: lifecycleData.odometer_reading || undefined,
-          next_service_km: lifecycleData.next_service_due_km || undefined
-        })
-        .eq('id', vehicleId)
+        .update(vehicleUpdatePayload)
+        .eq('id', vehicleId);
 
       // Clear draft on success
       sessionStorage.removeItem(`wo_form_draft_${initialWorkOrderId || 'new'}`);
@@ -2179,35 +2296,7 @@ export function WorkOrderForm({
     return customer.company_name ? `${customer.name} (${customer.company_name})` : customer.name
   }
 
-  // Handle Initial Data (from Appointment) - Moved here to avoid hoisting issues
-  useEffect(() => {
-    if (initialData && !isLoading && !loadingCustomers && !loadingVehicles) {
-      if (initialData.customerId) {
-        setCustomerId(initialData.customerId);
-      }
-      if (initialData.vehicleId) {
-        setVehicleId(initialData.vehicleId);
-        setLifecycleData(prev => ({ ...prev, odometer_reading: 0, next_service_due_km: 0 }));
-      }
-      if (initialData.description) {
-        setGeneralDescription(initialData.description);
-      }
 
-      // Handle services
-      if (initialData.serviceTypeNames && initialData.serviceTypeNames.length > 0) {
-        initialData.serviceTypeNames.forEach(name => {
-          const exists = dbServiceTypes.find(s => s.name === name);
-          if (exists && !selectedServices.includes(name)) {
-            handleServiceToggle(name, true);
-          }
-        });
-      } else if (initialData.serviceType && !selectedServices.includes(initialData.serviceType)) {
-        // Legacy or single service
-        const exists = dbServiceTypes.find(s => s.name === initialData.serviceType);
-        if (exists) handleServiceToggle(initialData.serviceType, true);
-      }
-    }
-  }, [initialData, isLoading, loadingCustomers, loadingVehicles, dbServiceTypes]);
 
   const filteredCustomers = customers.filter(c =>
     getCustomerDisplayName(c).toLowerCase().includes(customerSearch.toLowerCase())
@@ -2272,19 +2361,79 @@ export function WorkOrderForm({
           e.target.value = '';
         }}
       />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {isReopening ? <Activity className="w-5 h-5 text-orange-500" /> : <Wrench className="w-5 h-5" />}
-            {initialWorkOrderId ? (isReopening ? "Reopen & Configure Work Order" : "Edit Work Order Configuration") : "Create Work Order"}
-          </CardTitle>
-          <CardDescription>
-            {isReopening
-              ? `Reopening work order for ${selectedVehicle?.vehicle_number || 'this vehicle'}. Please review and update services.`
-              : "Configure multiple services, tasks, and staff assignments for this vehicle."}
-          </CardDescription>
+      <Card className="w-full bg-background rounded-2xl overflow-hidden border border-border shadow-xl">
+        <CardHeader className="bg-gradient-to-r from-card via-card to-muted/40 border-b border-border/80 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
+                {isReopening ? <Activity className="w-6 h-6 text-amber-500" /> : <Wrench className="w-6 h-6" />}
+              </div>
+              <div>
+                <CardTitle className="text-lg sm:text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                  {initialWorkOrderId ? (isReopening ? "Reopen & Configure Work Order" : "Edit Work Order Configuration") : "Create New Work Order"}
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                  {isReopening
+                    ? `Reopening work order for ${selectedVehicle?.vehicle_number || 'this vehicle'}. Please review and update services.`
+                    : "Configure services, inspections, assigned mechanics, and customer specifications."}
+                </CardDescription>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onCancel}
+              disabled={isLoading}
+              className="self-end sm:self-center h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
+
+        {selectedVehicle && (
+          <div className="sticky top-0 z-20 px-6 py-3 bg-card/95 backdrop-blur-md border-b border-border shadow-sm flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <VehiclePlateBadge
+                plateNumber={selectedVehicle.vehicle_number}
+                size="sm"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-foreground">
+                    {selectedVehicle.model || "Vehicle"}
+                  </span>
+                  {selectedVehicle.manufacturer_name && (
+                    <span className="text-[11px] text-muted-foreground">
+                      • {selectedVehicle.manufacturer_name}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground truncate max-w-[240px]">
+                  {customers.find(c => c.id === customerId)?.company_name || customers.find(c => c.id === customerId)?.name || 'Owner'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 ml-auto">
+              <div className="text-right">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground block">
+                  Estimated Total
+                </span>
+                <span className="text-base font-extrabold text-primary font-mono">
+                  ₹{Number(totalEstimatedCost || 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+              <Badge variant="outline" className="text-xs font-semibold px-2.5 py-1">
+                {selectedServices.length} Service(s)
+              </Badge>
+            </div>
+          </div>
+        )}
+
+        <CardContent className="p-6">
           {isReviewing ? (
             <div className="space-y-6 animate-in fade-in duration-500">
               <div className="flex items-center justify-between border-b pb-4">
@@ -2571,7 +2720,7 @@ export function WorkOrderForm({
                     <PopoverTrigger asChild>
                       <Button type="button" variant="outline" className="w-full justify-between" disabled={!customerId || loadingVehicles || !!initialWorkOrderId}>
                         {vehicleId
-                          ? `${filteredVehicles.find(v => v.id === vehicleId)?.vehicle_number} - ${filteredVehicles.find(v => v.id === vehicleId)?.model}`
+                          ? `${(vehicles.find(v => v.id === vehicleId) || filteredVehicles.find(v => v.id === vehicleId))?.vehicle_number || "Selected Vehicle"} - ${(vehicles.find(v => v.id === vehicleId) || filteredVehicles.find(v => v.id === vehicleId))?.model || ""}`
                           : "Select vehicle..."}
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
@@ -2760,7 +2909,7 @@ export function WorkOrderForm({
                                   : 'text-muted-foreground'
                                 }`}>
                                 {driverContact.length === 10 && /^[6-9]/.test(driverContact)
-                                  ? '✓ Valid phone number'
+                                  ? 'Valid 10-digit mobile'
                                   : driverContact.length === 10
                                     ? 'Must start with 6, 7, 8, or 9'
                                     : `${driverContact.length}/10 digits`}
@@ -3327,7 +3476,7 @@ export function WorkOrderForm({
                       <SelectItem value="none">Use Company Default</SelectItem>
                       {companyContacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
-                          {c.name} ({c.designation || 'Contact'}) • {c.phone} {c.is_primary ? "★ Primary" : ""}
+                          {c.name} ({c.designation || 'Contact'}) • {c.phone} {c.is_primary ? "[Primary]" : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -3347,8 +3496,21 @@ export function WorkOrderForm({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Arrival Photos */}
-                <div className="space-y-2">
-                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Arrival Photos (Overall Condition)</Label>
+                <div
+                  {...arrivalDropProps}
+                  className={cn(
+                    "space-y-2 p-3 rounded-xl border-2 transition-all",
+                    isArrivalDragging
+                      ? "border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 shadow-inner"
+                      : "border-transparent bg-transparent"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Arrival Photos (Overall Condition)</Label>
+                    {isArrivalDragging && (
+                      <span className="text-xs font-bold text-blue-600 animate-pulse">Drop photos here!</span>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {arrivalPhotos.map((photo, index) => (
                       <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border shadow-sm group">
@@ -3373,19 +3535,37 @@ export function WorkOrderForm({
                       
                       <label
                         htmlFor={arrivalUploadId}
-                        className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors bg-muted/20"
+                        className={cn(
+                          "w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-all bg-muted/20 text-center p-1",
+                          isArrivalDragging && "border-blue-500 bg-blue-100 text-blue-700 font-semibold"
+                        )}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <UploadIcon className="h-6 w-6 text-muted-foreground" />
-                        <span className="text-[10px] mt-1 font-medium">Upload</span>
+                        <UploadIcon className={cn("h-6 w-6 text-muted-foreground", isArrivalDragging && "text-blue-600 animate-bounce")} />
+                        <span className="text-[10px] mt-1 font-medium leading-tight">
+                          {isArrivalDragging ? "Drop here" : "Upload / Drop"}
+                        </span>
                       </label>
                     </div>
                   </div>
                 </div>
 
                 {/* Issue Area Photos */}
-                <div className="space-y-2">
-                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Issue Area Photos (Damage/Concern)</Label>
+                <div
+                  {...issueDropProps}
+                  className={cn(
+                    "space-y-2 p-3 rounded-xl border-2 transition-all",
+                    isIssueDragging
+                      ? "border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 shadow-inner"
+                      : "border-transparent bg-transparent"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Issue Area Photos (Damage/Concern)</Label>
+                    {isIssueDragging && (
+                      <span className="text-xs font-bold text-blue-600 animate-pulse">Drop photos here!</span>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {issuePhotos.map((photo, index) => (
                       <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border shadow-sm group">
@@ -3410,11 +3590,16 @@ export function WorkOrderForm({
 
                       <label
                         htmlFor={issueUploadId}
-                        className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors bg-muted/20"
+                        className={cn(
+                          "w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-all bg-muted/20 text-center p-1",
+                          isIssueDragging && "border-blue-500 bg-blue-100 text-blue-700 font-semibold"
+                        )}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <UploadIcon className="h-6 w-6 text-muted-foreground" />
-                        <span className="text-[10px] mt-1 font-medium">Upload</span>
+                        <UploadIcon className={cn("h-6 w-6 text-muted-foreground", isIssueDragging && "text-blue-600 animate-bounce")} />
+                        <span className="text-[10px] mt-1 font-medium leading-tight">
+                          {isIssueDragging ? "Drop here" : "Upload / Drop"}
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -3478,7 +3663,13 @@ export function WorkOrderForm({
                       className="h-9"
                     />
                   </div>
-                  <div className="flex gap-2">
+                  <div
+                    {...belongingDropProps}
+                    className={cn(
+                      "flex gap-2 p-1 rounded-lg transition-all",
+                      isBelongingDragging && "ring-2 ring-blue-500 bg-blue-50/70 dark:bg-blue-950/40"
+                    )}
+                  >
                     <label
                       className={cn(
                         "flex-1 h-9 flex items-center justify-center gap-2 border rounded-md cursor-pointer text-xs font-medium transition-colors",

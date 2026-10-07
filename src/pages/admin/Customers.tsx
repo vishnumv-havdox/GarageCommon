@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { supabaseAdmin } from "@/integrations/supabase/adminClient";
@@ -20,6 +20,7 @@ import { format } from "date-fns";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 import { DriverHistoryDialog } from "@/components/drivers/DriverHistoryDialog";
+import { ModernCustomerCard } from "@/components/customers/ModernCustomerCard";
 
 export interface CustomerContact {
   id: string;
@@ -103,6 +104,7 @@ interface WorkOrder {
 }
 
 export default function AdminCustomers() {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Record<string, Vehicle[]>>({});
@@ -858,12 +860,21 @@ export default function AdminCustomers() {
                 </Button>
               </div>
 
-              {(showForm || editingCustomer) && (
-                <div className="mb-8">
+              <Dialog
+                open={showForm || !!editingCustomer}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setShowForm(false);
+                    setEditingCustomer(null);
+                  }
+                }}
+              >
+                <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0 border-none shadow-2xl bg-transparent">
                   <CustomerForm
                     onSuccess={() => {
                       handleFormSuccess();
                       setEditingCustomer(null);
+                      setShowForm(false);
                     }}
                     onCancel={() => {
                       setShowForm(false);
@@ -871,8 +882,8 @@ export default function AdminCustomers() {
                     }}
                     initialData={editingCustomer}
                   />
-                </div>
-              )}
+                </DialogContent>
+              </Dialog>
 
               <div className="mb-6">
                 <div className="relative max-w-md">
@@ -901,463 +912,26 @@ export default function AdminCustomers() {
                         const customerWorkOrders = activeWorkOrders[customer.id] || [];
                         const isExpanded = expandedCustomers.has(customer.id);
                         return (
-                          <div key={customer.id} className="border p-4 rounded-lg">
-                            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  <h3 className="font-semibold text-lg">{customer.name}</h3>
-                                  <Badge variant="secondary">Customer</Badge>
-                                  {customerWorkOrders.length > 0 && (
-                                    <Badge
-                                      className={`animate-pulse border-2 ${getJobStatusHighlight(
-                                        Object.values(vehicleJobs).find(vj => vj.vehicle?.customer_id === customer.id)?.status || customerWorkOrders[0].status
-                                      )}`}
-                                    >
-                                      <Car className="h-3 w-3 mr-1" />
-                                      {new Set(customerWorkOrders.map(wo => wo.vehicle_id)).size} Vehicle{new Set(customerWorkOrders.map(wo => wo.vehicle_id)).size > 1 ? 's' : ''} in Service
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                                  {customer.email && (
-                                    <p className="flex items-center gap-2 text-muted-foreground truncate">
-                                      <Mail className="h-4 w-4 shrink-0" />
-                                      <span className="truncate">{customer.email}</span>
-                                    </p>
-                                  )}
-                                  {customer.phone && (
-                                    <p className="flex items-center gap-2 text-muted-foreground">
-                                      <Phone className="h-4 w-4" />
-                                      {customer.phone}
-                                    </p>
-                                  )}
-                                  {customer.company_name && (
-                                    <p className="flex items-center gap-2 text-muted-foreground">
-                                      <Building2 className="h-4 w-4" />
-                                      {customer.company_name}
-                                    </p>
-                                  )}
-                                  {customer.gst_number && (
-                                    <p className="flex items-center gap-2 text-muted-foreground">
-                                      <Receipt className="h-4 w-4" />
-                                      GST: {customer.gst_number}
-                                    </p>
-                                  )}
-                                  <p className="flex items-center gap-2 text-muted-foreground">
-                                    <Calendar className="h-4 w-4" />
-                                    Joined: {format(new Date(customer.created_at), 'MMM d, yyyy')}
-                                  </p>
-                                </div>
-                                {customer.address && (
-                                  <p className="flex items-start gap-2 text-sm text-muted-foreground mt-2">
-                                    <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
-                                    {customer.address}
-                                  </p>
-                                )}
-
-                                {/* Quick Company Contacts Preview */}
-                                {companyContacts[customer.id] && companyContacts[customer.id].length > 0 && (
-                                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1 mr-1">
-                                      <UserCheck className="h-3.5 w-3.5 text-primary" /> Contacts:
-                                    </span>
-                                    {companyContacts[customer.id].map(ct => (
-                                      <div key={ct.id} className="flex items-center gap-1.5 bg-muted/70 hover:bg-muted border rounded-lg px-2 py-0.5 text-xs transition-colors">
-                                        {ct.is_primary && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
-                                        <span className="font-medium text-foreground">{ct.name}</span>
-                                        <Badge variant="outline" className="text-[9px] py-0 px-1 border-primary/30 text-primary uppercase font-bold">
-                                          {ct.designation}
-                                        </Badge>
-                                        <a href={`tel:${ct.phone}`} className="text-muted-foreground hover:text-green-600 p-0.5 ml-0.5" title={`Call ${ct.name} (${ct.phone})`}>
-                                          <Phone className="h-3 w-3" />
-                                        </a>
-                                        <a href={`https://wa.me/91${ct.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-green-600 p-0.5" title={`WhatsApp ${ct.name}`}>
-                                          <MessageSquare className="h-3 w-3" />
-                                        </a>
-                                      </div>
-                                    ))}
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 text-[10px] px-1.5 text-primary hover:text-primary hover:bg-primary/10 gap-0.5"
-                                      onClick={() => handleAddCompanyContact(customer.id)}
-                                    >
-                                      <Plus className="h-3 w-3" /> Add
-                                    </Button>
-                                  </div>
-                                )}
-
-                                {/* Vehicles, Invoices & Contacts Section */}
-                                {(customerVehicles.length > 0 || (invoices[customer.id]?.length || 0) > 0 || (companyContacts[customer.id]?.length || 0) > 0) && (
-                                  <div className="mt-4">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="flex items-center gap-2 px-2 h-auto py-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-                                      onClick={() => toggleExpand(customer.id)}
-                                    >
-                                      <Car className="h-4 w-4" />
-                                      <span>{customerVehicles.length} Vehicle{customerVehicles.length > 1 ? 's' : ''}</span>
-                                      
-                                      <span className="flex items-center gap-1 ml-2 text-primary font-semibold">
-                                        <Users className="h-3.5 w-3.5" />
-                                        {companyContacts[customer.id]?.length || 0} Contact{(companyContacts[customer.id]?.length || 0) !== 1 ? 's' : ''}
-                                      </span>
-
-                                      {/* Also show invoice count if any */}
-                                      {(invoices[customer.id]?.length || 0) > 0 && (
-                                        <span className="flex items-center gap-1 ml-2">
-                                          <Receipt className="h-3 w-3" />
-                                          {invoices[customer.id]?.length} Invoice{(invoices[customer.id]?.length || 0) > 1 ? 's' : ''}
-                                        </span>
-                                      )}
-                                      {isExpanded ? (
-                                        <ChevronUp className="h-4 w-4" />
-                                      ) : (
-                                        <ChevronDown className="h-4 w-4" />
-                                      )}
-                                    </Button>
-
-                                    {isExpanded && (
-                                      <div className="mt-3 space-y-4 pl-6 border-l-2 border-muted">
-                                        {/* Billing Overview Summary */}
-                                        <div className="bg-muted/30 border rounded-lg p-3 grid grid-cols-2 md:grid-cols-4 gap-4">
-                                          <div>
-                                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Invoiced</p>
-                                            <p className="text-sm font-bold">₹{(invoices[customer.id]?.reduce((sum, i) => sum + (i.total || 0), 0) || 0).toLocaleString()}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Paid (Full)</p>
-                                            <p className="text-sm font-bold text-green-600">₹{(invoices[customer.id]?.filter(i => i.status === 'Paid').reduce((sum, i) => sum + (i.total || 0), 0) || 0).toLocaleString()}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Deductions</p>
-                                            <p className="text-sm font-bold text-orange-600">₹{(invoices[customer.id]?.reduce((sum, i) => sum + (i.total_deductions || 0), 0) || 0).toLocaleString()}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Pending</p>
-                                            <p className="text-sm font-black text-destructive">₹{Math.max(0, (invoices[customer.id]?.reduce((sum, i) => sum + (i.total || 0), 0) || 0) - (invoices[customer.id]?.filter(i => i.status === 'Paid').reduce((sum, i) => sum + (i.total || 0), 0) || 0) - (invoices[customer.id]?.reduce((sum, i) => sum + (i.total_deductions || 0), 0) || 0)).toLocaleString()}</p>
-                                          </div>
-                                        </div>
-                                        {/* Vehicles */}
-                                        {customerVehicles.length > 0 && (
-                                          <div className="space-y-2">
-                                            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Vehicles</h4>
-                                            {customerVehicles.map((vehicle) => {
-                                              const activeJob = vehicleJobs[vehicle.id];
-                                              const highlight = activeJob ? getJobStatusHighlight(activeJob.status) : "";
-                                              const containerClasses = activeJob ? highlight.split(' ').slice(0, 3).join(' ') : "bg-muted/50";
-
-                                              return (
-                                                <div key={vehicle.id} className={`${containerClasses} p-3 rounded-md border transition-all hover:shadow-sm`}>
-                                                  <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-3">
-                                                      <Car className={`h-4 w-4 ${activeJob ? "" : "text-muted-foreground"}`} />
-                                                      <div>
-                                                        <div className="flex items-center gap-2">
-                                                          <p className="font-bold">{vehicle.vehicle_number}</p>
-                                                          {activeJob && (
-                                                            <Badge variant="outline" className="bg-white/80 backdrop-blur-sm text-[10px] h-5 shadow-sm border-inherit uppercase">
-                                                              {activeJob.status}
-                                                            </Badge>
-                                                          )}
-                                                        </div>
-                                                        <p className="text-xs opacity-80">
-                                                          {vehicle.vehicle_type}
-                                                          {vehicle.model && ` • ${vehicle.model}`}
-                                                          {activeJob?.service_type && ` • ${activeJob.service_type}`}
-                                                        </p>
-                                                      </div>
-                                                    </div>
-                                                    {activeJob && (
-                                                      <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 text-[10px] px-2 bg-white/50 hover:bg-white/80 shadow-sm"
-                                                        onClick={() => window.location.href = `/admin/work-orders/${activeJob.id}`}
-                                                      >
-                                                        View Job
-                                                      </Button>
-                                                    )}
-                                                  </div>
-
-                                                  {activeJob?.driver && (
-                                                    <div className="flex items-center gap-2 text-[10px] bg-white/40 p-1 rounded border border-inherit/30 mt-2">
-                                                      <Users className="h-3 w-3 opacity-70" />
-                                                      <span className="font-semibold">{activeJob.driver.name}</span>
-                                                      {activeJob.driver.contact_number && (
-                                                        <span className="opacity-60 border-l border-current/20 pl-2 ml-1 flex items-center gap-1">
-                                                          <Phone className="h-2.5 w-2.5" />
-                                                          {activeJob.driver.contact_number}
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  )}
-
-                                                  {vehicle.notes && !activeJob && (
-                                                    <p className="text-xs text-muted-foreground mt-2 italic">
-                                                      {vehicle.notes}
-                                                    </p>
-                                                  )}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        )}
-
-                                        {/* Invoices */}
-                                        {(invoices[customer.id]?.length || 0) > 0 && (
-                                          <div className="space-y-2">
-                                            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mt-4">Invoices</h4>
-                                            {invoices[customer.id]?.map((inv) => (
-                                              <div key={inv.id} className="bg-muted/50 p-3 rounded-md flex justify-between items-center">
-                                                <div>
-                                                  <div className="flex items-center gap-2">
-                                                    <Receipt className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="font-medium text-sm">
-                                                      {inv.bill_number ? `#${inv.bill_number}` : 'Draft'}
-                                                    </span>
-                                                    <Badge variant={inv.status === 'Paid' ? 'default' : inv.status === 'Draft' ? 'secondary' : 'destructive'} className="text-[10px] h-5">
-                                                      {inv.status}
-                                                    </Badge>
-                                                  </div>
-                                                  <p className="text-xs text-muted-foreground mt-1">
-                                                    {format(new Date(inv.created_at), "MMM d, yyyy")} • ₹{(inv.total || 0).toLocaleString()}
-                                                    {inv.total_deductions > 0 && (
-                                                      <span className="text-orange-600 font-medium ml-2">(-{inv.total_deductions} Deducted)</span>
-                                                    )}
-                                                  </p>
-                                                </div>
-                                                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => window.location.href = `/admin/invoices/${inv.id}`}>
-                                                  View
-                                                </Button>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-
-                                        {/* Company Contacts Section */}
-                                        <div className="space-y-2">
-                                          <div className="flex items-center justify-between mt-4">
-                                            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
-                                              <Users className="h-4 w-4 text-primary" />
-                                              Company Contacts ({(companyContacts[customer.id]?.length || 0)})
-                                            </h4>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-7 text-xs"
-                                              onClick={() => handleAddCompanyContact(customer.id)}
-                                            >
-                                              <Plus className="h-3 w-3 mr-1" />
-                                              Add Contact
-                                            </Button>
-                                          </div>
-                                          {(companyContacts[customer.id]?.length || 0) > 0 ? (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                              {companyContacts[customer.id]?.map((contact) => (
-                                                <div key={contact.id} className="bg-muted/40 border p-3 rounded-lg flex flex-col justify-between gap-2 hover:bg-muted/60 transition-colors">
-                                                  <div>
-                                                    <div className="flex items-center justify-between gap-1 mb-1">
-                                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className="font-semibold text-sm">{contact.name}</span>
-                                                        <Badge variant={contact.is_primary ? "default" : "secondary"} className="text-[10px] h-5">
-                                                          {contact.designation || "Contact"}
-                                                        </Badge>
-                                                        {contact.is_primary && (
-                                                          <Badge variant="outline" className="text-[10px] h-5 border-amber-500 text-amber-600 gap-1">
-                                                            <Star className="h-2.5 w-2.5 fill-current" /> Primary
-                                                          </Badge>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                    <div className="space-y-1 text-xs text-muted-foreground">
-                                                      <p className="flex items-center gap-1.5">
-                                                        <Phone className="h-3 w-3 text-muted-foreground" />
-                                                        <span>{contact.phone}</span>
-                                                        {contact.alternate_phone && (
-                                                          <span className="opacity-70 text-[11px]">(Alt: {contact.alternate_phone})</span>
-                                                        )}
-                                                      </p>
-                                                      {contact.email && (
-                                                        <p className="flex items-center gap-1.5 truncate">
-                                                          <Mail className="h-3 w-3 text-muted-foreground shrink-0" />
-                                                          <span className="truncate">{contact.email}</span>
-                                                        </p>
-                                                      )}
-                                                      {contact.notes && (
-                                                        <p className="text-[11px] italic text-muted-foreground/80 mt-1">
-                                                          {contact.notes}
-                                                        </p>
-                                                      )}
-                                                    </div>
-                                                  </div>
-                                                  <div className="flex items-center justify-between border-t pt-2 mt-1">
-                                                    <div className="flex items-center gap-1">
-                                                      <a
-                                                        href={`tel:${contact.phone}`}
-                                                        className="inline-flex items-center gap-1 text-[11px] px-2 py-1 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300 rounded font-medium hover:opacity-80 transition-opacity"
-                                                      >
-                                                        <Phone className="h-2.5 w-2.5" /> Call
-                                                      </a>
-                                                      <a
-                                                        href={`https://wa.me/91${contact.phone.replace(/\D/g, '')}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-1 text-[11px] px-2 py-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 rounded font-medium hover:opacity-80 transition-opacity"
-                                                      >
-                                                        <MessageSquare className="h-2.5 w-2.5" /> WhatsApp
-                                                      </a>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                      <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                                                        onClick={() => handleEditCompanyContact(contact)}
-                                                        title="Edit contact"
-                                                      >
-                                                        <Edit className="h-3 w-3" />
-                                                      </Button>
-                                                      <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                                                        onClick={() => handleDeleteCompanyContact(contact.id)}
-                                                        title="Delete contact"
-                                                      >
-                                                        <Trash2 className="h-3 w-3" />
-                                                      </Button>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : (
-                                            <div className="bg-muted/30 p-3 rounded-md text-center">
-                                              <p className="text-xs text-muted-foreground">No additional contacts registered.</p>
-                                              <Button
-                                                variant="link"
-                                                size="sm"
-                                                className="h-auto text-xs mt-0.5"
-                                                onClick={() => handleAddCompanyContact(customer.id)}
-                                              >
-                                                Add company contact
-                                              </Button>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* Drivers Section */}
-                                        <div className="space-y-2">
-                                          <div className="flex items-center justify-between mt-4">
-                                            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
-                                              <Users className="h-4 w-4" />
-                                              Drivers ({(drivers[customer.id]?.length || 0)})
-                                            </h4>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-7 text-xs"
-                                              onClick={() => handleAddDriver(customer.id)}
-                                            >
-                                              <Plus className="h-3 w-3 mr-1" />
-                                              Add Driver
-                                            </Button>
-                                          </div>
-                                          {(drivers[customer.id]?.length || 0) > 0 ? (
-                                            drivers[customer.id]?.map((driver) => (
-                                              <div key={driver.id} className="bg-muted/50 p-3 rounded-md flex justify-between items-start">
-                                                <div className="flex-1">
-                                                  <div className="flex items-center gap-2 mb-1">
-                                                    <Users className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="font-medium text-sm">{driver.name}</span>
-                                                    {driver.driver_position && (
-                                                      <Badge variant="secondary" className="text-xs h-5">
-                                                        {driver.driver_position}
-                                                      </Badge>
-                                                    )}
-                                                  </div>
-                                                  {driver.contact_number && (
-                                                    <p className="text-xs text-muted-foreground ml-6 flex items-center gap-1">
-                                                      <Phone className="h-3 w-3" />
-                                                      {driver.contact_number}
-                                                    </p>
-                                                  )}
-                                                </div>
-                                                <div className="flex gap-1">
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-7 text-xs"
-                                                    onClick={() => handleEditDriver(driver)}
-                                                  >
-                                                    <Edit className="h-3 w-3 mr-1" />
-                                                    Edit
-                                                  </Button>
-                                                  <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    className="h-7 text-xs text-destructive hover:text-destructive"
-                                                    onClick={() => handleDeleteDriver(driver.id)}
-                                                  >
-                                                    <Trash2 className="h-3 w-3" />
-                                                  </Button>
-                                                </div>
-                                              </div>
-                                            ))
-                                          ) : (
-                                            <div className="bg-muted/30 p-4 rounded-md text-center">
-                                              <Users className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                                              <p className="text-xs text-muted-foreground">No drivers added yet</p>
-                                              <Button
-                                                variant="link"
-                                                size="sm"
-                                                className="h-auto text-xs mt-1"
-                                                onClick={() => handleAddDriver(customer.id)}
-                                              >
-                                                Add first driver
-                                              </Button>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {customerVehicles.length === 0 && (
-                                  <div className="mt-4 text-xs text-muted-foreground flex items-center gap-2">
-                                    <Car className="h-4 w-4" />
-                                    No vehicles registered
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex gap-2 self-end sm:self-start shrink-0">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditingCustomer(customer);
-                                    setShowForm(false); // Ensure create mode is off
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                  }}
-                                >
-                                  <Edit className="h-4 w-4 mr-1" />
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleDelete(customer)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-1" />
-                                  Delete
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
+                          <ModernCustomerCard
+                            key={customer.id}
+                            customer={customer}
+                            customerVehicles={customerVehicles}
+                            customerWorkOrders={customerWorkOrders}
+                            customerInvoices={invoices[customer.id] || []}
+                            customerDrivers={drivers[customer.id] || []}
+                            companyContacts={companyContacts[customer.id] || []}
+                            isExpanded={isExpanded}
+                            onToggleExpand={() => toggleExpand(customer.id)}
+                            onEdit={() => {
+                              setEditingCustomer(customer);
+                              setShowForm(false);
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                            }}
+                            onDelete={() => handleDelete(customer)}
+                            onAddVehicle={() => navigate(`/admin/vehicles?create=true&customerId=${customer.id}`)}
+                            onManageContacts={() => handleAddCompanyContact(customer.id)}
+                            onManageDrivers={() => handleAddDriver(customer.id)}
+                          />
                         );
                       })}
                     </div>

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Save, Building2, FileText, Settings as SettingsIcon, QrCode, Trash2, Clock, Shield, Users, User, Key, Upload, Plus, Edit, Check } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { ImageDropzone } from "@/components/shared/ImageDropzone";
 
 export default function Settings() {
     const { user } = useAuth();
@@ -539,15 +540,16 @@ export default function Settings() {
                                                 </div>
                                             )}
                                             <div className="flex-1 space-y-2">
-                                                <Input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={async (e) => {
-                                                        const file = e.target.files?.[0];
+                                                <ImageDropzone
+                                                    compact
+                                                    multiple={false}
+                                                    disabled={saving}
+                                                    onDropFiles={async (files) => {
+                                                        const file = files[0];
                                                         if (!file) return;
                                                         setSaving(true);
                                                         try {
-                                                            const fileExt = file.name.split('.').pop();
+                                                            const fileExt = file.name.split('.').pop() || 'png';
                                                             const fileName = `logo-${Date.now()}.${fileExt}`;
                                                             const { error: uploadError } = await supabase.storage
                                                                 .from('public-assets')
@@ -556,7 +558,7 @@ export default function Settings() {
                                                             const { data: { publicUrl } } = supabase.storage
                                                                 .from('public-assets')
                                                                 .getPublicUrl(fileName);
-                                                            setProfile({ ...profile, logo_url: publicUrl });
+                                                            setProfile((prev: any) => ({ ...prev, logo_url: publicUrl }));
                                                             toast({ title: "Logo Uploaded", description: "Remember to save your profile." });
                                                         } catch (error: any) {
                                                             toast({ variant: "destructive", title: "Upload Failed", description: error.message });
@@ -564,6 +566,8 @@ export default function Settings() {
                                                             setSaving(false);
                                                         }
                                                     }}
+                                                    title="Drag & drop garage logo here"
+                                                    subtitle="or click to browse from device"
                                                 />
                                                 <p className="text-[10px] text-muted-foreground">Recommended: Square PNG with transparent background.</p>
                                             </div>
@@ -638,30 +642,15 @@ export default function Settings() {
 
                                         <div className="space-y-3">
                                             <Label>Signature File</Label>
-                                            <div className="border-2 border-dashed rounded-lg p-4 flex flex-col items-center justify-center bg-slate-50/50 hover:bg-slate-50 transition-colors border-slate-200">
-                                                <input
-                                                    type="file"
-                                                    id="signature-file-input"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file) setSigUploadFile(file);
-                                                    }}
-                                                />
-                                                <label
-                                                    htmlFor="signature-file-input"
-                                                    className="cursor-pointer flex flex-col items-center gap-2 text-center"
-                                                >
-                                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:scale-105 transition-transform">
-                                                        <Upload className="h-5 w-5" />
-                                                    </div>
-                                                    <span className="text-xs font-semibold text-slate-700">
-                                                        {sigUploadFile ? sigUploadFile.name : "Choose signature image"}
-                                                    </span>
-                                                    <span className="text-[10px] text-slate-400">PNG, JPG or SVG up to 2MB</span>
-                                                </label>
-                                            </div>
+                                            <ImageDropzone
+                                                compact
+                                                multiple={false}
+                                                onDropFiles={(files) => {
+                                                    if (files[0]) setSigUploadFile(files[0]);
+                                                }}
+                                                title={sigUploadFile ? sigUploadFile.name : "Drag & drop signature image here"}
+                                                subtitle="PNG, JPG or SVG up to 2MB (or click to browse)"
+                                            />
                                         </div>
 
                                         <div className="flex items-center justify-between p-3 border rounded-lg bg-slate-50/50">
@@ -1135,17 +1124,18 @@ export default function Settings() {
                                                 </div>
                                             )}
 
-                                            <div className="flex items-center gap-4 w-full max-w-sm">
-                                                <Input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={async (e) => {
-                                                        const file = e.target.files?.[0];
+                                            <div className="w-full max-w-sm">
+                                                <ImageDropzone
+                                                    compact
+                                                    multiple={false}
+                                                    disabled={saving}
+                                                    onDropFiles={async (files) => {
+                                                        const file = files[0];
                                                         if (!file) return;
 
                                                         setSaving(true);
                                                         try {
-                                                            const fileExt = file.name.split('.').pop();
+                                                            const fileExt = file.name.split('.').pop() || 'png';
                                                             const fileName = `qr-code-${Date.now()}.${fileExt}`;
                                                             const filePath = `${fileName}`;
 
@@ -1160,13 +1150,15 @@ export default function Settings() {
                                                                 .getPublicUrl(filePath);
 
                                                             setProfile({ ...profile, payment_qr_code_url: publicUrl });
-                                                            toast({ title: "Image Uploaded", description: "Remember to save changes." });
+                                                            toast({ title: "QR Code Uploaded", description: "Remember to save changes." });
                                                         } catch (error: any) {
                                                             toast({ variant: "destructive", title: "Upload Failed", description: error.message });
                                                         } finally {
                                                             setSaving(false);
                                                         }
                                                     }}
+                                                    title="Drag & drop UPI QR code here"
+                                                    subtitle="or click to browse from device"
                                                 />
                                             </div>
                                         </div>

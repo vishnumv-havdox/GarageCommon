@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import {
   FileText,
   Upload,
@@ -420,14 +421,22 @@ export function EmployeeDocumentsModal({
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">Attach Document File *</Label>
-                  <Input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.webp"
-                    className="h-9 text-xs bg-background cursor-pointer file:text-xs file:py-1 file:px-2 file:rounded-md file:bg-primary/10 file:text-primary file:border-0"
-                    onChange={handleFileChange}
-                    required
+                  <ImageDropzone
+                    compact
+                    multiple={false}
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,image/*"
+                    onDropFiles={(files) => {
+                      if (files[0]) {
+                        setSelectedFile(files[0]);
+                        if (!documentName) {
+                          setDocumentName(`${documentType} - ${employee?.name || "Employee"}`);
+                        }
+                      }
+                    }}
+                    title={selectedFile ? selectedFile.name : "Drag & drop document or image here"}
+                    subtitle="PDF, PNG, JPG up to 10MB (or click to browse)"
                   />
                 </div>
 

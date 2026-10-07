@@ -45,6 +45,8 @@ import {
     AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { GarageMetricsDashboard } from "@/components/dashboard/GarageMetricsDashboard";
+import { AdminBookAppointmentDialog } from "@/components/forms/AdminBookAppointmentDialog";
+import { VehiclePlateBadge } from "@/components/shared/VehiclePlateBadge";
 
 export default function Appointments() {
     const { user } = useAuth();
@@ -55,6 +57,7 @@ export default function Appointments() {
     const [loading, setLoading] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string>("all");
     const [searchTerm, setSearchTerm] = useState("");
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
 
     useEffect(() => {
         fetchAppointments();
@@ -91,7 +94,17 @@ export default function Appointments() {
                 .select(`
                     *,
                     customer:customers(id, name, phone, company_name),
-                    vehicle:vehicles(id, vehicle_number, model, vehicle_type),
+                    vehicle:vehicles(
+                        id,
+                        vehicle_number,
+                        vehicle_no,
+                        model,
+                        vehicle_type,
+                        vehicle_models (
+                            name,
+                            vehicle_manufacturers (name)
+                        )
+                    ),
                     services:appointment_services(service_name),
                     history:appointment_history(
                         *,
@@ -392,6 +405,13 @@ export default function Appointments() {
                                             <SelectItem value="cancelled">Cancelled</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    <Button
+                                        onClick={() => setIsCreateOpen(true)}
+                                        className="h-9 px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold flex items-center gap-1.5 shadow-sm shrink-0"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                        <span>Book Appointment</span>
+                                    </Button>
                                 </div>
                             </div>
 
@@ -411,10 +431,14 @@ export default function Appointments() {
                                     <ScrollArea className="h-[calc(100vh-320px)] -mr-4 pr-4">
                                         <div className="space-y-4 pb-10">
                                             {filteredAppointments.filter(a => ['pending', 'confirmed'].includes(a.status)).length === 0 ? (
-                                                <div className="text-center py-20 bg-background/50 rounded-xl border border-dashed">
-                                                    <CalendarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-4 opacity-20" />
+                                                <div className="text-center py-16 bg-background/50 rounded-xl border border-dashed flex flex-col items-center justify-center p-6">
+                                                    <CalendarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3 opacity-20" />
                                                     <h3 className="text-lg font-medium">No active appointments</h3>
-                                                    <p className="text-muted-foreground text-sm">Either no slots booked for this day or filters are too strict.</p>
+                                                    <p className="text-muted-foreground text-sm max-w-sm mb-4">Either no slots booked for this day or filters are too strict.</p>
+                                                    <Button onClick={() => setIsCreateOpen(true)} size="sm" className="gap-2 font-semibold">
+                                                        <Plus className="h-4 w-4" />
+                                                        Book New Appointment
+                                                    </Button>
                                                 </div>
                                             ) : (
                                                 filteredAppointments.filter(a => ['pending', 'confirmed'].includes(a.status)).map(app => (
@@ -693,6 +717,14 @@ export default function Appointments() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Admin Book Appointment Dialog */}
+            <AdminBookAppointmentDialog
+                open={isCreateOpen}
+                onOpenChange={setIsCreateOpen}
+                defaultDate={date}
+                onSuccess={fetchAppointments}
+            />
         </>
     );
 }
@@ -756,11 +788,18 @@ function AppointmentCard({ app, onUpdateStatus, onDelete, onEditTime, onCreateJo
                                 </div>
                             )}
                             {app.vehicle && (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                                    <Car className="h-4 w-4" />
-                                    <span className="font-medium text-foreground">{app.vehicle.vehicle_number}</span>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1.5 flex-wrap">
+                                    <VehiclePlateBadge plateNumber={app.vehicle.vehicle_number || app.vehicle.vehicle_no} size="sm" />
                                     <span>•</span>
-                                    <span>{app.vehicle.model}</span>
+                                    <span className="font-medium text-foreground">
+                                        {[app.vehicle.vehicle_models?.vehicle_manufacturers?.name, app.vehicle.vehicle_models?.name || app.vehicle.model].filter(Boolean).join(" ") || "Vehicle"}
+                                    </span>
+                                    {app.vehicle.vehicle_type && (
+                                        <>
+                                            <span>•</span>
+                                            <span className="text-xs">{app.vehicle.vehicle_type}</span>
+                                        </>
+                                    )}
                                 </div>
                             )}
                             {app.notes && (

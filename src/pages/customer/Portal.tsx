@@ -60,6 +60,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
+import { ImageDropzone } from "@/components/shared/ImageDropzone";
 
 // Import Table components
 import {
@@ -2668,31 +2669,15 @@ export default function CustomerPortal() {
 
             <div className="space-y-2">
               <Label>Payment Proof (Screenshot/Receipt)</Label>
-              <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-muted/50 transition-colors cursor-pointer relative bg-muted/20">
-                <Input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setPaymentProof(e.target.files[0]);
-                    }
-                  }}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                {paymentProof ? (
-                  <div className="flex flex-col items-center text-green-600">
-                    <CheckCircle2 className="h-8 w-8 mb-2" />
-                    <span className="text-sm font-medium truncate max-w-[200px]">{paymentProof.name}</span>
-                    <span className="text-xs mt-1">Click to change</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center text-muted-foreground">
-                    <Upload className="h-8 w-8 mb-2" />
-                    <span className="text-sm font-medium">Click to upload proof</span>
-                    <span className="text-xs mt-1">supports JPG, PNG, PDF</span>
-                  </div>
-                )}
-              </div>
+              <ImageDropzone
+                multiple={false}
+                accept="image/*,application/pdf"
+                onDropFiles={(files) => {
+                  if (files[0]) setPaymentProof(files[0]);
+                }}
+                title={paymentProof ? paymentProof.name : "Drag & drop proof of payment here"}
+                subtitle="Supports JPG, PNG, PDF (or click to browse)"
+              />
             </div>
           </div>
 

@@ -12,7 +12,8 @@ import {
   Users, Truck, Layers,
   Package, QrCode,
   UserCheck, CalendarCheck, Settings,
-  Briefcase, User, BellRing, StickyNote
+  Briefcase, User, BellRing, StickyNote,
+  BarChart3, TrendingUp
 } from "lucide-react";
 import { navConfig } from "@/config/accessControl";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -101,6 +102,13 @@ const adminSections: SidebarSection[] = [
         isActiveMatch: (p) => p.startsWith("/admin/invoices"),
       },
       {
+        label: "Financial Analytics",
+        path: "/admin/invoice-analytics",
+        icon: BarChart3,
+        roles: ["admin", "manager"],
+        isActiveMatch: (p) => p.startsWith("/admin/invoice-analytics"),
+      },
+      {
         label: "Customer Ledgers",
         path: "/admin/ledger",
         icon: BookText,
@@ -182,11 +190,18 @@ const adminSections: SidebarSection[] = [
         isActiveMatch: (p) => p.startsWith("/admin/attendance") || p.startsWith("/admin/salary"),
       },
       {
+        label: "Performance Analytics",
+        path: "/admin/analytics",
+        icon: TrendingUp,
+        roles: ["admin"],
+        isActiveMatch: (p) => p === "/admin/analytics",
+      },
+      {
         label: "Settings & Reports",
         path: "/admin/settings",
         icon: Settings,
         roles: ["admin", "manager"],
-        isActiveMatch: (p) => p.startsWith("/admin/settings") || p.startsWith("/admin/analytics"),
+        isActiveMatch: (p) => p.startsWith("/admin/settings"),
       },
     ],
   },

@@ -1,10 +1,11 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { Receipt, BookText, ArrowLeftRight } from "lucide-react";
+import { Receipt, BookText, ArrowLeftRight, BarChart3 } from "lucide-react";
 
 export function FinanceTabsNav() {
   const tabs = [
     { label: "Invoices & Quotes", path: "/admin/invoices", icon: Receipt },
+    { label: "Financial Analytics", path: "/admin/invoice-analytics", icon: BarChart3 },
     { label: "Customer Ledgers", path: "/admin/ledger", icon: BookText },
     { label: "Tally Prime Sync", path: "/admin/tally", icon: ArrowLeftRight },
   ];

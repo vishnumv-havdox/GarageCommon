@@ -29,6 +29,7 @@ import {
     ArrowLeft, Download, FileText, BarChart3, TrendingUp, AlertCircle,
     TrendingDown, Printer, Wrench, IndianRupee, ExternalLink
 } from "lucide-react";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { generateLedgerPDF } from "@/utils/pdfGenerator";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
@@ -277,7 +278,7 @@ export default function CustomerLedger() {
             <div className="flex flex-col lg:flex-row bg-background min-h-screen">
                 <AdminSidebar />
                 <div className="flex-1 p-8 flex items-center justify-center">
-                    <p className="text-muted-foreground animate-pulse">Loading Ledger...</p>
+                    <HavDoxLoader variant="section" message="Loading customer transaction ledger..." />
                 </div>
             </div>
         );

@@ -161,7 +161,7 @@ export default function RemindersNotes() {
 
               <Button
                 onClick={handleOpenCreate}
-                className="h-9 bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5 shadow-sm"
+                className="h-9 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shadow-sm"
               >
                 <Plus className="h-4 w-4 stroke-[2.5]" />
                 Add Reminder
@@ -383,7 +383,7 @@ export default function RemindersNotes() {
               </p>
               <Button
                 onClick={handleOpenCreate}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-medium gap-1.5"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium gap-1.5"
               >
                 <Plus className="h-4 w-4" />
                 Create New Reminder

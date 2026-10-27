@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useCompanyProfile } from "@/hooks/useCompanyProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,19 +22,9 @@ interface UserProfileDialogProps {
 export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps) {
     const { user, signOut } = useAuth();
     const { toast } = useToast();
+    const { companyName } = useCompanyProfile();
     const [loading, setLoading] = useState(false);
     const [factors, setFactors] = useState<any[]>([]);
-    const [companyName, setCompanyName] = useState<string>("Garage");
-
-    useEffect(() => {
-        const fetchCompany = async () => {
-            const { data } = await supabase.from('company_profiles').select('company_name').limit(1).maybeSingle();
-            if (data?.company_name) {
-                setCompanyName(data.company_name);
-            }
-        };
-        fetchCompany();
-    }, []);
 
     useEffect(() => {
         if (open) {
@@ -179,6 +170,13 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
 
 
                 </Tabs>
+
+                {/* Brand Attribution */}
+                <div className="pt-3 mt-1 border-t border-border/50 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground text-center">
+                    <span className="font-display font-semibold text-foreground">Drive Flow</span>
+                    <span className="text-muted-foreground/40">•</span>
+                    <span>Powered by HavDox</span>
+                </div>
             </DialogContent>
         </Dialog>
     );

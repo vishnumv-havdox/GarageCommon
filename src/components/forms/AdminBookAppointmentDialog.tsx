@@ -60,6 +60,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { VehiclePlateBadge } from "@/components/shared/VehiclePlateBadge";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 
 interface AdminBookAppointmentDialogProps {
     open: boolean;
@@ -775,8 +776,8 @@ export function AdminBookAppointmentDialog({
                                 Select a customer above to display their registered vehicles.
                             </div>
                         ) : loadingVehicles && vehicles.length === 0 ? (
-                            <div className="p-4 rounded-xl border border-border flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin text-primary" /> Loading customer vehicles...
+                            <div className="p-4 rounded-xl border border-border">
+                                <HavDoxLoader variant="inline" message="Loading customer vehicles..." />
                             </div>
                         ) : vehicles.length === 0 ? (
                             <div className="p-4 rounded-xl border border-amber-200/50 bg-amber-50/20 text-xs text-muted-foreground flex items-start gap-2.5">

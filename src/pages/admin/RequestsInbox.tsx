@@ -402,55 +402,55 @@ export default function RequestsInbox() {
                             <TabsList className="flex items-center gap-2 bg-slate-200/50 dark:bg-slate-800/50 p-1.5 rounded-2xl w-max border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-lg">
                                 <TabsTrigger
                                     value="work-approvals"
-                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
+                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
                                 >
                                     Work Orders
                                     {workApprovals.length > 0 && (
-                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'work-approvals' ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'}`}>
+                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'work-approvals' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
                                             {workApprovals.length}
                                         </Badge>
                                     )}
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="appointments"
-                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-yellow-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
+                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
                                 >
                                     Appointments
                                     {appointments.length > 0 && (
-                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'appointments' ? 'bg-white/20 text-white' : 'bg-yellow-600/10 text-yellow-600'}`}>
+                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'appointments' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
                                             {appointments.length}
                                         </Badge>
                                     )}
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="part-requests"
-                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
+                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
                                 >
                                     Part Requests
                                     {partRequests.length > 0 && (
-                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'part-requests' ? 'bg-white/20 text-white' : 'bg-blue-600/10 text-blue-600'}`}>
+                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'part-requests' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
                                             {partRequests.length}
                                         </Badge>
                                     )}
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="payment-requests"
-                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
+                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
                                 >
                                     Payments
                                     {payments.length > 0 && (
-                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'payment-requests' ? 'bg-white/20 text-white' : 'bg-emerald-600/10 text-emerald-600'}`}>
+                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'payment-requests' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
                                             {payments.length}
                                         </Badge>
                                     )}
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="leave-requests"
-                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-lg font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
+                                    className="px-6 py-2.5 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs uppercase tracking-widest transition-all shrink-0 whitespace-nowrap"
                                 >
                                     Leave
                                     {leaveRequests.length > 0 && (
-                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'leave-requests' ? 'bg-white/20 text-white' : 'bg-indigo-600/10 text-indigo-600'}`}>
+                                        <Badge className={`ml-2 border-none rounded-md px-1.5 py-0.5 text-[10px] transition-colors ${activeTab === 'leave-requests' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
                                             {leaveRequests.length}
                                         </Badge>
                                     )}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { AttendanceTabsNav } from "@/components/layout/AttendanceTabsNav";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -789,7 +790,7 @@ export default function AttendancePage() {
 
                                         <AlertDialog>
                                             <AlertDialogTrigger asChild>
-                                                <Button disabled={saving} className="h-9 px-8 bg-indigo-600 hover:bg-indigo-700 font-black shadow-lg shadow-indigo-200">
+                                                <Button disabled={saving} className="h-9 px-8 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-sm">
                                                     {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarCheck className="mr-2 h-4 w-4" />}
                                                     Publish Roster
                                                 </Button>
@@ -823,7 +824,7 @@ export default function AttendancePage() {
                                             </TableHeader>
                                             <TableBody>
                                                 {loading ? (
-                                                    <TableRow><TableCell colSpan={5} className="text-center py-20"><Clock className="h-8 w-8 animate-spin mx-auto mb-2 text-primary/40" />Indexing workforce data...</TableCell></TableRow>
+                                                    <TableRow><TableCell colSpan={5} className="py-8"><HavDoxLoader variant="section" message="Indexing workforce attendance data..." /></TableCell></TableRow>
                                                 ) : employees.length === 0 ? (
                                                     <TableRow><TableCell colSpan={5} className="text-center py-20 text-muted-foreground">No active employees found.</TableCell></TableRow>
                                                 ) : (
@@ -1154,7 +1155,7 @@ export default function AttendancePage() {
                                                                             <span>{row.remarks || '-'}</span>
                                                                             {row.auditor?.full_name && (
                                                                                 <div className="flex items-center gap-1.5 mt-1">
-                                                                                    <Badge variant="secondary" className="text-[8px] uppercase font-black bg-indigo-50 text-indigo-600 border-indigo-100 px-1.5 h-4">
+                                                                                    <Badge variant="secondary" className="text-[8px] uppercase font-bold bg-primary/10 text-primary border-primary/20 px-1.5 h-4">
                                                                                         Marked By: {row.auditor.full_name}
                                                                                     </Badge>
                                                                                 </div>

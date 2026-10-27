@@ -33,6 +33,7 @@ const stages: StageInfo[] = [
 
 interface ProgressTrackerProps {
   currentStage: string | null
+  status?: string | null
   stagesData?: Array<{
     id: string
     stage: string
@@ -48,6 +49,7 @@ interface ProgressTrackerProps {
 
 export function ProgressTracker({
   currentStage,
+  status,
   stagesData,
   onAdvanceStage,
   canAdvance = false,
@@ -55,9 +57,17 @@ export function ProgressTracker({
 }: ProgressTrackerProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const currentStageIndex = stages.findIndex(s => s.name === currentStage) || 0
+  const isCompletedOrder = ['completed', 'delivered', 'finalized'].includes(
+    (status || '').toLowerCase()
+  )
+
+  const foundIndex = stages.findIndex(s => s.name.toLowerCase() === (currentStage || '').toLowerCase())
+  const currentStageIndex = foundIndex >= 0 ? foundIndex : 0
 
   const getStageStatus = (stageName: string): 'completed' | 'in_progress' | 'pending' => {
+    // If the work order itself is finalized/completed, all stages are completed
+    if (isCompletedOrder) return 'completed'
+
     // If we have a currentStage, use strict sequential logic based on index
     if (currentStage) {
       const stageIndex = stages.findIndex(s => s.name === stageName)
@@ -67,7 +77,7 @@ export function ProgressTracker({
       return 'pending'
     }
 
-    // Fallback if no currentStage is provided (shouldn't happen in main flows)
+    // Fallback if no currentStage is provided
     if (!stagesData) {
       const index = stages.findIndex(s => s.name === stageName)
       if (index < currentStageIndex) return 'completed'
@@ -118,11 +128,9 @@ export function ProgressTracker({
             Work Progress
           </CardTitle>
           <div className="flex items-center gap-2">
-            {currentStage && (
-              <Badge variant="outline" className="text-sm">
-                Stage: {currentStage}
-              </Badge>
-            )}
+            <Badge variant="outline" className="text-sm">
+              Stage: {isCompletedOrder ? 'Completed' : (currentStage || 'Inspection')}
+            </Badge>
             <Button
               variant="ghost"
               size="sm"
@@ -149,7 +157,7 @@ export function ProgressTracker({
           <div className="absolute top-4 left-4 right-4 h-1 bg-muted rounded" />
           <div
             className="absolute top-4 left-4 h-1 bg-primary rounded transition-all duration-500"
-            style={{ width: `${(currentStageIndex / (stages.length - 1)) * 100}%` }}
+            style={{ width: `${isCompletedOrder ? 100 : (currentStageIndex / (stages.length - 1)) * 100}%` }}
           />
 
           <div className="relative flex justify-between">
@@ -247,7 +255,7 @@ export function ProgressTracker({
         )}
 
         {/* Advance Stage Button */}
-        {canAdvance && isAdmin && currentStageIndex < stages.length - 1 && (
+        {canAdvance && isAdmin && !isCompletedOrder && currentStageIndex < stages.length - 1 && (
           <div className="flex justify-end mt-4 pt-4 border-t">
             <Button onClick={handleAdvanceStage} size="sm">
               Advance to {stages[currentStageIndex + 1]?.label}

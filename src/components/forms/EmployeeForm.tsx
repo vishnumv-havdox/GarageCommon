@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Briefcase, X, CheckCircle, FileText, Upload, Shield, Trash2, Calendar, Plus } from "lucide-react";
 import { createUser, updateUser, getUserConfig } from "@/config/userCreation";
 import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
+import { cn } from "@/lib/utils";
 
 interface Position {
   id: string;
@@ -305,19 +306,29 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
 
   const handleAddPosition = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPosition.name || !newPosition.department) {
-      toast({ title: "Error", description: "Please fill in all position fields", variant: "destructive" });
+    if (!newPosition.name.trim() || !newPosition.department) {
+      toast({ title: "Error", description: "Please enter a position name and select a department", variant: "destructive" });
       return;
     }
     setIsSavingPosition(true);
-    const { data, error } = await supabase.from("positions").insert([{ name: newPosition.name, department: newPosition.department, access_level: newPosition.access_level }]).select().single();
+    const { data, error } = await supabase
+      .from("positions")
+      .insert([{
+        name: newPosition.name.trim(),
+        department: newPosition.department,
+        access_level: newPosition.access_level
+      }])
+      .select()
+      .single();
+
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+      toast({ title: "Error creating position", description: error.message, variant: "destructive" });
+    } else if (data) {
       onPositionAdd(data);
+      handleChange("position_id", data.id);
       setNewPosition({ name: "", department: "", access_level: "staff" });
       setShowPositionForm(false);
-      toast({ title: "Success", description: "Position created successfully" });
+      toast({ title: "Position Created", description: `"${data.name}" has been created and selected.` });
     }
     setIsSavingPosition(false);
   };
@@ -356,7 +367,133 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
           <div className="space-y-1.5"><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" placeholder="10-digit phone" value={formData.phone} onChange={(e) => { const value = e.target.value.replace(/\D/g, '').slice(0, 10); handleChange("phone", value); }} disabled={isLoading} maxLength={10} pattern="[0-9]*" inputMode="numeric" /></div>
           <div className="space-y-1.5"><Label htmlFor="email">Email *</Label><Input id="email" type="email" placeholder="staff@example.com" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} disabled={isLoading} /></div>
           <div className="space-y-1.5"><Label htmlFor="password">Password {editingEmployee ? "(Leave blank to keep same)" : "*"}</Label><Input id="password" type="password" placeholder="Min 6 characters" value={formData.password} onChange={(e) => handleChange("password", e.target.value)} disabled={isLoading} /></div>
-          <div className="space-y-1.5"><Label>Position *</Label><div className="flex gap-2"><Select value={formData.position_id} onValueChange={(v) => handleChange("position_id", v)}><SelectTrigger className="flex-1"><SelectValue placeholder="Select position" /></SelectTrigger><SelectContent>{positions.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name} - {p.department}</SelectItem>))}</SelectContent></Select><Button type="button" variant="outline" size="icon" onClick={() => setShowPositionForm(!showPositionForm)}><Briefcase className="h-4 w-4" /></Button></div></div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label>Position *</Label>
+              <button
+                type="button"
+                onClick={() => setShowPositionForm(!showPositionForm)}
+                className="text-[11px] text-primary hover:underline font-medium flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" /> New Position
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <Select value={formData.position_id} onValueChange={(v) => handleChange("position_id", v)}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select position" />
+                </SelectTrigger>
+                <SelectContent>
+                  {positions.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} - {p.department}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant={showPositionForm ? "default" : "outline"}
+                size="icon"
+                onClick={() => setShowPositionForm(!showPositionForm)}
+                title="Create New Position"
+                className={cn(showPositionForm && "bg-primary text-primary-foreground")}
+              >
+                <Briefcase className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {showPositionForm && (
+            <div className="sm:col-span-2 border-2 border-primary/30 rounded-xl p-4 bg-primary/5 dark:bg-primary/10 space-y-3.5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                    <Briefcase className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-foreground">Create New Position / Role</h4>
+                    <p className="text-[11px] text-muted-foreground">Add a new garage role to assign to staff.</p>
+                  </div>
+                </div>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowPositionForm(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Position Name *</Label>
+                  <Input
+                    placeholder="e.g. Lead Mechanic"
+                    value={newPosition.name}
+                    onChange={(e) => setNewPosition((p) => ({ ...p, name: e.target.value }))}
+                    className="h-9 text-xs"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Department *</Label>
+                  <Select value={newPosition.department} onValueChange={(v) => setNewPosition((p) => ({ ...p, department: v }))}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Access Level</Label>
+                  <Select value={newPosition.access_level} onValueChange={(v: "admin" | "manager" | "staff") => setNewPosition((p) => ({ ...p, access_level: v }))}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accessLevels.map((l) => (
+                        <SelectItem key={l.value} value={l.value}>
+                          {l.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setShowPositionForm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 text-xs font-semibold gap-1.5"
+                  onClick={handleAddPosition}
+                  disabled={isSavingPosition}
+                >
+                  {isSavingPosition ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3.5 w-3.5" /> Save & Select Position
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="space-y-1.5"><Label>Access Level *</Label><Select value={formData.access_level} onValueChange={(v: "admin" | "manager" | "staff") => handleChange("access_level", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accessLevels.map((l) => (<SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>))}</SelectContent></Select></div>
           <div className="space-y-1.5">
             <Label>Base Pay (₹)</Label>
@@ -534,17 +671,7 @@ export function EmployeeForm({ onSuccess, onCancel, editingEmployee, positions, 
           </div>
         </div>
 
-        {showPositionForm && (
-          <div className="border rounded-xl p-4 bg-muted/50 space-y-3">
-            <div className="flex items-center justify-between"><h4 className="font-semibold text-sm">Create New Position</h4><Button type="button" variant="ghost" size="sm" onClick={() => setShowPositionForm(false)}><X className="h-4 w-4" /></Button></div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1.5"><Label>Position Name *</Label><Input placeholder="e.g., Mechanic" value={newPosition.name} onChange={(e) => setNewPosition((p) => ({ ...p, name: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Department *</Label><Select value={newPosition.department} onValueChange={(v) => setNewPosition((p) => ({ ...p, department: v }))}><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger><SelectContent>{departments.map((d) => (<SelectItem key={d} value={d}>{d}</SelectItem>))}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label>Access Level</Label><Select value={newPosition.access_level} onValueChange={(v: "admin" | "manager" | "staff") => setNewPosition((p) => ({ ...p, access_level: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accessLevels.map((l) => (<SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>))}</SelectContent></Select></div>
-            </div>
-            <Button type="button" size="sm" onClick={handleAddPosition} disabled={isSavingPosition}>{isSavingPosition ? "Creating..." : "Create Position"}</Button>
-          </div>
-        )}
+
 
         <div className="flex flex-wrap gap-2 justify-end pt-3 border-t mt-4">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>Cancel</Button>

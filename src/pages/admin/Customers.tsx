@@ -21,6 +21,7 @@ import { SearchInput } from "@/components/shared/SearchInput";
 import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 import { DriverHistoryDialog } from "@/components/drivers/DriverHistoryDialog";
 import { ModernCustomerCard } from "@/components/customers/ModernCustomerCard";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 
 export interface CustomerContact {
   id: string;
@@ -902,7 +903,7 @@ export default function AdminCustomers() {
                 </CardHeader>
                 <CardContent>
                   {loading ? (
-                    <div className="text-center py-8 text-muted-foreground">Loading...</div>
+                    <HavDoxLoader variant="section" message="Loading customer directory & fleet accounts..." />
                   ) : filteredCustomers.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">No customers found</div>
                   ) : (
@@ -977,7 +978,7 @@ export default function AdminCustomers() {
                 </CardHeader>
                 <CardContent>
                   {loading ? (
-                    <div className="text-center py-8 text-muted-foreground">Loading...</div>
+                    <HavDoxLoader variant="section" message="Loading drivers registry..." />
                   ) : Object.values(drivers).flat().length === 0 ? (
                     <div className="text-center py-12">
                       <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />

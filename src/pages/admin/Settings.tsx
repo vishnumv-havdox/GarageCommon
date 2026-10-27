@@ -13,13 +13,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Save, Building2, FileText, Settings as SettingsIcon, QrCode, Trash2, Clock, Shield, Users, User, Key, Upload, Plus, Edit, Check } from "lucide-react";
+import { Loader2, Save, Building2, FileText, Settings as SettingsIcon, QrCode, Trash2, Clock, Shield, Users, User, Key, Upload, Plus, Edit, Check, Palette } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
+import { useCompanyProfile } from "@/hooks/useCompanyProfile";
+import { AppearanceSettingsTab } from "@/components/settings/AppearanceSettingsTab";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 
 export default function Settings() {
     const { user } = useAuth();
     const { toast } = useToast();
+    const { invalidate: invalidateCompanyProfile, updateProfileCache } = useCompanyProfile();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState("profile");
@@ -79,39 +83,36 @@ export default function Settings() {
     const fetchSettings = async () => {
         setLoading(true);
         try {
-            // Fetch Company Profile
-            const { data: profileData, error: profileError } = await supabase
-                .from('company_profiles')
-                .select('*')
-                .order('updated_at', { ascending: false })
-                .limit(1)
-                .maybeSingle(); // Use maybeSingle to avoid error if empty
+            // Fetch Company Profile, Document Settings, and Workforce Settings in parallel
+            const [profileRes, settingsRes, workforceRes] = await Promise.all([
+                supabase
+                    .from('company_profiles')
+                    .select('*')
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle(),
+                supabase
+                    .from('document_settings')
+                    .select('*'),
+                supabase
+                    .from('workforce_settings')
+                    .select('*')
+                    .eq('is_active', true)
+                    .maybeSingle(),
+            ]);
 
-            if (profileError && profileError.code !== 'PGRST116') throw profileError;
+            if (profileRes.error && profileRes.error.code !== 'PGRST116') throw profileRes.error;
+            if (settingsRes.error) throw settingsRes.error;
+            if (workforceRes.error) throw workforceRes.error;
 
-            // Fetch Document Settings
-            const { data: settingsData, error: settingsError } = await supabase
-                .from('document_settings')
-                .select('*');
+            if (profileRes.data) setProfile(profileRes.data);
 
-            if (settingsError) throw settingsError;
-
-            if (profileData) setProfile(profileData);
-
-            if (settingsData) {
-                setWorkSlipSettings(settingsData.find((s: any) => s.doc_type === 'work_slip') || { doc_type: 'work_slip' });
-                setInvoiceSettings(settingsData.find((s: any) => s.doc_type === 'invoice') || { doc_type: 'invoice' });
+            if (settingsRes.data) {
+                setWorkSlipSettings(settingsRes.data.find((s: any) => s.doc_type === 'work_slip') || { doc_type: 'work_slip' });
+                setInvoiceSettings(settingsRes.data.find((s: any) => s.doc_type === 'invoice') || { doc_type: 'invoice' });
             }
 
-            // Fetch Workforce Settings
-            const { data: workforceData, error: workforceError } = await supabase
-                .from('workforce_settings')
-                .select('*')
-                .eq('is_active', true)
-                .maybeSingle();
-
-            if (workforceError) throw workforceError;
-            if (workforceData) setWorkforceSettings(workforceData);
+            if (workforceRes.data) setWorkforceSettings(workforceRes.data);
             else setWorkforceSettings({
                 standard_start_time: '09:00:00',
                 standard_end_time: '18:00:00',
@@ -151,6 +152,8 @@ export default function Settings() {
                 await supabase.from('company_profiles').insert(payload);
             }
 
+            updateProfileCache(payload);
+            invalidateCompanyProfile();
             toast({ title: "Saved", description: "Company profile updated." });
             fetchSettings(); // Refresh
         } catch (error: any) {
@@ -177,6 +180,8 @@ export default function Settings() {
                 if (error) throw error;
                 if (data) updatedProfile = data;
             }
+            updateProfileCache(updatedProfile);
+            invalidateCompanyProfile();
             setProfile(updatedProfile);
             toast({ title: "Signatures Updated", description: "Digital signature settings have been saved successfully." });
         } catch (error: any) {
@@ -426,8 +431,6 @@ export default function Settings() {
         });
     };
 
-    if (loading) return <div className="flex h-screen items-center justify-center">Loading settings...</div>;
-
     return (
         <div className="min-h-screen bg-background">
             <div className="flex flex-col lg:flex-row">
@@ -444,18 +447,25 @@ export default function Settings() {
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                         <div className="overflow-x-auto no-scrollbar pb-1">
                             <TabsList className="w-full sm:w-auto flex overflow-x-auto no-scrollbar p-1">
-                                <TabsTrigger value="profile" className="shrink-0 whitespace-nowrap">Company Profile</TabsTrigger>
-                                <TabsTrigger value="users" className="shrink-0 whitespace-nowrap">User Management</TabsTrigger>
-                                <TabsTrigger value="signatures" className="shrink-0 whitespace-nowrap">Digital Signatures</TabsTrigger>
-                                <TabsTrigger value="workforce" className="shrink-0 whitespace-nowrap">Workforce</TabsTrigger>
-                                <TabsTrigger value="workslip" className="shrink-0 whitespace-nowrap">Work Slip Config</TabsTrigger>
-                                <TabsTrigger value="invoice" className="shrink-0 whitespace-nowrap">Invoice Config</TabsTrigger>
-                                <TabsTrigger value="payment" className="shrink-0 whitespace-nowrap">Payment Config</TabsTrigger>
-                                <TabsTrigger value="tally" className="shrink-0 whitespace-nowrap">Tally Config</TabsTrigger>
+                                <TabsTrigger value="profile" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">Company Profile</TabsTrigger>
+                                <TabsTrigger value="appearance" className="shrink-0 whitespace-nowrap flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">
+                                    <Palette className="h-3.5 w-3.5" /> Appearance & Colors
+                                </TabsTrigger>
+                                <TabsTrigger value="users" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">User Management</TabsTrigger>
+                                <TabsTrigger value="signatures" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">Digital Signatures</TabsTrigger>
+                                <TabsTrigger value="workforce" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">Workforce</TabsTrigger>
+                                <TabsTrigger value="workslip" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">Work Slip Config</TabsTrigger>
+                                <TabsTrigger value="invoice" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">Invoice Config</TabsTrigger>
+                                <TabsTrigger value="payment" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">Payment Config</TabsTrigger>
+                                <TabsTrigger value="tally" className="shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all">Tally Config</TabsTrigger>
                             </TabsList>
                         </div>
 
-                        {/* Company Profile Tab */}
+                        {loading && !profile.company_name ? (
+                            <HavDoxLoader variant="section" message="Loading configuration & settings..." />
+                        ) : (
+                            <>
+                                {/* Company Profile Tab */}
                         <TabsContent value="profile">
                             <Card>
                                 <CardHeader>
@@ -578,6 +588,18 @@ export default function Settings() {
                                     </Button>
                                 </CardContent>
                             </Card>
+                        </TabsContent>
+
+                        {/* Appearance & Brand Colors Tab */}
+                        <TabsContent value="appearance">
+                            <AppearanceSettingsTab
+                                profile={profile}
+                                onProfileUpdated={(updated) => {
+                                    setProfile(updated);
+                                    updateProfileCache(updated);
+                                    invalidateCompanyProfile();
+                                }}
+                            />
                         </TabsContent>
 
                         {/* Digital Signatures Tab */}
@@ -771,9 +793,7 @@ export default function Settings() {
                                 </CardHeader>
                                 <CardContent>
                                     {usersLoading ? (
-                                        <div className="flex justify-center py-12">
-                                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                                        </div>
+                                        <HavDoxLoader variant="section" message="Loading administrative accounts..." />
                                     ) : (
                                         <div className="border rounded-md overflow-hidden bg-white">
                                             <table className="w-full text-xs text-left">
@@ -1404,6 +1424,8 @@ export default function Settings() {
                                 </CardContent>
                             </Card>
                         </TabsContent>
+                            </>
+                        )}
                     </Tabs>
                 </main>
             </div>

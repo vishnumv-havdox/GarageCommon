@@ -43,6 +43,7 @@ import {
 import { format, isPast, isToday } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useRequests } from "@/contexts/RequestsContext";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -517,23 +518,30 @@ export default function AdminWorkOrders() {
               <Button variant="outline" size="icon" onClick={fetchWorkOrders} title="Refresh List">
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
-              <Button onClick={() => setSearchParams({ create: 'true' })}><Plus className="h-4 w-4 mr-2" />Create Work Order</Button>
+              <Button onClick={() => {
+                sessionStorage.removeItem('wo_form_draft_new');
+                sessionStorage.removeItem('wo_photos_new_arrival');
+                sessionStorage.removeItem('wo_photos_new_issue_area');
+                setSearchParams({ create: 'true' });
+              }}>
+                <Plus className="h-4 w-4 mr-2" />Create Work Order
+              </Button>
             </div>
           </div>
 
           {/* Clean Modern Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Card
-              className="bg-card border-border/70 shadow-sm hover:border-blue-500/40 transition-all cursor-pointer"
+              className="bg-card border-border/70 shadow-sm hover:border-primary/40 transition-all cursor-pointer"
               onClick={() => setActiveTab("in_progress")}
             >
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">In Progress</p>
                   <p className="text-2xl font-extrabold text-foreground mt-1">{stats.inProgress}</p>
-                  <p className="text-[11px] text-blue-600 font-medium mt-0.5">{stats.pending} awaiting triage</p>
+                  <p className="text-[11px] text-primary font-medium mt-0.5">{stats.pending} awaiting triage</p>
                 </div>
-                <div className="h-10 w-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center">
                   <Wrench className="h-5 w-5" />
                 </div>
               </CardContent>
@@ -624,13 +632,23 @@ export default function AdminWorkOrders() {
             }}
           >
             <DialogContent className="max-w-[95vw] xl:max-w-6xl w-full max-h-[92vh] overflow-y-auto p-0 border-none shadow-2xl bg-transparent">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Create Work Order</DialogTitle>
+                <DialogDescription>Work Order creation and management dialog</DialogDescription>
+              </DialogHeader>
               <WorkOrderForm
                 onSuccess={() => {
+                  sessionStorage.removeItem('wo_form_draft_new');
+                  sessionStorage.removeItem('wo_photos_new_arrival');
+                  sessionStorage.removeItem('wo_photos_new_issue_area');
                   handleFormSuccess();
                   setSearchParams({});
                   setSelectedAppointment(null);
                 }}
                 onCancel={() => {
+                  sessionStorage.removeItem('wo_form_draft_new');
+                  sessionStorage.removeItem('wo_photos_new_arrival');
+                  sessionStorage.removeItem('wo_photos_new_issue_area');
                   setSearchParams({});
                   setSelectedAppointment(null);
                 }}
@@ -822,7 +840,7 @@ export default function AdminWorkOrders() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading...</div>
+                <HavDoxLoader variant="section" message="Loading active workshop work orders..." />
               ) : filteredOrders.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">No work orders found</div>
               ) : (
@@ -892,6 +910,10 @@ export default function AdminWorkOrders() {
           {/* Enhanced Reopen Configuration Form */}
           <Dialog open={showReopenConfig} onOpenChange={setShowReopenConfig}>
             <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-y-auto p-0">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Reopen Work Order</DialogTitle>
+                <DialogDescription>Reopen and reconfigure work order</DialogDescription>
+              </DialogHeader>
               <div className="p-6">
                 {reopenOrderId && (
                   <WorkOrderForm

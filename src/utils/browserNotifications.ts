@@ -36,8 +36,8 @@ export function sendBrowserNotification(
 
   try {
     const notification = new Notification(title, {
-      body: options?.body || "AmmaAuto Reminder Alert",
-      icon: options?.icon || "/favicon.ico",
+      body: options?.body || "Drive Flow Reminder Alert",
+      icon: options?.icon || "/logo-x.png",
       tag: options?.tag,
     });
 

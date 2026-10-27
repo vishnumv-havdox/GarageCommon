@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { generateVehicleHistoryPDF, parseNotes } from "@/utils/pdfGenerator";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 
 interface Vehicle {
     id: string;
@@ -190,9 +191,10 @@ export default function AdminVehicleDetail() {
 
     if (loading) {
         return (
-            <div className="flex h-screen items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
+            <HavDoxLoader
+                variant="fullscreen"
+                message="Loading vehicle records..."
+            />
         );
     }
 

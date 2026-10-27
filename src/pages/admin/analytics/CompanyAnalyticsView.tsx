@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Car, TrendingUp, IndianRupee, Clock, BarChart3 } from "lucide-react";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -142,7 +143,7 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
     });
 
     if (isLoading) {
-        return <div className="p-12 flex justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+        return <HavDoxLoader variant="section" message="Computing garage analytics..." />;
     }
 
     if (!stats) return <div>No data found.</div>;
@@ -176,7 +177,7 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Active Services</CardTitle>
-                        <Clock className="h-4 w-4 text-blue-500" />
+                        <Clock className="h-4 w-4 text-primary" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.stats.inService}</div>
@@ -270,7 +271,7 @@ export default function CompanyAnalyticsView({ companyId, onVehicleClick }: Comp
                                         </TableCell>
                                         <TableCell>
                                             {activeWO ? (
-                                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 animate-pulse">
+                                                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 animate-pulse">
                                                     In Service ({activeWO.status})
                                                 </Badge>
                                             ) : (

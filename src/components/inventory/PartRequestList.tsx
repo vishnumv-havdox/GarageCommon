@@ -97,19 +97,60 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
     }, [workOrderId, isRequestDialogOpen, user?.id]);
 
     const fetchCurrentEmployee = async () => {
+        if (!user) return;
         try {
-            const { data, error } = await supabase
+            // 1. Check if employee with matching user_id exists
+            const { data: byUserId, error: err1 } = await supabase
                 .from("employees")
                 .select("id")
-                .eq("user_id", user?.id)
+                .eq("user_id", user.id)
                 .maybeSingle();
 
-            if (error) throw error;
+            if (err1) throw err1;
 
-            if (data) {
-                const employee = data as any;
+            if (byUserId) {
+                const employee = byUserId as any;
                 setCurrentEmployeeId(employee.id);
                 if (!isAdmin) setSelectedEmployeeId(employee.id);
+                return;
+            }
+
+            // 2. Fallback: match by email and auto-link user_id
+            if (user.email) {
+                const { data: byEmail, error: err2 } = await supabase
+                    .from("employees")
+                    .select("id, user_id")
+                    .eq("email", user.email)
+                    .maybeSingle();
+
+                if (!err2 && byEmail) {
+                    await supabase
+                        .from("employees")
+                        .update({ user_id: user.id })
+                        .eq("id", byEmail.id);
+                    setCurrentEmployeeId(byEmail.id);
+                    if (!isAdmin) setSelectedEmployeeId(byEmail.id);
+                    return;
+                }
+            }
+
+            // 3. If admin user has no employee row yet, auto-link silently
+            if (isAdmin) {
+                const { data: posData } = await supabase.from("positions").select("id").limit(1).maybeSingle();
+                if (posData?.id) {
+                    const { data: newEmp } = await supabase.from("employees").insert([{
+                        user_id: user.id,
+                        name: user.full_name || user.email?.split('@')[0] || "Admin",
+                        email: user.email,
+                        access_level: "admin",
+                        position_id: posData.id,
+                        status: "active"
+                    }]).select("id").maybeSingle();
+
+                    if (newEmp) {
+                        setCurrentEmployeeId((newEmp as any).id);
+                    }
+                }
             }
         } catch (error) {
             console.error("Error fetching employee ID:", error);

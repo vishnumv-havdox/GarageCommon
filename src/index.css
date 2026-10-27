@@ -2,142 +2,177 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Professional Automotive Theme Design System */
+/* HavDox Design System — Drive Flow · Powered by HavDox */
 
 @layer base {
   :root {
-    /* Core garage theme colors */
-    --background: 0 0% 98%;
-    --foreground: 0 0% 8%;
+    /* HavDox Official Design Tokens */
+    --havdox-white: #ffffff;
+    --havdox-black: #000000;
+    --havdox-obsidian: #05070e;
+    --havdox-navy: #12284a;
+    --havdox-indigo: #6366f1;
+    --havdox-indigo-alt: #5b3bff;
+    --havdox-focus: #4d8dff;
+    --havdox-text-muted: #71717a;
+    --havdox-border: #e4e4e7;
+    --havdox-border-dark: rgba(255, 255, 255, 0.14);
+    --havdox-success: #00b894;
+    --havdox-warning: #ff9d00;
+    --havdox-error: #ff3d6e;
+
+    /* HavDox Typography System */
+    --havdox-font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --havdox-font-body: 'Plus Jakarta Sans', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --havdox-font-mono: 'JetBrains Mono', monospace;
+
+    /* HavDox Geometry */
+    --havdox-radius-pill: 999px;
+    --havdox-radius-control: 12px;
+    --havdox-radius-card: 20px;
+    --havdox-radius-dialog: 20px;
+    --havdox-radius-badge: 8px;
+
+    /* Spacing Scale */
+    --havdox-space-1: 4px;
+    --havdox-space-2: 8px;
+    --havdox-space-3: 12px;
+    --havdox-space-4: 16px;
+    --havdox-space-6: 24px;
+    --havdox-space-8: 32px;
+    --havdox-space-12: 48px;
+    --havdox-space-16: 64px;
+    --havdox-space-24: 96px;
+
+    /* Motion Tokens */
+    --havdox-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --havdox-transition: 200ms var(--havdox-ease);
+
+    /* Elevation & Shadows */
+    --havdox-shadow-card: 0 4px 24px rgba(0, 0, 0, 0.05);
+    --havdox-shadow-floating: 0 24px 60px rgba(0, 0, 0, 0.12);
+
+    /* Application Color Tokens (Light Interface) */
+    --background: 0 0% 100%;
+    --foreground: 227 47% 4%; /* #05070E Obsidian */
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 8%;
+    --card-foreground: 227 47% 4%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 8%;
+    --popover-foreground: 227 47% 4%;
 
-    /* Garage red primary */
-    --primary: 0 85% 45%;
-    --primary-foreground: 0 0% 98%;
-    --primary-glow: 0 85% 55%;
+    /* Pure black high-contrast primary with indigo glow */
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 239 84% 67%; /* #6366F1 */
 
-    /* Professional silver/gray */
-    --secondary: 210 11% 85%;
-    --secondary-foreground: 0 0% 15%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 227 47% 4%;
 
-    --muted: 210 11% 93%;
-    --muted-foreground: 0 0% 45%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%; /* #71717A */
 
-    /* Accent red variant */
-    --accent: 0 85% 95%;
-    --accent-foreground: 0 85% 25%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 227 47% 4%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 345 100% 62%; /* #FF3D6E */
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 210 11% 88%;
-    --input: 210 11% 95%;
-    --ring: 0 85% 45%;
+    --border: 240 6% 90%; /* #E4E4E7 */
+    --input: 240 6% 90%;
+    --ring: 218 100% 65%; /* #4D8DFF Focus blue */
 
-    /* Status colors for service tracking */
-    --status-pending: 45 93% 58%;
-    --status-progress: 217 91% 60%;
-    --status-completed: 142 71% 45%;
-    --status-ready: 160 84% 39%;
+    /* Status Colors */
+    --status-pending: 37 100% 50%;  /* #FF9D00 */
+    --status-progress: 218 100% 65%; /* #4D8DFF */
+    --status-completed: 168 100% 36%; /* #00B894 */
+    --status-ready: 168 100% 36%;
 
-    /* Garage specific colors */
-    --garage-dark: 0 0% 12%;
-    --garage-silver: 210 11% 71%;
-    --garage-light: 210 11% 96%;
+    /* Garage theme legacy fallback bridge */
+    --garage-dark: 227 47% 4%;
+    --garage-silver: 240 4% 46%;
+    --garage-light: 240 5% 96%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-dark: linear-gradient(135deg, hsl(var(--garage-dark)), hsl(0 0% 20%));
-    --gradient-card: linear-gradient(145deg, hsl(var(--card)), hsl(var(--garage-light)));
+    --gradient-primary: linear-gradient(135deg, #05070E, #12284A);
+    --gradient-dark: linear-gradient(135deg, #05070E, #12284A);
+    --gradient-card: linear-gradient(145deg, #ffffff, #fafafa);
 
     /* Shadows */
-    --shadow-elegant: 0 4px 20px -2px hsl(var(--primary) / 0.1);
-    --shadow-card: 0 2px 8px -2px hsl(0 0% 0% / 0.08);
-    --shadow-glow: 0 0 30px hsl(var(--primary) / 0.2);
+    --shadow-elegant: 0 4px 24px rgba(0, 0, 0, 0.05);
+    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.05);
+    --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.2);
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 227 47% 4%;
+    --sidebar-primary: 0 0% 0%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 227 47% 4%;
+    --sidebar-border: 240 6% 90%;
+    --sidebar-ring: 218 100% 65%;
   }
 
   .dark {
-    /* Dark garage theme */
-    --background: 0 0% 8%;
-    --foreground: 0 0% 95%;
+    /* Dark Surface: Obsidian & HavDox Deep Navy */
+    --background: 227 47% 4%; /* #05070E Obsidian */
+    --foreground: 0 0% 98%;
 
-    --card: 0 0% 12%;
-    --card-foreground: 0 0% 95%;
+    --card: 216 61% 8%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 12%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 216 61% 8%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 0 85% 55%;
-    --primary-foreground: 0 0% 98%;
-    --primary-glow: 0 85% 65%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --primary-glow: 239 84% 67%;
 
-    --secondary: 210 11% 20%;
-    --secondary-foreground: 0 0% 90%;
+    --secondary: 216 61% 18%; /* #12284A Deep Navy */
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 210 11% 15%;
-    --muted-foreground: 0 0% 65%;
+    --muted: 216 35% 14%;
+    --muted-foreground: 240 5% 65%;
 
-    --accent: 0 85% 15%;
-    --accent-foreground: 0 85% 75%;
+    --accent: 216 61% 18%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 345 100% 62%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 210 11% 20%;
-    --input: 210 11% 15%;
-    --ring: 0 85% 55%;
+    --border: 0 0% 100% / 0.14;
+    --input: 0 0% 100% / 0.14;
+    --ring: 218 100% 65%;
 
     /* Dark status colors */
-    --status-pending: 45 93% 58%;
-    --status-progress: 217 91% 60%;
-    --status-completed: 142 71% 45%;
-    --status-ready: 160 84% 39%;
+    --status-pending: 37 100% 50%;
+    --status-progress: 218 100% 65%;
+    --status-completed: 168 100% 36%;
+    --status-ready: 168 100% 36%;
 
-    /* Dark garage colors */
-    --garage-dark: 0 0% 5%;
-    --garage-silver: 210 11% 40%;
-    --garage-light: 210 11% 18%;
+    --garage-dark: 227 47% 4%;
+    --garage-silver: 240 4% 65%;
+    --garage-light: 216 35% 14%;
 
-    /* Dark gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-dark: linear-gradient(135deg, hsl(var(--garage-dark)), hsl(0 0% 15%));
-    --gradient-card: linear-gradient(145deg, hsl(var(--card)), hsl(var(--garage-light)));
+    --gradient-primary: linear-gradient(135deg, #12284A, #6366F1);
+    --gradient-dark: linear-gradient(135deg, #05070E, #12284A);
+    --gradient-card: linear-gradient(145deg, #0d1726, #05070e);
 
-    /* Dark shadows */
-    --shadow-elegant: 0 4px 20px -2px hsl(var(--primary) / 0.3);
-    --shadow-card: 0 2px 8px -2px hsl(0 0% 0% / 0.5);
-    --shadow-glow: 0 0 30px hsl(var(--primary) / 0.4);
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --shadow-elegant: 0 4px 24px rgba(0, 0, 0, 0.4);
+    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
+    --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.35);
+
+    --sidebar-background: 227 47% 4%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 216 61% 18%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 100% / 0.14;
+    --sidebar-ring: 218 100% 65%;
   }
 }
 
@@ -159,7 +194,64 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    font-family: var(--havdox-font-body);
+    @apply bg-background text-foreground antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--havdox-font-display);
+  }
+
+  /* Official HavDox accessible focus indicator */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring)) !important;
+    outline-offset: 3px !important;
+  }
+}
+
+@layer utilities {
+  /* Official HavDox Typography Scale Tokens */
+  .text-brand-title {
+    font-family: var(--havdox-font-display);
+    font-size: clamp(2.2rem, 5.5vw, 4.5rem);
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+  }
+
+  .text-brand-section {
+    font-family: var(--havdox-font-display);
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  .text-brand-card {
+    font-family: var(--havdox-font-display);
+    font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  .font-display {
+    font-family: var(--havdox-font-display);
+  }
+
+  .font-body {
+    font-family: var(--havdox-font-body);
+  }
+
+  .font-mono {
+    font-family: var(--havdox-font-mono);
+  }
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

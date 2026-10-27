@@ -23,14 +23,18 @@ import {
   Calendar, Wrench, AlertTriangle, Clock, CheckCircle2,
   Phone, Mail, MessageSquare, Car, Building2, User,
   Plus, Search, Filter, RefreshCw, ArrowUpRight, History,
-  Check, ShieldAlert, Sparkles, AlertCircle, ChevronRight
+  Check, ShieldAlert, Sparkles, AlertCircle, ChevronRight, Gauge
 } from "lucide-react";
 import { format, differenceInDays, isPast, isToday, addDays, addMonths, addYears } from "date-fns";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
+import { VehiclePlateBadge } from "@/components/shared/VehiclePlateBadge";
 
 export interface ServiceDueVehicle {
   id: string;
   vehicle_number: string;
   model: string | null;
+  photo_url?: string | null;
+  photos?: string[] | null;
   vehicle_type: string | null;
   year: number | null;
   kilometers_driven: number;
@@ -115,6 +119,7 @@ export default function ServiceDue() {
         .select(`
           id, vehicle_number, model, vehicle_type, year, kilometers_driven,
           next_service_km, next_service_date, status, customer_id, primary_contact_id,
+          photo_url, photos,
           customer:customers(id, name, company_name, phone, email),
           primary_contact:customer_contacts(id, name, designation, phone, alternate_phone, email, preferred_contact_method)
         `)
@@ -736,9 +741,8 @@ export default function ServiceDue() {
         {/* Main Vehicles Table / List */}
         <div className="space-y-3">
           {loading ? (
-            <div className="p-12 text-center bg-card rounded-2xl border border-dashed text-muted-foreground space-y-2">
-              <RefreshCw className="h-6 w-6 animate-spin mx-auto text-primary" />
-              <p className="text-sm font-medium">Scanning fleet schedules & kilometer records...</p>
+            <div className="p-8 bg-card rounded-2xl border border-dashed">
+              <HavDoxLoader variant="section" message="Scanning fleet schedules & kilometer records..." />
             </div>
           ) : filteredVehicles.length === 0 ? (
             <div className="p-12 text-center bg-card rounded-2xl border border-dashed text-muted-foreground space-y-3">
@@ -777,214 +781,259 @@ export default function ServiceDue() {
               } : null);
 
               const isAcknowledged = v.active_reminder?.status === "informed";
+              const vehicleImage = (v.photos && v.photos.length > 0) ? v.photos[0] : v.photo_url;
 
               return (
                 <div
                   key={v.id}
-                  className="bg-card border rounded-2xl p-4 sm:p-5 shadow-xs hover:border-primary/40 transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4"
+                  className="bg-card border border-border/70 rounded-2xl p-4 sm:p-5 shadow-xs hover:border-primary/40 hover:shadow-md transition-all flex flex-col gap-4 group"
                 >
-                  {/* Left: Vehicle Identity & Company */}
-                  <div className="flex items-start gap-3.5 min-w-[260px]">
-                    <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-                      <Car className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-base tracking-wide text-foreground uppercase">
-                          {v.vehicle_number}
-                        </span>
-                        <Badge variant="outline" className={`text-[10px] font-bold px-2 py-0.5 border ${status.color}`}>
-                          {status.label}
-                        </Badge>
-                      </div>
-
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {v.model || "Vehicle"} {v.year ? `(${v.year})` : ""} • {v.vehicle_type || "Commercial"}
-                      </p>
-
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground/90 font-medium mt-1">
-                        <Building2 className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                        <span className="truncate max-w-[200px]">{companyName}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Middle: Mileage & Timeline Telemetry */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full lg:w-auto text-left py-2 lg:py-0 border-y lg:border-y-0 border-border/40">
-                    {/* Mileage */}
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Current KM
-                      </span>
-                      <p className="text-sm font-bold text-foreground">
-                        {v.kilometers_driven.toLocaleString()} KM
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Next: {v.next_service_km ? `${v.next_service_km.toLocaleString()} KM` : "Not Set"}
-                      </p>
-                    </div>
-
-                    {/* Remaining KM */}
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        KM Remaining
-                      </span>
-                      {status.kmRemaining !== null ? (
-                        <p
-                          className={`text-sm font-black ${
-                            status.kmRemaining < 0
-                              ? "text-rose-600"
-                              : status.kmRemaining <= 500
-                              ? "text-amber-600"
-                              : "text-blue-600"
-                          }`}
-                        >
-                          {status.kmRemaining < 0
-                            ? `Over by ${Math.abs(status.kmRemaining).toLocaleString()} KM`
-                            : `${status.kmRemaining.toLocaleString()} KM`}
-                        </p>
+                  {/* Top Tier: Vehicle Identity & Contact Information */}
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    {/* Vehicle Photo & Core Identity */}
+                    <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+                      {/* Vehicle Photo Thumbnail */}
+                      {vehicleImage ? (
+                        <div className="relative w-24 h-24 sm:w-28 sm:h-24 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-border/70 shrink-0 group-hover:border-primary/50 transition-colors shadow-xs">
+                          <img
+                            src={vehicleImage}
+                            alt={v.vehicle_number}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                          <span className="absolute bottom-1.5 left-2 text-[9px] font-bold text-white tracking-wide uppercase drop-shadow truncate max-w-[90px]">
+                            {v.model || v.vehicle_type || "Fleet"}
+                          </span>
+                        </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground">—</p>
+                        <div className="relative w-24 h-24 sm:w-28 sm:h-24 rounded-xl overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800/80 border border-border/70 shrink-0 flex flex-col items-center justify-center text-muted-foreground/60 shadow-xs">
+                          <Car className="h-8 w-8 text-primary/40 mb-1" />
+                          <span className="text-[9px] font-bold tracking-wider uppercase text-muted-foreground/70">
+                            No Photo
+                          </span>
+                        </div>
                       )}
-                      <p className="text-[10px] text-muted-foreground">Interval target</p>
-                    </div>
 
-                    {/* Due Date & Countdown */}
-                    <div className="space-y-0.5 col-span-2 sm:col-span-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Due Date
-                      </span>
-                      <p className="text-sm font-bold text-foreground">
-                        {v.next_service_date ? format(new Date(v.next_service_date), "dd MMM yyyy") : "Not Set"}
-                      </p>
-                      {status.daysRemaining !== null ? (
-                        <p
-                          className={`text-[11px] font-bold ${
-                            status.daysRemaining < 0
-                              ? "text-rose-600"
-                              : status.daysRemaining <= 7
-                              ? "text-amber-600"
-                              : "text-blue-600"
-                          }`}
-                        >
-                          {status.daysRemaining < 0
-                            ? `Overdue by ${Math.abs(status.daysRemaining)} days`
-                            : status.daysRemaining === 0
-                            ? "Due Today"
-                            : `${status.daysRemaining} days left`}
-                        </p>
-                      ) : (
-                        <p className="text-[10px] text-muted-foreground">—</p>
-                      )}
-                    </div>
-                  </div>
+                      {/* Vehicle Details */}
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <VehiclePlateBadge plateNumber={v.vehicle_number} size="md" />
+                          <Badge variant="outline" className={`text-[10px] font-bold px-2 py-0.5 border ${status.color}`}>
+                            {status.label}
+                          </Badge>
+                        </div>
 
-                  {/* Contact Person Details */}
-                  <div className="w-full lg:w-56 p-2.5 rounded-xl bg-muted/40 border text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-foreground truncate max-w-[130px]">
-                        {contactPerson?.name || "No Contact"}
-                      </span>
-                      {contactPerson?.designation && (
-                        <Badge variant="secondary" className="text-[9px] px-1 py-0 font-medium">
-                          {contactPerson.designation}
-                        </Badge>
-                      )}
-                    </div>
+                        <div>
+                          <h4 className="font-bold text-sm sm:text-base text-foreground truncate">
+                            {v.model || "Commercial Vehicle"} {v.year ? `(${v.year})` : ""}
+                          </h4>
+                          <p className="text-xs text-muted-foreground">
+                            {v.vehicle_type || "Commercial"} {v.last_service?.service_type ? `• Last: ${v.last_service.service_type}` : ""}
+                          </p>
+                        </div>
 
-                    {contactPerson?.phone && (
-                      <div className="flex items-center justify-between pt-1 text-[11px]">
-                        <span className="text-muted-foreground">{contactPerson.phone}</span>
-                        <div className="flex items-center gap-1">
-                          <a
-                            href={`tel:${contactPerson.phone}`}
-                            className="p-1 hover:bg-muted rounded text-primary"
-                            title="Call Contact"
-                          >
-                            <Phone className="h-3 w-3" />
-                          </a>
-                          <a
-                            href={`https://wa.me/91${contactPerson.phone.replace(/\D/g, "").slice(-10)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1 hover:bg-muted rounded text-emerald-600"
-                            title="WhatsApp Contact"
-                          >
-                            <MessageSquare className="h-3 w-3" />
-                          </a>
-                          {contactPerson?.email && (
-                            <a
-                              href={`mailto:${contactPerson.email}`}
-                              className="p-1 hover:bg-muted rounded text-blue-600"
-                              title="Email Contact"
-                            >
-                              <Mail className="h-3 w-3" />
-                            </a>
-                          )}
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                          <span className="truncate max-w-[240px] text-foreground/80 font-medium">{companyName}</span>
                         </div>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Driver / Fleet Contact Card */}
+                    <div className="w-full md:w-auto md:min-w-[260px] p-2.5 sm:p-3 rounded-xl bg-muted/40 border border-border/60 text-xs space-y-2 shrink-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                            <User className="h-3.5 w-3.5" />
+                          </div>
+                          <span className="font-bold text-foreground truncate max-w-[140px]">
+                            {contactPerson?.name || "Primary Contact"}
+                          </span>
+                        </div>
+                        {contactPerson?.designation && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-medium shrink-0">
+                            {contactPerson.designation}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {contactPerson?.phone ? (
+                        <div className="flex items-center justify-between pt-1.5 text-xs border-t border-border/40 gap-3">
+                          <span className="text-muted-foreground font-mono font-medium">{contactPerson.phone}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <a
+                              href={`tel:${contactPerson.phone}`}
+                              className="p-1.5 hover:bg-muted rounded-md text-primary transition-colors"
+                              title="Call Contact"
+                            >
+                              <Phone className="h-3.5 w-3.5" />
+                            </a>
+                            <a
+                              href={`https://wa.me/91${contactPerson.phone.replace(/\D/g, "").slice(-10)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 hover:bg-muted rounded-md text-emerald-600 transition-colors"
+                              title="WhatsApp Contact"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                            </a>
+                            {contactPerson?.email && (
+                              <a
+                                href={`mailto:${contactPerson.email}`}
+                                className="p-1.5 hover:bg-muted rounded-md text-blue-600 transition-colors"
+                                title="Email Contact"
+                              >
+                                <Mail className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground italic pt-1 border-t border-border/40">No contact recorded</p>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Right Actions */}
-                  <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
-                    {/* Informed / Okay Button */}
-                    {isAcknowledged ? (
-                      <Badge variant="outline" className="h-9 px-3 text-emerald-600 bg-emerald-50/50 border-emerald-300 gap-1 text-xs">
-                        <Check className="h-3.5 w-3.5" /> Informed
-                      </Badge>
-                    ) : (
+                  {/* Subtle Separator */}
+                  <div className="border-t border-border/50" />
+
+                  {/* Bottom Tier: Mileage & Timeline Telemetry Micro-Cards + Action Buttons */}
+                  <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3.5 sm:gap-4">
+                    {/* Mileage & Timeline Telemetry Micro-Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
+                      {/* Current Mileage */}
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-muted/20 border border-border/40 space-y-1">
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                          <Gauge className="h-3.5 w-3.5 text-primary/80 shrink-0" />
+                          <span>Odometer</span>
+                        </div>
+                        <p className="text-sm sm:text-base font-bold text-foreground font-mono">
+                          {v.kilometers_driven.toLocaleString()} <span className="text-[11px] font-sans font-normal text-muted-foreground">KM</span>
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          Target: {v.next_service_km ? `${v.next_service_km.toLocaleString()} KM` : "Not Set"}
+                        </p>
+                      </div>
+
+                      {/* KM Remaining */}
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-muted/20 border border-border/40 space-y-1">
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                          <Wrench className="h-3.5 w-3.5 text-amber-500/80 shrink-0" />
+                          <span>KM Left</span>
+                        </div>
+                        {status.kmRemaining !== null ? (
+                          <p
+                            className={`text-sm sm:text-base font-black font-mono ${
+                              status.kmRemaining < 0
+                                ? "text-rose-600"
+                                : status.kmRemaining <= 500
+                                ? "text-amber-600"
+                                : "text-blue-600"
+                            }`}
+                          >
+                            {status.kmRemaining < 0
+                              ? `+${Math.abs(status.kmRemaining).toLocaleString()} KM`
+                              : `${status.kmRemaining.toLocaleString()} KM`}
+                          </p>
+                        ) : (
+                          <p className="text-sm font-bold text-muted-foreground">—</p>
+                        )}
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {status.kmRemaining !== null && status.kmRemaining < 0 ? "Exceeded target" : "Until due service"}
+                        </p>
+                      </div>
+
+                      {/* Due Date & Countdown */}
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-muted/20 border border-border/40 space-y-1">
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                          <Calendar className="h-3.5 w-3.5 text-emerald-500/80 shrink-0" />
+                          <span>Due Date</span>
+                        </div>
+                        <p className="text-sm sm:text-base font-bold text-foreground">
+                          {v.next_service_date ? format(new Date(v.next_service_date), "dd MMM yyyy") : "Not Set"}
+                        </p>
+                        {status.daysRemaining !== null ? (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold leading-none ${
+                              status.daysRemaining < 0
+                                ? "text-rose-700 bg-rose-50 dark:bg-rose-950/60 dark:text-rose-300"
+                                : status.daysRemaining <= 7
+                                ? "text-amber-700 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300"
+                                : "text-blue-700 bg-blue-50 dark:bg-blue-950/60 dark:text-blue-300"
+                            }`}
+                          >
+                            {status.daysRemaining < 0
+                              ? `${Math.abs(status.daysRemaining)}d overdue`
+                              : status.daysRemaining === 0
+                              ? "Due Today"
+                              : `${status.daysRemaining}d left`}
+                          </span>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">—</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end shrink-0 pt-1 xl:pt-0">
+                      {/* Informed / Okay Button */}
+                      {isAcknowledged ? (
+                        <Badge variant="outline" className="h-9 px-3 text-emerald-600 bg-emerald-50/50 border-emerald-300 gap-1 text-xs font-semibold">
+                          <Check className="h-3.5 w-3.5" /> Informed
+                        </Badge>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setAcknowledgingVehicle(v);
+                            setAckNotes("");
+                          }}
+                          className="rounded-xl h-9 text-xs border-amber-300 hover:bg-amber-50 text-amber-700 font-medium"
+                          title="Confirm customer or fleet coordinator has been informed"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                          Informed
+                        </Button>
+                      )}
+
+                      {/* Add Service Button */}
                       <Button
-                        variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setAcknowledgingVehicle(v);
-                          setAckNotes("");
-                        }}
-                        className="rounded-xl h-9 text-xs border-amber-300 hover:bg-amber-50 text-amber-700"
-                        title="Confirm customer or fleet coordinator has been informed"
+                        variant="outline"
+                        onClick={() => handleOpenAddServiceModal(v)}
+                        className="rounded-xl h-9 text-xs font-semibold border-primary/30 text-primary hover:bg-primary/10 gap-1"
+                        title="Record service and schedule next due date/km"
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                        Informed / Okay
+                        <Plus className="h-3.5 w-3.5" />
+                        Add Service
                       </Button>
-                    )}
 
-                    {/* Add Service Button */}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleOpenAddServiceModal(v)}
-                      className="rounded-xl h-9 text-xs font-semibold border-primary/30 text-primary hover:bg-primary/10 gap-1"
-                      title="Record service and schedule next due date/km"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add Service
-                    </Button>
+                      {/* Create Work Order */}
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          navigate(
+                            `/admin/work-orders?create=true&vehicleId=${v.id}&customerId=${v.customer?.id || ""}`
+                          )
+                        }
+                        className="rounded-xl h-9 text-xs font-semibold shadow-xs"
+                      >
+                        <Wrench className="h-3.5 w-3.5 mr-1" />
+                        Create Job Card
+                      </Button>
 
-                    {/* Create Work Order */}
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        navigate(
-                          `/admin/work-orders?create=true&vehicleId=${v.id}&customerId=${v.customer?.id || ""}`
-                        )
-                      }
-                      className="rounded-xl h-9 text-xs font-semibold shadow-xs"
-                    >
-                      <Wrench className="h-3.5 w-3.5 mr-1" />
-                      Create Job Card
-                    </Button>
-
-                    {/* View History Button */}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleOpenHistory(v)}
-                      className="rounded-xl h-9 w-9 text-muted-foreground hover:text-foreground"
-                      title="View Service History"
-                    >
-                      <History className="h-4 w-4" />
-                    </Button>
+                      {/* View History Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenHistory(v)}
+                        className="rounded-xl h-9 w-9 text-muted-foreground hover:text-foreground"
+                        title="View Service History"
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );

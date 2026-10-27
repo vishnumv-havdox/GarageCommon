@@ -65,6 +65,7 @@ import {
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { ServicesTabsNav } from "@/components/layout/ServicesTabsNav";
 import { SearchInput } from "@/components/shared/SearchInput";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { format } from "date-fns";
 
 import {
@@ -817,11 +818,11 @@ export default function ServicesMaster() {
                         </div>
 
                         {/* Price Simulator */}
-                        <div className="w-full md:w-auto bg-blue-50 p-2 rounded border border-blue-100 flex flex-col gap-1">
-                            <Label className="text-[10px] uppercase text-blue-600 font-bold">Preview Prices For</Label>
+                        <div className="w-full md:w-auto bg-primary/10 p-2 rounded-xl border border-primary/20 flex flex-col gap-1">
+                            <Label className="text-[10px] uppercase text-primary font-bold">Preview Prices For</Label>
                             <div className="flex gap-1">
                                 <Select value={previewCategory} onValueChange={setPreviewCategory}>
-                                    <SelectTrigger className="w-full md:w-[200px] h-8 bg-white">
+                                    <SelectTrigger className="w-full md:w-[200px] h-8 bg-card">
                                         <SelectValue placeholder="Vehicle Category" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -890,8 +891,8 @@ export default function ServicesMaster() {
                             <TableBody>
                                 {loading ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8">
-                                            <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                                        <TableCell colSpan={7} className="py-6">
+                                            <HavDoxLoader variant="section" message="Loading services catalog..." />
                                         </TableCell>
                                     </TableRow>
                                 ) : filteredServices.length === 0 ? (
@@ -921,13 +922,13 @@ export default function ServicesMaster() {
                                                 </TableCell>
                                                 <TableCell className="font-medium">
                                                     <div className="flex flex-col">
-                                                        <span className={previewCategory !== 'base' ? "text-blue-700 font-bold" : ""}>
+                                                        <span className={previewCategory !== 'base' ? "text-primary font-bold" : ""}>
                                                             ₹{calculateEffectivePrice(service, previewCategory).toLocaleString()}
                                                         </span>
                                                         {previewCategory === 'base' ? (
                                                             <span className="text-[10px] text-muted-foreground font-normal">Task Sum</span>
                                                         ) : (
-                                                            <span className="text-[10px] text-blue-600 font-normal">Effective Cost</span>
+                                                            <span className="text-[10px] text-primary font-normal">Effective Cost</span>
                                                         )}
                                                     </div>
                                                 </TableCell>
@@ -1037,9 +1038,9 @@ export default function ServicesMaster() {
                                                                                 <div className="flex flex-col items-end gap-1">
                                                                                     <div className="flex items-center gap-2">
                                                                                         {isOverridden && previewCategory !== 'base' && (
-                                                                                            <span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Rule</span>
+                                                                                            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1 rounded">Rule</span>
                                                                                         )}
-                                                                                        <span className={`font-medium ${isOverridden ? 'text-blue-700' : ''}`}>₹{taskPrice}</span>
+                                                                                        <span className={`font-medium ${isOverridden ? 'text-primary font-bold' : ''}`}>₹{taskPrice}</span>
                                                                                     </div>
                                                                                     {(task.hsn_code || task.sac_code) && !editingTaskId && (
                                                                                         <div className="flex flex-col text-[10px] text-muted-foreground text-right leading-tight">
@@ -1221,14 +1222,14 @@ export default function ServicesMaster() {
                                                 {/* Total Price Display */}
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs text-muted-foreground">Total:</span>
-                                                    <span className={`text-sm font-bold ${previewCategory !== 'base' ? 'text-blue-700' : ''}`}>
+                                                    <span className={`text-sm font-bold ${previewCategory !== 'base' ? 'text-primary' : ''}`}>
                                                         ₹{(
                                                             (currentService ? calculateEffectivePrice(currentService, previewCategory, pricingRules) : 0) +
                                                             newTasks.reduce((sum, t) => sum + (t.price || 0), 0)
                                                         ).toLocaleString()}
                                                     </span>
                                                     {previewCategory !== 'base' && (
-                                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-blue-200 text-blue-600 bg-blue-50">Effective</Badge>
+                                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-primary/20 text-primary bg-primary/10">Effective</Badge>
                                                     )}
                                                 </div>
                                             </div>
@@ -1281,7 +1282,7 @@ export default function ServicesMaster() {
                                                         Existing Templates {previewCategory !== 'base' ? '(Preview Mode)' : '(Editable)'}
                                                     </p>
                                                     {previewCategory !== 'base' && (
-                                                        <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 bg-blue-50">
+                                                        <Badge variant="outline" className="text-[10px] text-primary border-primary/20 bg-primary/10">
                                                             Values modified by pricing rules
                                                         </Badge>
                                                     )}

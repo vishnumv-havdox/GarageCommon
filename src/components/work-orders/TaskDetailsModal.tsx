@@ -15,6 +15,7 @@ import {
   Clock, AlertTriangle, FileText, List
 } from "lucide-react"
 import { format } from "date-fns"
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader"
 
 interface TaskDetailsModalProps {
   taskId: string | null
@@ -201,9 +202,7 @@ export function TaskDetailsModal({ taskId, open, onClose, onAccept, onComplete }
         </DialogHeader>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          </div>
+          <HavDoxLoader variant="inline" message="Loading task details..." />
         ) : task ? (
           <div className="space-y-6">
             {/* Header Info */}

@@ -53,6 +53,9 @@ import {
   Camera
 } from "lucide-react";
 import logo from "@/assets/logo.png";
+import { BrandFooter } from "@/components/brand/BrandFooter";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
+import { useCompanyProfile } from "@/hooks/useCompanyProfile";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
@@ -202,7 +205,7 @@ export default function CustomerPortal() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   // Payment State
-  const [profile, setProfile] = useState<any>(null);
+  const { profile } = useCompanyProfile();
   const [payingInvoice, setPayingInvoice] = useState<any | null>(null);
   const [payingInvoices, setPayingInvoices] = useState<any[]>([]); // New state for multi-bill
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
@@ -248,44 +251,7 @@ export default function CustomerPortal() {
   }, [payingInvoice, payingInvoices]);
 
   const fetchProfile = useCallback(async () => {
-    try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-
-
-      let data, error;
-
-      if (SERVICE_ROLE_KEY) {
-        const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-          auth: { autoRefreshToken: false, persistSession: false }
-        });
-        const res = await adminClient
-          .from('company_profiles')
-          .select('payment_qr_code_url, bank_details, company_name, logo_url')
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        data = res.data;
-        error = res.error;
-      } else {
-        const res = await supabase
-          .from('company_profiles')
-          .select('payment_qr_code_url, bank_details, company_name, logo_url')
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        data = res.data;
-        error = res.error;
-      }
-
-      if (error) {
-        console.error("Error fetching company profile:", error);
-      }
-
-      if (data) setProfile(data);
-    } catch (e) {
-      console.error("Exception fetching profile:", e);
-    }
+    // Cached via useCompanyProfile hook
   }, []);
 
   // Auto-set payment amount when invoice is selected
@@ -1164,16 +1130,10 @@ export default function CustomerPortal() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground">
-        <div className="relative">
-          <div className="h-24 w-24 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-          <img src={profile?.logo_url || logo} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-12 w-12 object-contain animate-pulse" alt="Logo" />
-        </div>
-        <h2 className="mt-8 text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-          Accessing My Garage
-        </h2>
-        <p className="mt-2 text-muted-foreground text-sm uppercase tracking-wider">Loading...</p>
-      </div>
+      <HavDoxLoader
+        variant="fullscreen"
+        message="Accessing Customer Portal & Vehicle History..."
+      />
     );
   }
 
@@ -1188,27 +1148,32 @@ export default function CustomerPortal() {
       <header className="border-b border-border bg-background/80 sticky top-0 z-50 backdrop-blur-xl">
         <div className="container mx-auto px-4 h-20 grid grid-cols-3 items-center">
           {/* Column 1: Branding */}
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center shadow-[0_0_20px_rgba(var(--primary),0.3)] overflow-hidden shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="h-11 w-11 rounded-xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-xs overflow-hidden shrink-0"
+              title="Drive Flow"
+            >
               <img
-                src={profile?.logo_url || logo}
-                className="h-9 w-9 object-contain brightness-0 invert"
-                alt="Logo"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = logo;
-                }}
+                src="/logo-x.png"
+                alt="Drive Flow"
+                className="h-6 w-auto object-contain invert dark:invert-0"
               />
             </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-bold text-primary uppercase tracking-tight leading-tight">
-                {profile?.company_name || "Service Center"}
-              </span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Online
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-display font-bold text-base tracking-tight text-foreground">
+                  Drive Flow
                 </span>
+                <span className="text-muted-foreground/40 text-xs">•</span>
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  Powered by HavDox
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-muted-foreground truncate font-medium">
+                  {profile?.company_name || "Customer Portal"}
+                </span>
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </div>
             </div>
           </div>
@@ -3291,6 +3256,11 @@ export default function CustomerPortal() {
           fetchData(); // Refresh to see if we want to show pending appointments somewhere? (Not implemented yet in activeWorkOrders, maybe in a new tab or just notification)
         }}
       />
+
+      {/* Official Clean Brand Footer */}
+      <div className="mt-16">
+        <BrandFooter />
+      </div>
     </div>
   );
 }

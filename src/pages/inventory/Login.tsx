@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,141 +6,169 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Package, QrCode } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { useCompanyProfile } from "@/hooks/useCompanyProfile";
+import { BrandFooter } from "@/components/brand/BrandFooter";
+import { LoginIntroTransition } from "@/components/brand/LoginIntroTransition";
 
 export default function InventoryLogin() {
     const navigate = useNavigate();
     const { toast } = useToast();
+    const { companyName } = useCompanyProfile();
     const [loading, setLoading] = useState(false);
     const [loginData, setLoginData] = useState({ email: "", password: "" });
-
-    const [profile, setProfile] = useState<any>(null);
-    const [isBackendDown, setIsBackendDown] = useState(false);
+    const [showPostLoginIntro, setShowPostLoginIntro] = useState(false);
+    const [userNameForIntro, setUserNameForIntro] = useState<string>("");
+    const isLoggingInRef = useRef(false);
 
     useEffect(() => {
-        const fetchProfile = async () => {
-            try {
-                const { data, error } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
-                if (error && error.message === 'Failed to fetch') {
-                    setIsBackendDown(true);
-                } else if (data) {
-                    setProfile(data);
-                }
-            } catch (error: any) {
-                if (error.message === 'Failed to fetch' || (error instanceof TypeError && error.message === 'Failed to fetch')) {
-                    setIsBackendDown(true);
-                }
-                console.error("Backend check failed:", error);
-            }
-        };
-        fetchProfile();
-
         // Check if user is already logged in
         supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session) {
+            if (session && !showPostLoginIntro && !isLoggingInRef.current) {
                 navigate("/inventory/room");
             }
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (session) {
+            if (session && !showPostLoginIntro && !isLoggingInRef.current) {
                 navigate("/inventory/room");
             }
         });
 
         return () => subscription.unsubscribe();
-    }, [navigate]);
+    }, [navigate, showPostLoginIntro]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+        isLoggingInRef.current = true;
 
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
             email: loginData.email,
             password: loginData.password,
         });
 
         if (error) {
+            isLoggingInRef.current = false;
             toast({
                 variant: "destructive",
-                title: "Login failed",
+                title: "Authentication Failed",
                 description: error.message,
             });
+            setLoading(false);
         } else {
-            toast({
-                title: "Inventory Access Granted",
-                description: "Redirecting to Scanning Room...",
-            });
-            navigate("/inventory/room");
+            let staffName = data?.user?.user_metadata?.full_name || data?.user?.email?.split('@')[0] || "Inventory Staff";
+            if (data?.user?.id) {
+                try {
+                    const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", data.user.id).maybeSingle();
+                    if (prof?.full_name?.trim()) staffName = prof.full_name.trim();
+                } catch {
+                    // ignore
+                }
+            }
+            setUserNameForIntro(staffName);
+            // Trigger HavDox intro transition animation automatically as post-login experience
+            setShowPostLoginIntro(true);
         }
-
-        setLoading(false);
     };
 
+    if (showPostLoginIntro) {
+        return (
+            <LoginIntroTransition
+                userName={userNameForIntro}
+                garageName={companyName}
+                onComplete={() => {
+                    navigate("/inventory/room", { replace: true });
+                }}
+            />
+        );
+    }
+
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
-            <div className="absolute inset-0 bg-grid-white/[0.02] -z-10" />
-            <Card className="w-full max-w-md bg-card border-border text-foreground shadow-2xl relative z-10">
-                <CardHeader className="space-y-2 text-center">
-                    <div className="flex justify-center mb-4">
-                        <div className="p-4 bg-primary rounded-2xl shadow-lg shadow-primary/20">
-                            {profile?.logo_url ? (
-                                <img src={profile.logo_url} alt="Logo" className="h-10 w-10 object-contain" />
-                            ) : (
-                                <QrCode className="h-10 w-10 text-white" />
-                            )}
+        <div className="min-h-screen flex flex-col justify-between bg-gradient-to-b from-background via-muted/20 to-background text-foreground relative overflow-hidden">
+            {/* Center Auth Card */}
+            <main className="flex-1 flex items-center justify-center p-4 sm:p-6 my-6">
+                <Card className="w-full max-w-md bg-card/90 backdrop-blur-md border border-border shadow-[0_24px_60px_rgba(0,0,0,0.08)] rounded-2xl overflow-hidden">
+                    <CardHeader className="space-y-3 text-center pb-6 pt-8 px-6 sm:px-8">
+                        <div className="flex justify-center">
+                            <div className="h-14 w-14 rounded-2xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-md">
+                                <img src="/logo-x.png" alt="Drive Flow" className="h-8 w-auto object-contain invert dark:invert-0" />
+                            </div>
                         </div>
-                    </div>
-                    <CardTitle className="text-3xl font-bold tracking-tight uppercase">{profile?.company_name || 'Inventory Room'}</CardTitle>
-                    <CardDescription className="text-muted-foreground">Authorized Personnel Only</CardDescription>
-                    {isBackendDown && (
-                        <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm font-medium animate-pulse">
-                            Backend Unreachable. The Supabase project might be paused.
+
+                        <div className="space-y-1">
+                            <CardTitle className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight uppercase">
+                                Inventory Kiosk
+                            </CardTitle>
+                            <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground font-medium">
+                                <span>Drive Flow</span>
+                                <span>•</span>
+                                <span>Powered by HavDox</span>
+                            </div>
                         </div>
-                    )}
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleLogin} className="space-y-6">
-                        <div className="space-y-2">
-                            <Label htmlFor="email" className="text-foreground">Staff Email</Label>
-                            <Input
-                                id="email"
-                                type="email"
-                                placeholder="staff@example.com"
-                                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-12"
-                                value={loginData.email}
-                                onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password" className="text-foreground">Password</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                placeholder="••••••••"
-                                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-12"
-                                value={loginData.password}
-                                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                                required
-                            />
-                        </div>
-                        <Button type="submit" className="w-full h-12 text-lg font-bold bg-primary hover:bg-primary/90" disabled={loading}>
-                            {loading ? (
-                                <>
-                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    Authenticating...
-                                </>
-                            ) : (
-                                "Enter Storage Room"
-                            )}
-                        </Button>
-                        <div className="pt-4 text-center">
-                            <p className="text-xs text-muted-foreground uppercase tracking-widest">{profile?.company_name || 'Service Center'} Inventory Management</p>
-                        </div>
-                    </form>
-                </CardContent>
-            </Card>
+
+                        <CardDescription className="text-xs text-muted-foreground pt-1">
+                            {companyName && companyName !== "Garage"
+                                ? `${companyName} · Parts & Storage Dispatch`
+                                : "Authorized Warehouse & Parts Personnel Only"}
+                        </CardDescription>
+                    </CardHeader>
+
+                    <CardContent className="px-6 sm:px-8 pb-8">
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Staff Email
+                                </Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    placeholder="staff@example.com"
+                                    className="h-11 rounded-xl"
+                                    value={loginData.email}
+                                    onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                                    required
+                                    autoComplete="email"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Password
+                                </Label>
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    placeholder="••••••••"
+                                    className="h-11 rounded-xl"
+                                    value={loginData.password}
+                                    onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                                    required
+                                    autoComplete="current-password"
+                                />
+                            </div>
+
+                            <Button
+                                type="submit"
+                                className="w-full h-11 rounded-full text-sm font-display font-medium shadow-sm mt-2"
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Authenticating...
+                                    </>
+                                ) : (
+                                    "Enter Storage Room"
+                                )}
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
+            </main>
+
+            {/* Official HavDox Brand Footer */}
+            <BrandFooter />
         </div>
     );
 }

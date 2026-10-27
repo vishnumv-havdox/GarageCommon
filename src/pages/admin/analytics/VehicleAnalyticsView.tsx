@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Calendar, FileText, Wrench, IndianRupee, History, AlertCircle, BarChart3 } from "lucide-react";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -72,7 +73,7 @@ export default function VehicleAnalyticsView({ vehicleId }: VehicleAnalyticsView
     });
 
     if (isLoading) {
-        return <div className="p-12 flex justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+        return <HavDoxLoader variant="section" message="Loading vehicle analytics..." />;
     }
 
     if (!stats?.vehicle) return <div>Vehicle not found.</div>;

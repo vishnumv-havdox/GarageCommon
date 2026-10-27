@@ -232,9 +232,7 @@ export const ReminderFormModal: React.FC<ReminderFormModalProps> = ({
               type="button"
               variant={isPinned ? "default" : "outline"}
               size="sm"
-              className={`h-8 gap-1.5 text-xs ${
-                isPinned ? "bg-amber-600 hover:bg-amber-700 text-white" : ""
-              }`}
+              className="h-8 gap-1.5 text-xs font-semibold"
               onClick={() => setIsPinned(!isPinned)}
             >
               <Pin className={`h-3.5 w-3.5 ${isPinned ? "fill-current" : ""}`} />
@@ -538,7 +536,7 @@ export const ReminderFormModal: React.FC<ReminderFormModalProps> = ({
             </Button>
             <Button
               type="submit"
-              className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
               disabled={submitting || !title.trim()}
             >
               {submitting ? "Saving..." : initialData ? "Save Changes" : "Create Reminder"}

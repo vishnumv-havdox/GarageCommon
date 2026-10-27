@@ -48,6 +48,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { RemindersProvider } from "@/contexts/RemindersContext";
 import { GlobalAlarmModal } from "@/components/reminders/GlobalAlarmModal";
 import { GlobalHUD } from "@/components/dashboard/GlobalHUD";
+import { initTheme } from "@/utils/themeManager";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -102,6 +103,9 @@ const routeComponents: Record<string, React.ComponentType> = {
 
 const App = () => {
   React.useEffect(() => {
+    // Initialize active garage theme colors immediately
+    initTheme();
+
     // Prevent browser default behavior (which navigates away or opens the dropped file in the current tab)
     const preventUncaughtDragOver = (e: DragEvent) => {
       e.preventDefault();

@@ -147,7 +147,7 @@ export const RemindersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Desktop notification
     sendBrowserNotification(`Alarm: ${reminder.title}`, {
-      body: reminder.description || "You have an active AmmaAuto reminder due now.",
+      body: reminder.description || "You have an active Drive Flow reminder due now.",
       tag: `alarm-${reminder.id}`,
     });
   };

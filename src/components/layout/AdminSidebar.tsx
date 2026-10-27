@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth, type UserRole } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useCompanyProfile } from "@/hooks/useCompanyProfile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useRequests } from "@/contexts/RequestsContext";
@@ -245,20 +245,8 @@ export function AdminSidebar() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [company, setCompany] = useState<any>(null);
+  const { companyName } = useCompanyProfile();
   const { totalPending, activeWorkOrders } = useRequests();
-
-  useEffect(() => {
-    const fetchProfile = async () => {
-      const { data } = await supabase
-        .from("company_profiles")
-        .select("company_name, logo_url")
-        .limit(1)
-        .maybeSingle();
-      if (data) setCompany(data);
-    };
-    fetchProfile();
-  }, []);
 
   const userRole = (user?.role || "customer") as UserRole;
 
@@ -278,22 +266,26 @@ export function AdminSidebar() {
 
   const SidebarNavList = () => (
     <div className="flex flex-col h-full bg-card">
-      {/* Brand Header */}
-      <div className="h-16 px-5 border-b flex items-center shrink-0">
-        <NavLink to="/admin" className="flex items-center gap-3 group" onClick={() => setOpen(false)}>
-          <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-            {company?.logo_url ? (
-              <img src={company.logo_url} alt="Logo" className="h-5 w-5 object-contain" />
-            ) : (
-              <Shield className="h-5 w-5" />
-            )}
+      {/* Clean, Spacious Sidebar Top Header */}
+      <div className="h-16 px-5 border-b border-border/60 flex items-center justify-between shrink-0 bg-card">
+        <NavLink
+          to="/admin"
+          className="flex items-center gap-3 group min-w-0"
+          onClick={() => setOpen(false)}
+        >
+          <div className="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 shadow-xs transition-transform duration-200 group-hover:scale-105">
+            <img
+              src="/logo-x.png"
+              alt="Drive Flow"
+              className="h-5 w-auto object-contain brightness-0 invert"
+            />
           </div>
-          <div className="truncate">
-            <h1 className="font-extrabold truncate text-sm tracking-tight uppercase text-foreground">
-              {company?.company_name || "GARAGE"}
+          <div className="min-w-0">
+            <h1 className="font-display font-bold text-sm tracking-tight text-foreground truncate leading-tight">
+              Drive Flow
             </h1>
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
-              Management Suite
+            <p className="text-[10px] font-medium text-muted-foreground/75 tracking-wide leading-tight">
+              Powered by HavDox
             </p>
           </div>
         </NavLink>
@@ -344,7 +336,7 @@ export function AdminSidebar() {
                       <span
                         className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${
                           isActive
-                            ? "bg-white text-primary"
+                            ? "bg-primary-foreground/20 text-primary-foreground"
                             : item.badgeVariant === "destructive"
                             ? "bg-rose-500 text-white"
                             : "bg-muted text-muted-foreground border border-border"
@@ -361,8 +353,16 @@ export function AdminSidebar() {
         ))}
       </nav>
 
+      {/* Clean, Minimal Sidebar Bottom */}
+      <div className="hidden lg:block px-5 py-3.5 border-t border-border/50 shrink-0 bg-card">
+        <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+          <span>Drive Flow</span>
+          <span className="text-[10px] text-muted-foreground/60 tracking-wider font-mono">v2.4</span>
+        </div>
+      </div>
+
       {/* User Footer Card (Mobile Drawer only - on desktop, profile & logout are in the topbar) */}
-      <div className="lg:hidden p-3 border-t bg-muted/20 shrink-0">
+      <div className="lg:hidden p-3 border-t bg-muted/20 shrink-0 space-y-2">
         <div
           className="flex items-center justify-between p-2 rounded-xl hover:bg-muted/80 cursor-pointer transition-colors"
           onClick={() => {
@@ -371,7 +371,7 @@ export function AdminSidebar() {
           }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+            <div className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shrink-0">
               <User className="h-4 w-4" />
             </div>
             <div className="truncate">
@@ -395,6 +395,11 @@ export function AdminSidebar() {
           >
             <LogOut className="h-3.5 w-3.5" />
           </Button>
+        </div>
+
+        {/* Mobile Drawer Brand Signature */}
+        <div className="pt-2 border-t border-border/40 text-[10px] text-muted-foreground text-center">
+          <p className="font-medium text-foreground">Drive Flow · Powered by HavDox</p>
         </div>
       </div>
     </div>
@@ -427,18 +432,19 @@ export function AdminSidebar() {
       `}</style>
 
       {/* Mobile Top Header */}
-      <div className="lg:hidden flex items-center justify-between p-3.5 border-b bg-card w-full sticky top-0 z-40 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 bg-primary/10 text-primary rounded-lg">
-            {company?.logo_url ? (
-              <img src={company.logo_url} alt="Logo" className="h-5 w-5 object-contain" />
-            ) : (
-              <Shield className="h-5 w-5" />
-            )}
+      <div className="lg:hidden flex items-center justify-between px-4 py-3 border-b bg-card w-full sticky top-0 z-40 shadow-xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shrink-0 shadow-xs">
+            <img src="/logo-x.png" alt="Drive Flow" className="h-4 w-auto object-contain brightness-0 invert" />
           </div>
-          <span className="font-bold truncate max-w-[150px] uppercase text-xs">
-            {company?.company_name || "Admin Panel"}
-          </span>
+          <div className="flex flex-col min-w-0">
+            <span className="font-display font-bold text-sm tracking-tight text-foreground truncate leading-tight">
+              {companyName}
+            </span>
+            <span className="text-[10px] font-medium text-muted-foreground tracking-wide leading-tight">
+              Drive Flow
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -446,7 +452,7 @@ export function AdminSidebar() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl text-primary bg-primary/10 hover:bg-primary/20"
+            className="h-9 w-9 rounded-xl text-foreground bg-muted/60 hover:bg-muted"
             onClick={() => setProfileOpen(true)}
             title="Profile"
           >
@@ -472,14 +478,20 @@ export function AdminSidebar() {
 
       {/* Desktop Topbar */}
       <header className="hidden lg:flex fixed top-0 right-0 left-64 h-16 border-b bg-card/90 backdrop-blur-md items-center justify-between px-8 z-20 transition-all duration-300">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
-            {company?.company_name || "Garage"}
-          </span>
-          <span className="text-muted-foreground/40">•</span>
-          <span className="text-xs font-medium text-muted-foreground">
-            Workshop Management
-          </span>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <h1
+              className="font-display font-bold text-base tracking-tight text-foreground whitespace-nowrap"
+              title={companyName}
+            >
+              {companyName}
+            </h1>
+            <span className="text-muted-foreground/30 select-none font-light">/</span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="font-semibold text-foreground">Drive Flow</span>
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">

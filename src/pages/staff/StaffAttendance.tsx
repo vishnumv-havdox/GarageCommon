@@ -26,6 +26,8 @@ import {
     User,
     ChevronLeft
 } from "lucide-react";
+import { BrandFooter } from "@/components/brand/BrandFooter";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import {
     Table,
     TableBody,
@@ -231,7 +233,7 @@ export default function StaffAttendance() {
         }
     };
 
-    if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
+    if (loading) return <HavDoxLoader variant="fullscreen" message="Loading attendance records..." />;
 
     if (!employee || !employee.attendance_self_service) {
         return (
@@ -257,21 +259,32 @@ export default function StaffAttendance() {
     }
 
     return (
-        <div className="min-h-screen bg-background text-foreground font-inter">
+        <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
             {/* Header - Matching Staff Dashboard */}
             <header className="border-b border-border bg-background/80 sticky top-0 z-50 backdrop-blur-xl">
                 <div className="container mx-auto px-4 h-20 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Button variant="ghost" size="icon" onClick={() => navigate("/staff")} className="h-10 w-10">
+                    <div className="flex items-center gap-3">
+                        <Button variant="ghost" size="icon" onClick={() => navigate("/staff")} className="h-10 w-10 rounded-full">
                             <ChevronLeft className="h-5 w-5" />
                         </Button>
-                        <div className="flex flex-col">
-                            <span className="text-lg font-bold text-primary uppercase tracking-tight">
-                                My Attendance
-                            </span>
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                Self-Service Portal
-                            </span>
+                        <div className="flex items-center gap-2.5">
+                            <div className="h-9 w-9 rounded-xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-xs">
+                                <img src="/logo-x.png" alt="HavDox" className="h-4.5 w-auto object-contain invert dark:invert-0" />
+                            </div>
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-display font-bold text-sm sm:text-base tracking-tight text-foreground">
+                                        Drive Flow
+                                    </span>
+                                    <span className="text-muted-foreground/40 text-xs">•</span>
+                                    <span className="text-[11px] font-medium text-muted-foreground">
+                                        Powered by HavDox
+                                    </span>
+                                </div>
+                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                    Self-Service Attendance Portal
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -496,6 +509,9 @@ export default function StaffAttendance() {
                     </Card>
                 </div>
             </main>
+
+            {/* Official HavDox Brand Footer */}
+            <BrandFooter />
         </div>
     );
 }

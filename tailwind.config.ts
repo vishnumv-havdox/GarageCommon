@@ -53,6 +53,21 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				// HavDox Official Brand Colors
+				havdox: {
+					white: '#FFFFFF',
+					black: '#000000',
+					obsidian: '#05070E',
+					navy: '#12284A',
+					indigo: '#6366F1',
+					'indigo-alt': '#5B3BFF',
+					focus: '#4D8DFF',
+					'text-muted': '#71717A',
+					border: '#E4E4E7',
+					success: '#00B894',
+					warning: '#FF9D00',
+					error: '#FF3D6E',
+				},
 				// Status colors for service tracking
 				status: {
 					pending: 'hsl(var(--status-pending))',
@@ -77,10 +92,23 @@ export default {
 					ring: 'hsl(var(--sidebar-ring))'
 				}
 			},
+			fontFamily: {
+				sans: ['var(--havdox-font-body)', '"Plus Jakarta Sans"', '"Outfit"', 'sans-serif'],
+				body: ['var(--havdox-font-body)', '"Plus Jakarta Sans"', '"Outfit"', 'sans-serif'],
+				display: ['var(--havdox-font-display)', '"Outfit"', '-apple-system', 'sans-serif'],
+				heading: ['var(--havdox-font-display)', '"Outfit"', '-apple-system', 'sans-serif'],
+				mono: ['var(--havdox-font-mono)', '"JetBrains Mono"', 'monospace']
+			},
 			borderRadius: {
+				pill: '999px',
+				control: '12px',
+				card: '20px',
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
 				sm: 'calc(var(--radius) - 4px)'
+			},
+			transitionTimingFunction: {
+				'havdox-ease': 'cubic-bezier(0.16, 1, 0.3, 1)'
 			},
 			keyframes: {
 				'accordion-down': {

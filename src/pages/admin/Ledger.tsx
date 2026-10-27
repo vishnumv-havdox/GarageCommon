@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { FinanceTabsNav } from "@/components/layout/FinanceTabsNav";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -604,7 +605,14 @@ export default function AdminLedger() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {transactions.map((item) => (
+                                    {loading ? (
+                                        <TableRow>
+                                            <TableCell colSpan={10} className="py-8">
+                                                <HavDoxLoader variant="section" message="Loading transaction ledger and customer balances..." />
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        transactions.map((item) => (
                                         <TableRow
                                             key={`${item.id}`}
                                             className="cursor-pointer hover:bg-muted/50"
@@ -656,10 +664,11 @@ export default function AdminLedger() {
                                                 </Badge>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
-                                    {transactions.length === 0 && (
+                                    ))
+                                )}
+                                    {!loading && transactions.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                                            <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                                                 No transactions found
                                             </TableCell>
                                         </TableRow>

@@ -68,6 +68,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { format } from "date-fns";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -611,12 +612,12 @@ export default function AdminInvoices() {
             <Card className="relative overflow-hidden border bg-background/40 backdrop-blur-md shadow-sm transition-all duration-300 hover:shadow-md">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total Invoiced (Gross)</CardTitle>
-                <div className="p-2 rounded-lg bg-blue-500/10 dark:bg-blue-500/20">
-                  <IndianRupee className="h-4 w-4 text-blue-500" />
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <IndianRupee className="h-4 w-4 text-primary" />
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-extrabold tracking-tight text-blue-600 dark:text-blue-400">
+                <div className="text-2xl font-extrabold tracking-tight text-primary">
                   ₹{Math.round(invoices.filter(i => i.status !== 'Draft' && i.status !== 'Cancelled').reduce((sum, i) => sum + (i.total || 0), 0)).toLocaleString('en-IN')}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">Excludes drafts & cancelled</p>
@@ -765,9 +766,7 @@ export default function AdminInvoices() {
             {/* Verification Tab */}
             <TabsContent value="verification">
               {loading ? (
-                <div className="flex justify-center p-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
+                <HavDoxLoader variant="section" message="Loading payment verification records..." />
               ) : pendingPayments.length > 0 ? (
                 <div className="rounded-md border overflow-x-auto">
                   <Table>

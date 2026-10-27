@@ -15,6 +15,8 @@ import {
 import { Html5QrcodeScanner } from "html5-qrcode";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { BrandFooter } from "@/components/brand/BrandFooter";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 
 export default function InventoryRoom() {
     const { user, signOut } = useAuth();
@@ -314,20 +316,26 @@ export default function InventoryRoom() {
             <div className="min-h-screen bg-background p-4 md:p-8 relative overflow-hidden">
                 {/* Visual ambient backgrounds */}
                 <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -z-10 pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -z-10 pointer-events-none" />
 
                 <div className="max-w-5xl mx-auto space-y-8">
                     {/* Header */}
-                    <div className="flex items-center justify-between bg-card/40 backdrop-blur-md p-6 rounded-2xl border border-border/50 shadow-sm">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3.5 bg-gradient-to-tr from-primary to-blue-600 rounded-xl text-primary-foreground shadow-lg shadow-primary/20">
-                                <Package className="h-6 w-6 animate-pulse" />
+                    <div className="flex items-center justify-between bg-card/60 backdrop-blur-md p-5 rounded-2xl border border-border shadow-xs">
+                        <div className="flex items-center gap-3.5">
+                            <div className="h-11 w-11 rounded-xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                                <img src="/logo-x.png" alt="HavDox" className="h-6 w-auto object-contain invert dark:invert-0" />
                             </div>
                             <div>
-                                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-foreground via-foreground to-primary bg-clip-text text-transparent">
-                                    Inventory Room Kiosk
-                                </h1>
-                                <p className="text-muted-foreground text-sm">Select an active vehicle work order to scan and issue parts</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h1 className="text-xl md:text-2xl font-display font-extrabold tracking-tight text-foreground">
+                                        Drive Flow
+                                    </h1>
+                                    <span className="text-muted-foreground/40 text-xs">•</span>
+                                    <span className="text-xs font-medium text-muted-foreground">
+                                        Powered by HavDox
+                                    </span>
+                                </div>
+                                <p className="text-muted-foreground text-xs font-medium mt-0.5">Inventory Room Kiosk · Scan and issue parts</p>
                             </div>
                         </div>
 
@@ -435,7 +443,7 @@ export default function InventoryRoom() {
                                                             <div className="flex justify-between items-center">
                                                                 <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Vehicle</span>
                                                                 {ownerName && (
-                                                                    <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.25 rounded border border-indigo-100 uppercase max-w-[120px] truncate">
+                                                                    <span className="text-[9px] font-black text-primary bg-primary/10 px-1.5 py-0.25 rounded border border-primary/20 uppercase max-w-[120px] truncate">
                                                                         {ownerName}
                                                                     </span>
                                                                 )}
@@ -516,7 +524,7 @@ export default function InventoryRoom() {
             
             {/* Visual ambient backgrounds */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -z-10 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -z-10 pointer-events-none" />
 
             <div className="max-w-6xl mx-auto space-y-6">
                 {/* Back button and title */}
@@ -544,7 +552,7 @@ export default function InventoryRoom() {
                                 <span className="h-2.5 w-px bg-border" />
                                 {(selectedWO.vehicle?.customers?.company_name || selectedWO.vehicle?.customers?.name) && (
                                     <>
-                                        <span className="text-indigo-600 uppercase">
+                                        <span className="text-primary uppercase">
                                             {selectedWO.vehicle.customers.company_name || selectedWO.vehicle.customers.name}
                                         </span>
                                         <span className="h-2.5 w-px bg-border" />
@@ -847,16 +855,16 @@ export default function InventoryRoom() {
             
             {/* Fullscreen loading overlay */}
             {loading && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 animate-in fade-in duration-200">
-                    <div className="bg-card p-8 rounded-2xl flex flex-col items-center gap-4 border border-border/80 shadow-2xl max-w-xs text-center">
-                        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                        <div>
-                            <p className="font-extrabold text-foreground text-md">Updating Kiosk Data</p>
-                            <p className="text-xs text-muted-foreground mt-1">Deducting inventory and updating billing...</p>
-                        </div>
-                    </div>
-                </div>
+                <HavDoxLoader
+                    variant="fullscreen"
+                    message="Updating Kiosk Data · Deducting inventory and updating billing..."
+                />
             )}
+
+            {/* Official HavDox Brand Footer */}
+            <div className="mt-12">
+                <BrandFooter />
+            </div>
         </div>
     );
 }

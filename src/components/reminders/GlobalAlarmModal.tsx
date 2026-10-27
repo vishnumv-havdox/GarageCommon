@@ -69,7 +69,7 @@ export const GlobalAlarmModal: React.FC = () => {
             </div>
           </div>
           <DialogDescription className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-            AmmaAuto Scheduled Alarm Alert
+            Drive Flow · Scheduled Alarm Alert
           </DialogDescription>
         </DialogHeader>
 

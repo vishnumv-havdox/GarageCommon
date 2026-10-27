@@ -68,6 +68,7 @@ import { Label } from "@/components/ui/label";
 
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { Separator } from "@/components/ui/separator";
 import { useReactToPrint } from "react-to-print";
@@ -1042,9 +1043,10 @@ export default function InvoiceEditor() {
 
     if (loading) {
         return (
-            <div className="flex h-screen items-center justify-center bg-slate-50/50">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
+            <HavDoxLoader
+                variant="fullscreen"
+                message="Loading invoice and billing items..."
+            />
         );
     }
 

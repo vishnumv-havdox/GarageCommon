@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { GarageClock } from "@/components/dashboard/GarageClock";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { BrandFooter } from "@/components/brand/BrandFooter";
 import { format, subDays, startOfMonth, endOfMonth, formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useRequests } from "@/contexts/RequestsContext";
@@ -188,7 +189,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/60 dark:bg-background">
+    <div className="min-h-screen bg-background">
       <div className="flex flex-col lg:flex-row">
         <AdminSidebar />
 
@@ -271,7 +272,7 @@ export default function AdminDashboard() {
             </Card>
 
             <Card
-              className="bg-card border-border/70 hover:border-blue-500/50 shadow-sm transition-all hover:shadow-md cursor-pointer group"
+              className="bg-card border-border/70 hover:border-primary/50 shadow-sm transition-all hover:shadow-md cursor-pointer group"
               onClick={() => navigate("/admin/work-orders?filter=ongoing")}
             >
               <CardContent className="p-5">
@@ -279,7 +280,7 @@ export default function AdminDashboard() {
                   <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Vehicles In Floor
                   </span>
-                  <div className="h-8 w-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary border border-primary/20 flex items-center justify-center">
                     <Wrench className="h-4 w-4" />
                   </div>
                 </div>
@@ -288,7 +289,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground font-medium">
                   <span>{pendingCount} awaiting triage</span>
-                  <span className="text-blue-600 font-bold">{readyCount} ready</span>
+                  <span className="text-primary font-bold">{readyCount} ready</span>
                 </div>
               </CardContent>
             </Card>
@@ -635,6 +636,11 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          {/* Official HavDox Brand Footer */}
+          <div className="pt-8">
+            <BrandFooter />
           </div>
         </main>
       </div>

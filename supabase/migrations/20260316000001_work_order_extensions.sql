@@ -52,13 +52,9 @@ CREATE POLICY "Staff can view work order photos" ON public.work_order_photos
     FOR SELECT USING (auth.role() IN ('authenticated', 'anon')); -- Allow customer portal too
 
 CREATE POLICY "Admin and staff can manage work order photos" ON public.work_order_photos
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.employees 
-            WHERE user_id = auth.uid() 
-            AND status = 'active'
-        )
-    );
+    FOR ALL TO authenticated
+    USING (true)
+    WITH CHECK (true);
 
 -- work_order_belongings
 ALTER TABLE public.work_order_belongings ENABLE ROW LEVEL SECURITY;
@@ -67,13 +63,9 @@ CREATE POLICY "Staff can view belongings" ON public.work_order_belongings
     FOR SELECT USING (auth.role() IN ('authenticated', 'anon'));
 
 CREATE POLICY "Admin and staff can manage belongings" ON public.work_order_belongings
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.employees 
-            WHERE user_id = auth.uid() 
-            AND status = 'active'
-        )
-    );
+    FOR ALL TO authenticated
+    USING (true)
+    WITH CHECK (true);
 
 -- 6. Storage Policies (Supabase specific)
 -- Note: These might need to be applied in a way that the storage schema understands

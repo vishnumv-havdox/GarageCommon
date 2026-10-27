@@ -67,40 +67,46 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
   onInvoice,
   onReopen,
 }) => {
-  const isFinalized = ["completed", "approved", "delivered", "finalized"].includes(
-    order.status.toLowerCase()
+  const isFinalized = ["completed", "delivered", "finalized"].includes(
+    (order.status || "").toLowerCase()
   );
   const isOverdue = deliveryInfo.status === "overdue" && !isFinalized;
   const isUrgent = (deliveryInfo.status === "urgent" || order.priority === "Urgent") && !isFinalized;
 
-  // Determine stage progress (1 to 5)
+  // Exact 5 stages synchronized with ProgressTracker (relative flex justify-between)
   const stages = [
-    { key: "triage", label: "Triage" },
-    { key: "inspection", label: "Inspection" },
-    { key: "repair", label: "Repair" },
-    { key: "review", label: "QC / Review" },
-    { key: "ready", label: "Ready" },
+    { key: "Inspection", label: "Inspection" },
+    { key: "Repair", label: "Repair" },
+    { key: "Review", label: "Review" },
+    { key: "Quality Check", label: "Quality Check" },
+    { key: "Delivery", label: "Delivery" },
   ];
 
-  const currentStageLower = (order.current_stage || "").toLowerCase();
+  const currentStageName = isFinalized ? "Completed" : (order.current_stage || "Inspection");
+  const currentStageLower = (order.current_stage || "Inspection").toLowerCase();
+
   const getStageIndex = () => {
     if (isFinalized) return 5;
-    if (currentStageLower.includes("ready") || currentStageLower.includes("delivery")) return 4;
-    if (currentStageLower.includes("review") || currentStageLower.includes("qc") || currentStageLower.includes("inspection_completed")) return 3;
-    if (currentStageLower.includes("repair") || currentStageLower.includes("work")) return 2;
-    if (currentStageLower.includes("inspect")) return 1;
-    return 0;
+    const idx = stages.findIndex(
+      s => s.key.toLowerCase() === currentStageLower || s.label.toLowerCase() === currentStageLower
+    );
+    if (idx !== -1) return idx;
+    if (currentStageLower.includes("deliver") || currentStageLower.includes("ready")) return 4;
+    if (currentStageLower.includes("quality") || currentStageLower.includes("qc")) return 3;
+    if (currentStageLower.includes("review")) return 2;
+    if (currentStageLower.includes("repair") || currentStageLower.includes("work")) return 1;
+    return 0; // Default to Inspection
   };
 
   const stageIndex = getStageIndex();
 
   // Status badge helper
   const getStatusBadge = () => {
-    const s = order.status.toLowerCase();
+    const s = (order.status || "").toLowerCase();
     if (s === "pending") {
       return (
         <Badge variant="outline" className="border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/40 font-semibold text-xs">
-          Pending Triage
+          Pending
         </Badge>
       );
     }
@@ -133,15 +139,15 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
       );
     }
     return (
-      <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 font-semibold text-xs">
+      <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 font-semibold text-xs">
         In Progress
       </Badge>
     );
   };
 
   // Card border & accent classes
-  let borderAccentClass = "border-l-4 border-l-blue-500";
-  let bgClass = "bg-white dark:bg-slate-900";
+  let borderAccentClass = "border-l-4 border-l-primary";
+  let bgClass = "bg-card";
 
   if (isFinalized) {
     borderAccentClass = "border-l-4 border-l-emerald-500";
@@ -156,7 +162,7 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
 
   return (
     <div
-      className={`rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden ${borderAccentClass} ${bgClass}`}
+      className={`rounded-2xl border border-border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden ${borderAccentClass} ${bgClass}`}
     >
       <div className="p-4 sm:p-5 space-y-4">
         {/* Top Header Row */}
@@ -171,7 +177,7 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
             {/* Service Type */}
             <h3
               onClick={() => onViewDetails(order.id)}
-              className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
+              className="text-base sm:text-lg font-bold text-foreground hover:text-primary cursor-pointer transition-colors"
             >
               {order.service_type || "General Service"}
             </h3>
@@ -283,7 +289,7 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
                 <User className="h-3.5 w-3.5 text-slate-400" />
                 {order.customer?.name || "Customer Not Assigned"}
                 {order.customer?.company_name && (
-                  <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  <span className="font-semibold text-primary">
                     ({order.customer.company_name})
                   </span>
                 )}
@@ -334,18 +340,19 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
         </div>
 
         {/* 5-Stage Visual Workflow Stepper */}
+        {/* 5-Stage Visual Workflow Stepper - Synchronized with ProgressTracker */}
         <div className="pt-2 pb-1 border-t border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             <span>Workflow Stage</span>
-            <span className="text-slate-700 dark:text-slate-300 capitalize font-bold">
-              {order.current_stage || "Triage Stage"}
+            <span className="text-slate-700 dark:text-slate-300 font-bold">
+              {currentStageName}
             </span>
           </div>
 
           <div className="grid grid-cols-5 gap-1.5">
             {stages.map((stg, idx) => {
-              const isPastStep = idx < stageIndex;
-              const isCurrent = idx === stageIndex;
+              const isPastStep = isFinalized || idx < stageIndex;
+              const isCurrent = !isFinalized && idx === stageIndex;
 
               return (
                 <div key={stg.key} className="space-y-1">
@@ -354,18 +361,18 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
                       isPastStep
                         ? "bg-emerald-500"
                         : isCurrent
-                        ? "bg-blue-600 animate-pulse"
-                        : "bg-slate-200 dark:bg-slate-800"
+                        ? "bg-primary animate-pulse"
+                        : "bg-muted"
                     }`}
                   />
                   <div className="text-[10px] truncate text-center font-medium">
                     <span
                       className={
-                        isCurrent
-                          ? "text-blue-600 dark:text-blue-400 font-bold"
-                          : isPastStep
-                          ? "text-emerald-700 dark:text-emerald-400"
-                          : "text-slate-400"
+                        isPastStep
+                          ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+                          : isCurrent
+                          ? "text-primary font-bold"
+                          : "text-muted-foreground"
                       }
                     >
                       {stg.label}
@@ -378,7 +385,7 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
         </div>
 
         {/* Bottom Action Strip */}
-        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div className="pt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -393,7 +400,7 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 text-xs font-semibold border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                className="h-8 text-xs font-semibold border-primary/30 text-primary hover:bg-primary/10"
                 onClick={() => onAdvanceStage(order.id, order.current_stage)}
               >
                 <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Advance Stage

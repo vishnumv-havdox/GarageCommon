@@ -21,8 +21,8 @@ export function FinanceTabsNav() {
             className={({ isActive }) =>
               `flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 whitespace-nowrap transition-all ${
                 isActive
-                  ? "bg-card text-foreground shadow-sm border border-border/40 font-bold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
               }`
             }
           >

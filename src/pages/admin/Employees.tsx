@@ -9,6 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { NavLink } from "react-router-dom";
 import {
@@ -33,6 +41,7 @@ import {
 } from "lucide-react";
 import { EmployeeForm } from "@/components/forms/EmployeeForm";
 import { EmployeeTracker } from "@/components/employees/EmployeeTracker";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { EmployeeDocumentsModal } from "@/components/employees/EmployeeDocumentsModal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SearchInput } from "@/components/shared/SearchInput";
@@ -87,6 +96,11 @@ export default function AdminEmployees() {
   const [selectedEmployeeForDocs, setSelectedEmployeeForDocs] = useState<Employee | null>(null);
   const [isDocsModalOpen, setIsDocsModalOpen] = useState(false);
   const [employeeDocStats, setEmployeeDocStats] = useState<Record<string, { total: number; hasExpired: boolean; hasExpiringSoon: boolean }>>({});
+  const [showAddPositionModal, setShowAddPositionModal] = useState(false);
+  const [newPosName, setNewPosName] = useState("");
+  const [newPosDept, setNewPosDept] = useState("Service");
+  const [newPosLevel, setNewPosLevel] = useState<"admin" | "manager" | "staff">("staff");
+  const [isSavingPos, setIsSavingPos] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -95,59 +109,54 @@ export default function AdminEmployees() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch employees with position info
-      const { data: employeesData, error: empError } = await supabase
-        .from("employees")
-        .select(`
-          *,
-          position:positions(*)
-        `)
-        .order("name");
-
-      if (empError) throw empError;
-
-      // Fetch positions
-      const { data: positionsData, error: posError } = await supabase
-        .from("positions")
-        .select("*")
-        .order("department");
-
-      if (posError) throw posError;
-
-      setEmployees(employeesData || []);
-      setPositions(positionsData || []);
-
-      // Fetch today's attendance
       const today = format(new Date(), 'yyyy-MM-dd');
-      const { data: attendanceData } = await supabase
-        .from("attendance")
-        .select("*")
-        .eq("date", today);
+
+      // Fetch all required data concurrently in parallel
+      const [empRes, posRes, attRes, wfRes, docRes] = await Promise.all([
+        supabase
+          .from("employees")
+          .select(`
+            *,
+            position:positions(*)
+          `)
+          .order("name"),
+        supabase
+          .from("positions")
+          .select("*")
+          .order("department"),
+        supabase
+          .from("attendance")
+          .select("*")
+          .eq("date", today),
+        supabase
+          .from("workforce_settings")
+          .select("*")
+          .eq("is_active", true)
+          .maybeSingle(),
+        supabase
+          .from("employee_documents")
+          .select("id, employee_id, expiry_date, status"),
+      ]);
+
+      if (empRes.error) throw empRes.error;
+      if (posRes.error) throw posRes.error;
+
+      setEmployees(empRes.data || []);
+      setPositions(posRes.data || []);
 
       const attMap: Record<string, any> = {};
-      attendanceData?.forEach(att => {
+      attRes.data?.forEach(att => {
         attMap[att.employee_id] = att;
       });
       setTodayAttendance(attMap);
 
-      // Fetch workforce settings for calculations
-      const { data: wfSettings } = await supabase
-        .from("workforce_settings")
-        .select("*")
-        .eq("is_active", true)
-        .maybeSingle();
-      setWorkforceSettings(wfSettings);
-
-      // Fetch document stats
-      const { data: docData } = await supabase
-        .from("employee_documents")
-        .select("id, employee_id, expiry_date, status");
+      setWorkforceSettings(wfRes.data);
 
       const todayDate = new Date();
       todayDate.setHours(0, 0, 0, 0);
       const docStatsMap: Record<string, { total: number; hasExpired: boolean; hasExpiringSoon: boolean }> = {};
 
-      (docData || []).forEach((d) => {
+      (docRes.data || []).forEach((d) => {
         if (!docStatsMap[d.employee_id]) {
           docStatsMap[d.employee_id] = { total: 0, hasExpired: false, hasExpiringSoon: false };
         }
@@ -422,15 +431,6 @@ export default function AdminEmployees() {
 
   const finalEmployees = filteredEmployees.filter(e => selectedDept === "all" || e.position?.department === selectedDept);
 
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-muted/5">
       <AdminSidebar />
@@ -443,7 +443,19 @@ export default function AdminEmployees() {
               <h1 className="text-3xl font-bold tracking-tight text-gray-900">Workforce Management</h1>
               <p className="text-muted-foreground mt-1">Manage staff, track attendance, and monitor performance.</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setNewPosName("");
+                  setNewPosDept("Service");
+                  setNewPosLevel("staff");
+                  setShowAddPositionModal(true);
+                }}
+                className="gap-2 shadow-xs"
+              >
+                <Briefcase className="h-4 w-4 text-primary" /> Add Position
+              </Button>
               <Button onClick={() => { setEditingEmployee(null); setShowForm(true); }} className="gap-2 shadow-lg hover:shadow-xl transition-all">
                 <Plus className="h-4 w-4" /> Add Employee
               </Button>
@@ -527,7 +539,14 @@ export default function AdminEmployees() {
         </div>
 
         {/* 3. Employee Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {loading ? (
+          <HavDoxLoader
+            variant="section"
+            message="Loading team members..."
+          />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {finalEmployees.map((employee) => {
             const att = todayAttendance[employee.id];
             const isOnline = att?.status === 'present' || att?.status === 'overtime';
@@ -694,20 +713,22 @@ export default function AdminEmployees() {
           })}
         </div>
 
-        {/* Empty State */}
-        {finalEmployees.length === 0 && (
-          <div className="text-center py-20 bg-muted/10 rounded-xl border-2 border-dashed border-muted-foreground/10 flex flex-col items-center">
-            <div className="bg-muted rounded-full p-4 mb-3">
-              <Users className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-            <h3 className="text-lg font-medium text-muted-foreground">No employees found</h3>
-            <p className="text-sm text-muted-foreground/60 mt-1 max-w-xs mx-auto">
-              Try adjusting your filters or search terms. If adding a new employee, use the button above.
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => { setSearchTerm(""); setSelectedDept("all"); }}>
-              Clear Filters
-            </Button>
-          </div>
+            {/* Empty State */}
+            {finalEmployees.length === 0 && (
+              <div className="text-center py-20 bg-muted/10 rounded-xl border-2 border-dashed border-muted-foreground/10 flex flex-col items-center">
+                <div className="bg-muted rounded-full p-4 mb-3">
+                  <Users className="h-8 w-8 text-muted-foreground/50" />
+                </div>
+                <h3 className="text-lg font-medium text-muted-foreground">No employees found</h3>
+                <p className="text-sm text-muted-foreground/60 mt-1 max-w-xs mx-auto">
+                  Try adjusting your filters or search terms. If adding a new employee, use the button above.
+                </p>
+                <Button variant="outline" className="mt-4" onClick={() => { setSearchTerm(""); setSelectedDept("all"); }}>
+                  Clear Filters
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </main>
 
@@ -749,6 +770,104 @@ export default function AdminEmployees() {
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleConfirmDelete}>Delete</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Standalone Add Position Dialog */}
+      <Dialog open={showAddPositionModal} onOpenChange={setShowAddPositionModal}>
+        <DialogContent className="max-w-md p-6">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Add New Position / Role</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Create a job role or designation for garage employees.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newPosName.trim()) {
+                toast({ title: "Name required", description: "Please enter a position name", variant: "destructive" });
+                return;
+              }
+              setIsSavingPos(true);
+              const { data, error } = await supabase
+                .from("positions")
+                .insert([{
+                  name: newPosName.trim(),
+                  department: newPosDept,
+                  access_level: newPosLevel
+                }])
+                .select()
+                .single();
+
+              if (error) {
+                toast({ title: "Error creating position", description: error.message, variant: "destructive" });
+              } else if (data) {
+                setPositions((prev) => [...prev, data]);
+                setShowAddPositionModal(false);
+                toast({ title: "Position Created", description: `"${data.name}" added successfully.` });
+              }
+              setIsSavingPos(false);
+            }}
+            className="space-y-4 pt-2"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="pos-name">Position Title *</Label>
+              <Input
+                id="pos-name"
+                placeholder="e.g. Lead Mechanic, Service Advisor, Welder"
+                value={newPosName}
+                onChange={(e) => setNewPosName(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Department *</Label>
+              <Select value={newPosDept} onValueChange={setNewPosDept}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Service", "Sales", "Administration", "Parts", "Finance", "HR"].map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Access Level</Label>
+              <Select value={newPosLevel} onValueChange={(v: "admin" | "manager" | "staff") => setNewPosLevel(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="staff">Staff (Limited to daily tasks)</SelectItem>
+                  <SelectItem value="manager">Manager (Operations management)</SelectItem>
+                  <SelectItem value="admin">Admin (Full system access)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowAddPositionModal(false)} disabled={isSavingPos}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSavingPos} className="gap-2">
+                {isSavingPos ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create Position
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

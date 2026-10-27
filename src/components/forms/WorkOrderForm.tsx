@@ -1,6 +1,7 @@
 // @ts-nocheck
-import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react"
 import { supabase } from "@/integrations/supabase/client";
+import { supabaseAdmin } from "@/integrations/supabase/adminClient";
 import { useAuth } from "@/hooks/useAuth";
 import { validateIndianPhoneNumber } from "@/lib/phoneValidation";
 import { checkDuplicatePhone, DuplicatePhoneResult } from "@/lib/duplicatePhoneCheck";
@@ -11,13 +12,15 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Wrench, Search, ChevronDown, ChevronRight, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, Camera, Upload as UploadIcon, X, Package, CheckCircle2 } from "lucide-react"
+import { useSearchParams } from "react-router-dom"
+import { Loader2, Wrench, Search, ChevronDown, ChevronRight, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, UserPlus, Camera, Upload as UploadIcon, X, Package, CheckCircle2, Truck, ListOrdered, ArrowLeft, RotateCcw, Gauge, Fuel, FileText, Phone, Eye, ExternalLink, AlertTriangle } from "lucide-react"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
 import { format } from "date-fns"
@@ -33,6 +36,7 @@ interface Customer {
   id: string
   name: string
   company_name?: string
+  phone?: string
 }
 
 interface Vehicle {
@@ -128,6 +132,7 @@ export function WorkOrderForm({
   initialData
 }: WorkOrderFormProps) {
   const { toast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const arrivalCaptureRef = useRef<HTMLInputElement>(null);
   const arrivalUploadRef = useRef<HTMLInputElement>(null);
@@ -236,6 +241,15 @@ export function WorkOrderForm({
   const [driverContact, setDriverContact] = useState("")
   const [driverPosition, setDriverPosition] = useState("")
 
+  // Add Driver Dialog State
+  const [showAddDriverDialog, setShowAddDriverDialog] = useState(false)
+  const [isCreatingDriver, setIsCreatingDriver] = useState(false)
+  const [newDriverData, setNewDriverData] = useState({
+    name: "",
+    phone: "",
+    position: "Driver"
+  })
+
   // Duplicate phone detection state
   const [duplicatePhoneData, setDuplicatePhoneData] = useState<DuplicatePhoneResult | null>(null)
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
@@ -250,6 +264,7 @@ export function WorkOrderForm({
   const [belongings, setBelongings] = useState<BelongingItem[]>([])
   const [belongingTemplates, setBelongingTemplates] = useState<{ id: string, name: string, description: string }[]>([])
   const [isAddingBelongingTemplate, setIsAddingBelongingTemplate] = useState(false)
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string; criteria?: string } | null>(null)
 
   // New Vehicle Dialog State
   const [showAddVehicleDialog, setShowAddVehicleDialog] = useState(false)
@@ -325,20 +340,36 @@ export function WorkOrderForm({
   // Restore draft on mount
   useEffect(() => {
     const restoreDraft = async () => {
+      // Check if URL searchParams or initialData provided explicit customer/vehicle
+      const urlCustomerId = searchParams.get('customerId') || initialData?.customerId;
+      const urlVehicleId = searchParams.get('vehicleId') || initialData?.vehicleId;
+
+      if (urlCustomerId) {
+        setCustomerId(urlCustomerId);
+      }
+      if (urlVehicleId) {
+        setVehicleId(urlVehicleId);
+      }
+
       const savedDraft = sessionStorage.getItem(draftKey);
       if (savedDraft) {
         try {
           const draft = JSON.parse(savedDraft);
-          if (draft.customerId) setCustomerId(draft.customerId);
-          if (draft.vehicleId) setVehicleId(draft.vehicleId);
+          // Only restore customer/vehicle if URL had them or if editing an existing work order
+          if (!urlCustomerId && draft.customerId && initialWorkOrderId) setCustomerId(draft.customerId);
+          if (!urlVehicleId && draft.vehicleId && initialWorkOrderId) setVehicleId(draft.vehicleId);
           if (draft.kilometers) setLifecycleData(prev => ({ ...prev, odometer_reading: draft.kilometers }));
-          if (draft.generalDescription) setGeneralDescription(draft.generalDescription);
-          if (draft.selectedServices) setSelectedServices(draft.selectedServices);
+          if (draft.generalDescription && !initialData?.description) setGeneralDescription(draft.generalDescription);
+          if (draft.selectedServices && (!initialData?.serviceTypeNames || initialData.serviceTypeNames.length === 0)) setSelectedServices(draft.selectedServices);
           if (draft.serviceSections) setServiceSections(draft.serviceSections);
           if (draft.priority) setPriority(draft.priority);
           if (draft.estimatedDeliveryDate) setEstimatedDeliveryDate(new Date(draft.estimatedDeliveryDate));
           if (draft.estimatedDeliveryTime) setEstimatedDeliveryTime(draft.estimatedDeliveryTime);
           if (draft.newBelonging) setNewBelonging(draft.newBelonging);
+          if (draft.driverName) setDriverName(draft.driverName);
+          if (draft.driverContact) setDriverContact(draft.driverContact);
+          if (draft.driverPosition) setDriverPosition(draft.driverPosition);
+          if (draft.selectedDriverId) setSelectedDriverId(draft.selectedDriverId);
           console.log("[Draft] Restored form fields from session storage");
         } catch (e) {
           console.warn("[Draft] Failed to restore form fields", e);
@@ -387,10 +418,14 @@ export function WorkOrderForm({
       priority,
       estimatedDeliveryDate: estimatedDeliveryDate?.toISOString(),
       estimatedDeliveryTime,
-      newBelonging
+      newBelonging,
+      selectedDriverId,
+      driverName,
+      driverContact,
+      driverPosition,
     };
     sessionStorage.setItem(draftKey, JSON.stringify(draft));
-  }, [customerId, vehicleId, lifecycleData.odometer_reading, generalDescription, selectedServices, serviceSections, priority, estimatedDeliveryDate, estimatedDeliveryTime, newBelonging]);
+  }, [customerId, vehicleId, lifecycleData.odometer_reading, generalDescription, selectedServices, serviceSections, priority, estimatedDeliveryDate, estimatedDeliveryTime, newBelonging, selectedDriverId, driverName, driverContact, driverPosition]);
 
   // --- END DRAFT PERSISTENCE ---
 
@@ -670,7 +705,7 @@ export function WorkOrderForm({
         pricingRulesRes,
         serviceCategoriesRes
       ] = await Promise.all([
-        supabase.from('customers').select('id, name, company_name').order('name'),
+        supabase.from('customers').select('id, name, company_name, phone').order('name'),
         supabase.from('vehicles').select(`
           id,
           vehicle_number,
@@ -680,7 +715,7 @@ export function WorkOrderForm({
           next_service_km,
           next_service_date,
           primary_contact_id,
-          customers(id, name, company_name),
+          customers(id, name, company_name, phone),
           vehicle_models (
             id,
             name,
@@ -799,6 +834,15 @@ export function WorkOrderForm({
     setCustomerSearchOpen(false)
     setVehicleId("")
 
+    // Sync selected customer to URL searchParams
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.set('create', 'true');
+      p.set('customerId', id);
+      p.delete('vehicleId');
+      return p;
+    }, { replace: true });
+
     // Fetch driver suggestions for this customer/company
     fetchDriverSuggestions(id)
   }
@@ -854,6 +898,105 @@ export function WorkOrderForm({
     // Clear selected driver if user is typing new name
     if (selectedDriverId && value !== driverSuggestions.find(d => d.id === selectedDriverId)?.name) {
       setSelectedDriverId(null)
+    }
+  }
+
+  const handleCreateDriver = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+
+    if (!customerId) {
+      toast({
+        title: "Customer Required",
+        description: "Please select a customer before adding a driver.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const trimmedName = newDriverData.name.trim()
+    if (!trimmedName) {
+      toast({
+        title: "Name Required",
+        description: "Please enter the driver's full name.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const cleanPhone = newDriverData.phone.replace(/\D/g, '').slice(0, 10)
+    if (!cleanPhone || cleanPhone.length !== 10 || !/^[6-9]/.test(cleanPhone)) {
+      toast({
+        title: "Invalid Phone Number",
+        description: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsCreatingDriver(true)
+    try {
+      const { data: newDriver, error } = await supabase
+        .from('drivers')
+        .insert([{
+          company_id: customerId,
+          name: trimmedName,
+          contact_number: cleanPhone,
+          driver_position: newDriverData.position || 'Driver',
+          is_active: true
+        }])
+        .select()
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          // Driver already exists with same name & phone for this company
+          const { data: existing } = await supabase
+            .from('drivers')
+            .select('*')
+            .eq('company_id', customerId)
+            .eq('name', trimmedName)
+            .single()
+
+          if (existing) {
+            setSelectedDriverId(existing.id)
+            setDriverName(existing.name)
+            setDriverContact(existing.contact_number || "")
+            setDriverPosition(existing.driver_position || "Driver")
+            await fetchDriverSuggestions(customerId)
+            setShowAddDriverDialog(false)
+            setNewDriverData({ name: "", phone: "", position: "Driver" })
+            toast({
+              title: "Driver Selected",
+              description: `Existing driver "${existing.name}" found and selected.`
+            })
+            return
+          }
+        }
+        throw error
+      }
+
+      if (newDriver) {
+        await fetchDriverSuggestions(customerId)
+        setSelectedDriverId(newDriver.id)
+        setDriverName(newDriver.name)
+        setDriverContact(newDriver.contact_number || "")
+        setDriverPosition(newDriver.driver_position || "Driver")
+        setShowAddDriverDialog(false)
+        setNewDriverData({ name: "", phone: "", position: "Driver" })
+        toast({
+          title: "Driver Added Successfully",
+          description: `Driver ${newDriver.name} added and selected!`,
+        })
+      }
+    } catch (err: any) {
+      console.error("Error creating driver:", err)
+      toast({
+        title: "Failed to Add Driver",
+        description: err.message || "An unexpected error occurred while adding driver.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsCreatingDriver(false)
     }
   }
 
@@ -956,6 +1099,16 @@ export function WorkOrderForm({
     setVehicleId(id);
     setVehicleSearch("");
     setVehicleSearchOpen(false);
+
+    // Sync selected vehicle to URL searchParams
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.set('create', 'true');
+      p.set('vehicleId', id);
+      if (customerId) p.set('customerId', customerId);
+      return p;
+    }, { replace: true });
+
     await syncVehicleDetails(id);
   };
   // Effect to resync prices when vehicle/customer changes
@@ -1148,67 +1301,60 @@ export function WorkOrderForm({
 
 
 
-  const handleServiceToggle = async (type: string, checked: boolean) => {
+  const handleServiceToggle = (type: string, checked: boolean) => {
     const serviceMaster = dbServiceTypes.find(s => s.name === type);
     if (!serviceMaster) return;
 
     if (checked) {
-      // Calculate dynamic price
-      const priceResult = await calculateServicePrice(serviceMaster.id, vehicleId, customerId);
+      const fallbackPrice = Number(serviceMaster.base_price) || 0;
 
-      let initialTasks: TaskItem[] = [];
-
-      // Tasks should not be auto-added unless there are mandatory one.
-      // Current requirement: "only the user should select"
-      // So we start with empty tasks, but user can add them from the selector.
-      initialTasks = [];
-
-      // We still calculate priceResult to get base/calculated price metadata if needed,
-      // but we override the tasks list to be empty.
-
-      /*
-      // Original Auto-Add Logic (Commented out)
-      if (priceResult.taskBreakdown && priceResult.taskBreakdown.length > 0) {
-        initialTasks = priceResult.taskBreakdown.map(tb => ({
-          id: crypto.randomUUID(),
-          name: tb.name,
-          price: tb.calculatedPrice,
-          isPredefined: true,
-          appliedRuleName: tb.appliedRule
-        }));
-      } else {
-        // Find master tasks for this service (Fallback)
-        const serviceTemplates = taskTemplates.filter(t => t.service_type_id === serviceMaster.id);
-        initialTasks = serviceTemplates.map(t => ({
-          id: crypto.randomUUID(),
-          name: t.name,
-          price: t.price || 0,
-          isPredefined: true
-        }));
-      }
-      */
-
-      setSelectedServices(prev => [...prev, type])
+      // 1. Instant optimistic state update: 0ms UI delay, immediate appearance of Service Configuration
+      setSelectedServices(prev => prev.includes(type) ? prev : [...prev, type]);
       setServiceSections(prev => ({
         ...prev,
         [type]: {
           serviceType: type,
-          serviceTypeId: serviceMaster.id, // Ensure ID is stored
-          tasks: initialTasks,
+          serviceTypeId: serviceMaster.id,
+          tasks: [],
           selectedEmployees: [],
           notes: "",
-          cost: priceResult.calculatedPrice,
-          calculatedPrice: priceResult.calculatedPrice,
-          basePrice: priceResult.basePrice,
-          appliedRules: priceResult.appliedRules,
-          taskBreakdown: priceResult.taskBreakdown
+          cost: fallbackPrice,
+          calculatedPrice: fallbackPrice,
+          basePrice: fallbackPrice,
+          appliedRules: [],
+          taskBreakdown: []
         }
-      }))
+      }));
+
+      // 2. Asynchronously resolve dynamic pricing in background without blocking the UI
+      calculateServicePrice(serviceMaster.id, vehicleId, customerId)
+        .then(priceResult => {
+          if (!priceResult) return;
+          setServiceSections(prev => {
+            if (!prev[type]) return prev;
+            return {
+              ...prev,
+              [type]: {
+                ...prev[type],
+                cost: priceResult.calculatedPrice ?? prev[type].cost,
+                calculatedPrice: priceResult.calculatedPrice,
+                basePrice: priceResult.basePrice,
+                appliedRules: priceResult.appliedRules,
+                taskBreakdown: priceResult.taskBreakdown
+              }
+            };
+          });
+        })
+        .catch(err => {
+          console.error("Async price calculation error:", err);
+        });
     } else {
-      setSelectedServices(prev => prev.filter(t => t !== type))
-      const newSections = { ...serviceSections }
-      delete newSections[type]
-      setServiceSections(newSections)
+      setSelectedServices(prev => prev.filter(t => t !== type));
+      setServiceSections(prev => {
+        const newSections = { ...prev };
+        delete newSections[type];
+        return newSections;
+      });
     }
   }
 
@@ -2053,10 +2199,17 @@ export function WorkOrderForm({
         }
 
         if (uploadedPhotoRecords.length > 0) {
-          const { error: photoDbError } = await supabase
+          const client = supabaseAdmin || supabase;
+          const { error: photoDbError } = await client
             .from('work_order_photos')
             .insert(uploadedPhotoRecords);
-          if (photoDbError) throw photoDbError;
+          if (photoDbError) {
+            console.error("Failed to insert work order photos:", photoDbError);
+            toast({
+              title: "Photos Note",
+              description: `Work order saved, but photos could not be saved to database: ${photoDbError.message}`,
+            });
+          }
         }
 
         // 2. Process Belongings
@@ -2090,10 +2243,17 @@ export function WorkOrderForm({
         }
 
         if (uploadedBelongingRecords.length > 0) {
-          const { error: belongingDbError } = await supabase
+          const client = supabaseAdmin || supabase;
+          const { error: belongingDbError } = await client
             .from('work_order_belongings')
             .insert(uploadedBelongingRecords);
-          if (belongingDbError) throw belongingDbError;
+          if (belongingDbError) {
+            console.error("Failed to insert belongings:", belongingDbError);
+            toast({
+              title: "Belongings Note",
+              description: `Work order saved, but belongings could not be saved to database: ${belongingDbError.message}`,
+            });
+          }
         }
       }
 
@@ -2279,6 +2439,12 @@ export function WorkOrderForm({
           ? `Work order ${isReopening ? 'reopened' : 'updated'} successfully.`
           : `Work order created successfully.`,
       })
+
+      // Clean up session drafts on successful submit
+      sessionStorage.removeItem(draftKey);
+      sessionStorage.removeItem(`wo_photos_${initialWorkOrderId || 'new'}_arrival`);
+      sessionStorage.removeItem(`wo_photos_${initialWorkOrderId || 'new'}_issue_area`);
+
       onSuccess()
     } catch (error: any) {
       console.error('Error submitting work order:', error)
@@ -2305,6 +2471,31 @@ export function WorkOrderForm({
   const filteredVehicleList = filteredVehicles.filter(v =>
     `${v.vehicle_number} ${v.model}`.toLowerCase().includes(vehicleSearch.toLowerCase())
   )
+
+  const handleResetForm = () => {
+    sessionStorage.removeItem(draftKey);
+    sessionStorage.removeItem(`wo_photos_${initialWorkOrderId || 'new'}_arrival`);
+    sessionStorage.removeItem(`wo_photos_${initialWorkOrderId || 'new'}_issue_area`);
+    setCustomerId("");
+    setVehicleId("");
+    setGeneralDescription("");
+    setSelectedServices([]);
+    setServiceSections({});
+    setArrivalPhotos([]);
+    setIssuePhotos([]);
+    setLifecycleData({
+      odometer_reading: 0,
+      next_service_due_km: 0,
+      next_service_due_date: "",
+      service_notes: "",
+      is_fc_renewal: false
+    });
+    setDriverName("");
+    setDriverContact("");
+    setDriverPosition("");
+    setSearchParams({ create: 'true' }, { replace: true });
+    toast({ title: "Form Reset", description: "Form fields and storage draft cleared." });
+  };
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6">
@@ -2380,16 +2571,32 @@ export function WorkOrderForm({
               </div>
             </div>
 
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={onCancel}
-              disabled={isLoading}
-              className="self-end sm:self-center h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              {!initialWorkOrderId && (customerId || vehicleId || generalDescription || selectedServices.length > 0) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetForm}
+                  disabled={isLoading}
+                  className="h-8 text-xs text-muted-foreground hover:text-destructive border-border/80"
+                  title="Clear all fields and start a fresh work order"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  Reset Form
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onCancel}
+                disabled={isLoading}
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
 
@@ -2436,125 +2643,625 @@ export function WorkOrderForm({
         <CardContent className="p-6">
           {isReviewing ? (
             <div className="space-y-6 animate-in fade-in duration-500">
-              <div className="flex items-center justify-between border-b pb-4">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <ClipboardList className="h-5 w-5 text-primary" />
-                  Review Work Order Details
-                </h3>
-                <Button variant="outline" size="sm" onClick={() => setIsReviewing(false)}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Form
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
+                <div>
+                  <h3 className="text-xl font-bold flex items-center gap-2">
+                    <ClipboardList className="h-5 w-5 text-primary" />
+                    Review Work Order Details
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Please verify all vehicle intake metrics, customer complaints, belongings, and service tasks before final submission.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setIsReviewing(false)} className="shadow-2xs">
+                    <Edit className="h-4 w-4 mr-1.5" />
+                    Edit Form
+                  </Button>
+                </div>
+              </div>
+
+              {/* 1. SERVICE & TASK BREAKDOWN (MAIN SCOPE) */}
+              <div className="p-5 bg-card rounded-2xl border-2 border-primary/40 shadow-xs relative group space-y-4">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="absolute top-3 right-3 text-xs opacity-80 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-primary hover:bg-primary/10"
+                  onClick={() => { 
+                    setIsReviewing(false); 
+                    setTimeout(() => document.getElementById('service-selection')?.scrollIntoView({ behavior: 'smooth' }), 120); 
+                  }}
+                >
+                  <Edit className="h-3.5 w-3.5" />
+                  <span>Edit Services</span>
                 </Button>
+                
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                    <ListOrdered className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base text-foreground tracking-tight flex items-center gap-2">
+                      Service & Task Breakdown ({selectedServices.length} Selected)
+                      <Badge className="bg-primary text-primary-foreground text-[10px] font-extrabold uppercase px-2 py-0.5 tracking-wide">
+                        Main Scope
+                      </Badge>
+                    </h4>
+                    <p className="text-xs text-muted-foreground">Primary repair work, service packages, and assigned technician tasks</p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border overflow-hidden bg-card shadow-2xs">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-muted/50 border-b">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="w-14 text-center font-bold text-xs uppercase tracking-wider text-muted-foreground">#</TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground min-w-[220px]">Service & Task Operations</TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground min-w-[150px]">Assigned Staff</TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground min-w-[160px]">Service Remarks</TableHead>
+                          <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-muted-foreground w-36">Est. Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedServices.map((type, serviceIdx) => {
+                          const data = serviceSections[type];
+                          if (!data) return null;
+                          const assignedStaff = data.selectedEmployees?.map(empId => employees.find(e => e.id === empId)?.name).filter(Boolean) || [];
+                          const hasTasks = data.tasks && data.tasks.length > 0;
+
+                          return (
+                            <Fragment key={type}>
+                              {/* Service Parent Row */}
+                              <TableRow className="bg-muted/30 font-semibold border-b hover:bg-muted/40 transition-colors">
+                                <TableCell className="text-center font-mono font-bold text-xs text-primary">
+                                  {serviceIdx + 1}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-sm text-foreground">{data.serviceType}</span>
+                                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal bg-background">
+                                      {hasTasks ? `${data.tasks.length} task${data.tasks.length === 1 ? '' : 's'}` : 'Base Package'}
+                                    </Badge>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  {assignedStaff.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {assignedStaff.map((name, i) => (
+                                        <Badge key={i} variant="secondary" className="text-[10px] py-0 px-1.5 flex items-center gap-1 font-medium">
+                                          <User className="h-2.5 w-2.5 text-primary" />
+                                          {name}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs italic text-muted-foreground">Unassigned</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {data.notes ? (
+                                    <span className="text-xs text-foreground font-normal line-clamp-2" title={data.notes}>
+                                      {data.notes}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground/60 italic">Standard procedure</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-extrabold text-sm text-primary">
+                                  ₹{Number(data.cost || 0).toLocaleString('en-IN')}
+                                </TableCell>
+                              </TableRow>
+
+                              {/* Nested Tasks Breakdown */}
+                              {hasTasks ? (
+                                data.tasks.map((task, taskIdx) => (
+                                  <TableRow key={task.id || taskIdx} className="hover:bg-muted/20 border-b border-dashed border-border/60 text-xs">
+                                    <TableCell className="text-center font-mono text-[11px] text-muted-foreground">
+                                      {serviceIdx + 1}.{taskIdx + 1}
+                                    </TableCell>
+                                    <TableCell className="pl-6">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-muted-foreground font-mono">↳</span>
+                                        <span className="font-medium text-foreground">{task.name}</span>
+                                        {task.appliedRuleName && (
+                                          <Badge variant="outline" className="text-[9px] py-0 px-1 text-primary border-primary/30 bg-primary/5">
+                                            {task.appliedRuleName}
+                                          </Badge>
+                                        )}
+                                        {task.isPredefined ? (
+                                          <span className="text-[9px] text-muted-foreground font-light">(Standard Task)</span>
+                                        ) : (
+                                          <Badge variant="outline" className="text-[9px] py-0 px-1 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300">
+                                            Custom
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground text-xs">
+                                      <span className="text-muted-foreground/60 text-[11px]">As assigned above</span>
+                                    </TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">
+                                      {task.description || "-"}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono font-medium text-muted-foreground text-xs">
+                                      {task.price ? `₹${Number(task.price).toLocaleString('en-IN')}` : "Included"}
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              ) : (
+                                <TableRow className="border-b border-dashed border-border/60 text-xs text-muted-foreground">
+                                  <TableCell className="text-center font-mono text-[11px]">
+                                    {serviceIdx + 1}.1
+                                  </TableCell>
+                                  <TableCell colSpan={3} className="pl-6 italic text-muted-foreground">
+                                    ↳ All standard maintenance checklist inspection items included in service package.
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                                    Included
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+
+                        {selectedServices.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-6 text-muted-foreground text-xs italic">
+                              No services selected. Click "Edit Services" above to select packages.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                      <TableFooter className="bg-primary/5 border-t-2 border-primary/30">
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={4} className="py-3.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <span className="font-bold text-sm text-foreground uppercase tracking-wide">
+                                Total Estimated Work Order Cost
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs font-semibold bg-background">
+                                  {selectedServices.length} Service Package{selectedServices.length === 1 ? '' : 's'}
+                                </Badge>
+                                <Badge variant="outline" className="text-xs font-semibold bg-background">
+                                  {selectedServices.reduce((acc, type) => acc + (serviceSections[type]?.tasks?.length || 0), 0)} Total Task{selectedServices.reduce((acc, type) => acc + (serviceSections[type]?.tasks?.length || 0), 0) === 1 ? '' : 's'}
+                                </Badge>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right py-3.5 font-mono text-xl font-extrabold text-primary">
+                            ₹{Number(totalEstimatedCost || 0).toLocaleString('en-IN')}
+                          </TableCell>
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. CUSTOMER COMPLAINTS & SERVICE DESCRIPTION */}
+              <div className="p-5 bg-card rounded-2xl border space-y-4 relative group shadow-2xs">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="absolute top-3 right-3 text-xs opacity-80 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-primary hover:bg-primary/10"
+                  onClick={() => { 
+                    setIsReviewing(false); 
+                    setTimeout(() => document.getElementById('general-description')?.scrollIntoView({ behavior: 'smooth' }), 120); 
+                  }}
+                >
+                  <Edit className="h-3.5 w-3.5" />
+                  <span>Edit Description</span>
+                </Button>
+                
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base text-foreground tracking-tight flex items-center gap-2">
+                      Customer Complaints & Service Description
+                      <Badge variant="outline" className="text-[10px] font-semibold py-0.5">
+                        Intake Notes
+                      </Badge>
+                    </h4>
+                    <p className="text-xs text-muted-foreground">Customer reported issues, observations, and service instructions</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-muted/40 border border-border/80 relative">
+                  <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-primary/60 rounded-l-xl" />
+                  {generalDescription ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recorded Complaints / Scope:</p>
+                      <p className="text-sm md:text-base leading-relaxed text-foreground whitespace-pre-wrap font-medium">
+                        {generalDescription}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm italic text-muted-foreground">
+                      No customer complaints or general instructions recorded.
+                    </p>
+                  )}
+                </div>
+
+                {/* Additional Service Specific Notes */}
+                {Object.values(serviceSections).some(s => s.notes?.trim()) && (
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Service Specific Notes:</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Object.values(serviceSections).filter(s => s.notes?.trim()).map(s => (
+                        <div key={s.serviceType} className="p-2.5 rounded-lg bg-background border text-xs shadow-2xs">
+                          <span className="font-semibold text-primary">{s.serviceType}: </span>
+                          <span className="text-foreground">{s.notes}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 1. Vehicle & Customer Summary */}
-                <div className="space-y-4">
-                  <div className="p-4 bg-muted/30 rounded-xl border space-y-3 relative group">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => { setIsReviewing(false); setTimeout(() => document.getElementById('vehicle-selection')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                      <Truck className="h-4 w-4" />
-                      Vehicle & Customer
-                    </h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs">Customer</p>
-                        <p className="font-medium">{customers.find(c => c.id === customerId)?.name || "New Customer"}</p>
+                {/* 2. INTAKE & VEHICLE METRICS (KM, Fuel, Next Service, Delivery, Priority) */}
+                <div className="p-5 bg-card rounded-2xl border space-y-4 relative group shadow-2xs">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute top-3 right-3 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { 
+                      setIsReviewing(false); 
+                      setTimeout(() => document.getElementById('vehicle-selection')?.scrollIntoView({ behavior: 'smooth' }), 120); 
+                    }}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-primary" />
+                    Vehicle Intake & Lifecycle Metrics
+                  </h4>
+                  
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-xl bg-muted/40 border">
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium mb-1">
+                        <Gauge className="h-3.5 w-3.5 text-blue-600" />
+                        Odometer Reading
                       </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">Vehicle Number</p>
-                        <p className="font-medium uppercase">{selectedVehicle?.vehicle_number || "New Vehicle"}</p>
+                      <p className="text-base font-bold text-foreground">
+                        {lifecycleData.odometer_reading ? `${Number(lifecycleData.odometer_reading).toLocaleString('en-IN')} KM` : "0 KM"}
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border">
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium mb-1">
+                        <Fuel className="h-3.5 w-3.5 text-amber-600" />
+                        Fuel Level
                       </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">Odometer Reading</p>
-                        <p className="font-medium">{lifecycleData.odometer_reading} KM</p>
+                      <p className="text-base font-bold text-foreground">
+                        {lifecycleData.fuel_level || "Not specified"}
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border">
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium mb-1">
+                        <RotateCcw className="h-3.5 w-3.5 text-emerald-600" />
+                        Next Service Due
                       </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">Priority</p>
-                        <Badge variant="outline" className={cn(
-                          "text-[10px]",
-                          priority === 'High' ? "bg-red-50 text-red-700 border-red-200" :
-                          priority === 'Medium' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                          "bg-blue-50 text-blue-700 border-blue-200"
-                        )}>
-                          {priority}
-                        </Badge>
+                      <p className="text-base font-bold text-foreground">
+                        {lifecycleData.next_service_due_km ? `${Number(lifecycleData.next_service_due_km).toLocaleString('en-IN')} KM` : "Not scheduled"}
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border">
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium mb-1">
+                        <Clock className="h-3.5 w-3.5 text-purple-600" />
+                        Priority Level
                       </div>
+                      <Badge variant="outline" className={cn(
+                        "text-xs font-bold px-2 py-0.5",
+                        priority === 'High' ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300" :
+                        priority === 'Medium' ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300" :
+                        "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300"
+                      )}>
+                        {priority} Priority
+                      </Badge>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border col-span-2">
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium mb-1">
+                        <CalendarIcon className="h-3.5 w-3.5 text-primary" />
+                        Est. Delivery Date & Time
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {estimatedDeliveryDate ? format(estimatedDeliveryDate, 'PPP') : "Not set"}
+                        {estimatedDeliveryTime ? ` at ${estimatedDeliveryTime}` : ""}
+                      </p>
                     </div>
                   </div>
+                </div>
 
-                  {/* 2. Photo Gallery Summary */}
-                  <div className="p-4 bg-muted/30 rounded-xl border space-y-4 relative group">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => { setIsReviewing(false); setTimeout(() => document.getElementById('photo-section')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
+                {/* 3. VEHICLE, CUSTOMER & DRIVER PROFILE */}
+                <div className="p-5 bg-card rounded-2xl border space-y-4 relative group shadow-2xs">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute top-3 right-3 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { 
+                      setIsReviewing(false); 
+                      setTimeout(() => document.getElementById('vehicle-selection')?.scrollIntoView({ behavior: 'smooth' }), 120); 
+                    }}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-primary" />
+                    Customer, Vehicle & Driver
+                  </h4>
+
+                  <div className="space-y-3 text-sm">
+                    {/* Vehicle */}
+                    <div className="p-3 rounded-xl bg-muted/30 border flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Vehicle</p>
+                        <p className="font-bold text-foreground">
+                          {[selectedVehicle?.manufacturer_name, selectedVehicle?.model, selectedVehicle?.year].filter(Boolean).join(' ') || "Specs Not Configured"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedVehicle?.vehicle_category_name || selectedVehicle?.vehicle_type_name || "Standard Vehicle"}
+                        </p>
+                      </div>
+                      <div>
+                        <VehiclePlateBadge plateNumber={selectedVehicle?.vehicle_number || "NEW VEHICLE"} />
+                      </div>
+                    </div>
+
+                    {/* Customer */}
+                    <div className="p-3 rounded-xl bg-muted/30 border">
+                      <p className="text-xs text-muted-foreground">Customer</p>
+                      <p className="font-bold text-foreground">{customers.find(c => c.id === customerId)?.name || "New Customer"}</p>
+                      {customers.find(c => c.id === customerId)?.company_name && (
+                        <p className="text-xs text-muted-foreground">{customers.find(c => c.id === customerId)?.company_name}</p>
+                      )}
+                      {customers.find(c => c.id === customerId)?.phone && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <Phone className="h-3 w-3" /> {customers.find(c => c.id === customerId)?.phone}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Driver */}
+                    <div className="p-3 rounded-xl bg-muted/30 border">
+                      <p className="text-xs text-muted-foreground">Assigned Driver</p>
+                      {driverName ? (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-bold text-foreground">{driverName}</p>
+                            <p className="text-xs text-muted-foreground">{driverPosition || "Driver"}</p>
+                          </div>
+                          {driverContact && (
+                            <Badge variant="outline" className="text-xs font-mono">
+                              {driverContact}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs italic text-muted-foreground">No separate driver assigned (Self delivery)</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. CUSTOMER BELONGINGS TRACKER */}
+                <div className="p-5 bg-card rounded-2xl border space-y-4 relative group shadow-2xs">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute top-3 right-3 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { 
+                      setIsReviewing(false); 
+                      setTimeout(() => document.getElementById('belongings-section')?.scrollIntoView({ behavior: 'smooth' }), 120); 
+                    }}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <div className="flex items-center justify-between">
                     <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                      <Camera className="h-4 w-4" />
-                      Condition Photos ({arrivalPhotos.length + issuePhotos.length})
+                      <Package className="h-4 w-4 text-primary" />
+                      Vehicle Belongings & Inventory ({belongings.length})
                     </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {[...arrivalPhotos, ...issuePhotos].map((photo, i) => (
-                        <div key={i} className="w-16 h-16 rounded-lg overflow-hidden border shadow-sm">
-                          <img src={photo.previewUrl} className="w-full h-full object-cover" alt="Preview" />
+                    <Badge variant="outline" className="text-xs font-semibold">
+                      {belongings.length} Logged Item{belongings.length === 1 ? '' : 's'}
+                    </Badge>
+                  </div>
+
+                  {belongings.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
+                      {belongings.map((item, index) => (
+                        <div key={index} className="flex items-center gap-3 p-2.5 bg-muted/30 border rounded-xl shadow-2xs">
+                          {item.previewUrl ? (
+                            <div className="w-12 h-12 rounded-lg overflow-hidden border shrink-0 bg-background">
+                              <img src={item.previewUrl} className="w-full h-full object-cover" alt={item.name} />
+                            </div>
+                          ) : (
+                            <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 border text-muted-foreground">
+                              <Package className="h-5 w-5" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold truncate text-foreground">{item.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{item.description || "Left in vehicle at intake"}</p>
+                          </div>
                         </div>
                       ))}
-                      {arrivalPhotos.length + issuePhotos.length === 0 && <p className="text-xs italic text-muted-foreground">No photos captured</p>}
                     </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-muted/20 border border-dashed text-center text-xs italic text-muted-foreground">
+                      No belongings or inventory left in the vehicle.
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. VEHICLE CONDITION PHOTOS */}
+                <div className="p-5 bg-card rounded-2xl border space-y-5 relative group shadow-2xs">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute top-3 right-3 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { 
+                      setIsReviewing(false); 
+                      setTimeout(() => document.getElementById('photo-section')?.scrollIntoView({ behavior: 'smooth' }), 120); 
+                    }}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  
+                  <div className="flex items-center justify-between pb-2 border-b">
+                    <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <Camera className="h-4 w-4 text-primary" />
+                      Vehicle Condition Photos ({arrivalPhotos.length + issuePhotos.length})
+                    </h4>
+                    <div className="flex gap-1.5 text-xs">
+                      <Badge variant="outline" className="text-[10px] bg-primary/5">
+                        Arrival: {arrivalPhotos.length}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                        Issues: {issuePhotos.length}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Separate Criteria 1: Arrival Condition Photos */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                        Arrival Inspection Photos ({arrivalPhotos.length})
+                      </span>
+                    </div>
+                    {arrivalPhotos.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                        {arrivalPhotos.map((photo, i) => (
+                          <div key={i} className="group/item relative rounded-xl overflow-hidden border shadow-2xs bg-background flex flex-col">
+                            <div className="aspect-square relative overflow-hidden bg-muted/30">
+                              <img src={photo.previewUrl} className="w-full h-full object-cover transition-transform group-hover/item:scale-105" alt={`Arrival ${i+1}`} />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center justify-center p-1">
+                                <Button 
+                                  size="sm" 
+                                  variant="secondary" 
+                                  className="h-7 text-xs px-2 shadow-sm font-medium gap-1 bg-white/90 hover:bg-white text-foreground"
+                                  onClick={() => setPreviewImage({ url: photo.previewUrl, title: `Arrival Inspection Photo #${i+1}`, criteria: "Arrival Inspection" })}
+                                >
+                                  <Eye className="h-3.5 w-3.5" /> View
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="p-1.5 text-center bg-card border-t flex items-center justify-between px-2">
+                              <span className="text-[10px] font-medium text-muted-foreground truncate">
+                                Photo #{i+1}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-5 px-1 text-[10px] text-primary gap-0.5"
+                                onClick={() => setPreviewImage({ url: photo.previewUrl, title: `Arrival Inspection Photo #${i+1}`, criteria: "Arrival Inspection" })}
+                              >
+                                <Eye className="h-3 w-3" /> View
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-muted/20 border border-dashed text-center text-xs italic text-muted-foreground">
+                        No arrival inspection photos captured.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Separate Criteria 2: Reported Issue Photos */}
+                  <div className="space-y-2 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        Reported Issue Area Photos ({issuePhotos.length})
+                      </span>
+                    </div>
+                    {issuePhotos.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                        {issuePhotos.map((photo, i) => (
+                          <div key={i} className="group/item relative rounded-xl overflow-hidden border shadow-2xs bg-background flex flex-col">
+                            <div className="aspect-square relative overflow-hidden bg-muted/30">
+                              <img src={photo.previewUrl} className="w-full h-full object-cover transition-transform group-hover/item:scale-105" alt={`Issue ${i+1}`} />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center justify-center p-1">
+                                <Button 
+                                  size="sm" 
+                                  variant="secondary" 
+                                  className="h-7 text-xs px-2 shadow-sm font-medium gap-1 bg-white/90 hover:bg-white text-foreground"
+                                  onClick={() => setPreviewImage({ url: photo.previewUrl, title: `Reported Issue Photo #${i+1}`, criteria: "Reported Issue" })}
+                                >
+                                  <Eye className="h-3.5 w-3.5" /> View
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="p-1.5 text-center bg-card border-t flex items-center justify-between px-2">
+                              <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 truncate">
+                                Issue #{i+1}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-5 px-1 text-[10px] text-amber-600 gap-0.5"
+                                onClick={() => setPreviewImage({ url: photo.previewUrl, title: `Reported Issue Photo #${i+1}`, criteria: "Reported Issue" })}
+                              >
+                                <Eye className="h-3 w-3" /> View
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-muted/20 border border-dashed text-center text-xs italic text-muted-foreground">
+                        No issue area photos captured.
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* 3. Service & Task Breakdown */}
-                <div className="space-y-4">
-                  <div className="p-4 bg-muted/30 rounded-xl border space-y-4 relative group">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => { setIsReviewing(false); setTimeout(() => document.getElementById('service-selection')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                      <ListOrdered className="h-4 w-4" />
-                      Service Breakdown
-                    </h4>
-                    <div className="space-y-3">
-                      {selectedServices.map(type => {
-                        const data = serviceSections[type];
-                        if (!data) return null;
-                        return (
-                          <div key={type} className="border-b border-dashed pb-2 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start">
-                              <span className="font-medium text-sm">{data.serviceType}</span>
-                              <span className="text-sm font-bold">₹{data.cost}</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {data.tasks.map((t, i) => (
-                                <Badge key={i} variant="outline" className="text-[9px] h-4 py-0">{t.name}</Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                      <div className="pt-2 flex justify-between items-center text-lg font-bold text-primary">
-                        <span>Total Estimated Cost</span>
-                        <span>₹{totalEstimatedCost}</span>
+                {/* Lightbox Preview Modal for Review Area Photos */}
+                {previewImage && (
+                  <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+                    <DialogContent className="max-w-3xl p-4 sm:p-6 bg-card border shadow-2xl">
+                      <DialogHeader className="pb-2 border-b">
+                        <DialogTitle className="text-base font-bold flex items-center gap-2">
+                          <Camera className="h-4 w-4 text-primary" />
+                          {previewImage.title}
+                          {previewImage.criteria && (
+                            <Badge variant="outline" className="text-xs uppercase font-mono">
+                              {previewImage.criteria}
+                            </Badge>
+                          )}
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="flex items-center justify-center max-h-[75vh] overflow-hidden rounded-xl bg-black/5 dark:bg-black/40 p-2 my-2">
+                        <img
+                          src={previewImage.url}
+                          alt={previewImage.title}
+                          className="max-h-[70vh] w-auto max-w-full object-contain rounded-lg shadow-md"
+                        />
                       </div>
-                    </div>
-                  </div>
-                </div>
+                      <DialogFooter className="flex flex-row justify-between items-center sm:justify-between pt-2 border-t">
+                        <Button variant="outline" size="sm" onClick={() => window.open(previewImage.url, '_blank')} className="gap-1.5 text-xs">
+                          <ExternalLink className="h-3.5 w-3.5" /> Open Full Resolution
+                        </Button>
+                        <Button variant="default" size="sm" onClick={() => setPreviewImage(null)} className="text-xs">
+                          Close Preview
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                )}
               </div>
 
               {/* Summary Controls */}
@@ -2580,7 +3287,7 @@ export function WorkOrderForm({
                   <Button 
                     type="button" 
                     size="lg" 
-                    className="px-8 font-bold bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-200"
+                    className="px-8 font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20"
                     onClick={() => handleSubmit()}
                     disabled={isLoading}
                   >
@@ -2660,7 +3367,7 @@ export function WorkOrderForm({
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0" align="start">
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 shadow-lg border border-border/80 rounded-xl overflow-hidden" align="start">
                       <Command shouldFilter={false}>
                         <CommandInput placeholder="Search customer..." value={customerSearch} onValueChange={setCustomerSearch} />
                         <CommandList>
@@ -2725,7 +3432,7 @@ export function WorkOrderForm({
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0" align="start">
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 shadow-lg border border-border/80 rounded-xl overflow-hidden" align="start">
                       <Command shouldFilter={false}>
                         <CommandInput placeholder="Search vehicle..." value={vehicleSearch} onValueChange={setVehicleSearch} />
                         <CommandList>
@@ -2801,26 +3508,43 @@ export function WorkOrderForm({
                 </div>
 
                 {/* Driver Information Section */}
-                {customerId && (
-                  <div className="space-y-4 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg shadow-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                      <h4 className="font-bold text-base text-blue-900">Driver Information *</h4>
-                      <span className="text-xs text-red-600 font-semibold">(Required)</span>
+                {customerId ? (
+                  <div className="space-y-4 p-5 bg-card border rounded-2xl shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                          <User className="h-4 w-4" />
+                        </div>
+                        <h4 className="font-bold text-base text-foreground">Driver Information *</h4>
+                        <span className="text-xs text-destructive font-semibold">(Required)</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2.5 text-xs font-semibold text-primary bg-background hover:bg-primary/10 border-primary/25 shadow-2xs ml-auto"
+                        onClick={() => {
+                          setNewDriverData({ name: driverSearch || "", phone: "", position: "Driver" });
+                          setShowAddDriverDialog(true);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        Add Driver
+                      </Button>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4">
                       {/* Driver Name with Auto-Suggest */}
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-gray-700">Driver Name *</Label>
+                        <Label className="text-sm font-semibold text-foreground">Driver Name *</Label>
                         <Popover open={driverSearchOpen} onOpenChange={setDriverSearchOpen}>
                           <PopoverTrigger asChild>
-                            <Button type="button" variant="outline" className="w-full justify-between h-11 text-base border-2 hover:border-blue-400">
+                            <Button type="button" variant="outline" className="w-full justify-between h-10 text-sm font-normal rounded-xl border border-input">
                               {driverName || "Select or enter driver name..."}
                               <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0" align="start">
+                          <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 shadow-lg border border-border/80 rounded-xl overflow-hidden" align="start">
                             <Command shouldFilter={false}>
                               <CommandInput
                                 placeholder="Search or type new driver..."
@@ -2830,15 +3554,47 @@ export function WorkOrderForm({
                               <CommandList>
                                 {driverSuggestions.length === 0 && driverSearch && (
                                   <CommandEmpty>
-                                    <div className="p-2 text-center">
-                                      <p className="text-sm text-muted-foreground mb-2">
-                                        No existing driver found. Type to add new.
+                                    <div className="p-3 text-center space-y-2">
+                                      <p className="text-sm text-muted-foreground">
+                                        No driver found matching "{driverSearch}".
                                       </p>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full text-xs text-blue-700 hover:bg-blue-50 border-blue-200"
+                                        onClick={() => {
+                                          setDriverSearchOpen(false);
+                                          setNewDriverData({ name: driverSearch, phone: "", position: "Driver" });
+                                          setShowAddDriverDialog(true);
+                                        }}
+                                      >
+                                        <Plus className="h-3.5 w-3.5 mr-1" />
+                                        Add "{driverSearch}" as Driver
+                                      </Button>
                                     </div>
                                   </CommandEmpty>
                                 )}
                                 {driverSuggestions.length === 0 && !driverSearch && (
-                                  <CommandEmpty>No drivers found for this company.</CommandEmpty>
+                                  <CommandEmpty>
+                                    <div className="p-3 text-center space-y-2">
+                                      <p className="text-sm text-muted-foreground">No drivers saved for this customer.</p>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full text-xs text-blue-700 hover:bg-blue-50 border-blue-200"
+                                        onClick={() => {
+                                          setDriverSearchOpen(false);
+                                          setNewDriverData({ name: "", phone: "", position: "Driver" });
+                                          setShowAddDriverDialog(true);
+                                        }}
+                                      >
+                                        <Plus className="h-3.5 w-3.5 mr-1" />
+                                        Add New Driver
+                                      </Button>
+                                    </div>
+                                  </CommandEmpty>
                                 )}
                                 {driverSuggestions.length > 0 && (
                                   <CommandGroup heading="Existing Drivers">
@@ -2889,12 +3645,12 @@ export function WorkOrderForm({
                                   }
                                 }
                               }}
-                              className={`h-11 text-base border-2 ${driverContact.length === 10 && /^[6-9]/.test(driverContact)
+                              className={`h-10 text-sm rounded-xl border border-input ${driverContact.length === 10 && /^[6-9]/.test(driverContact)
                                 ? 'border-green-500 focus-visible:ring-green-500'
                                 : driverContact.length === 10
                                   ? 'border-destructive focus-visible:ring-destructive'
                                   : driverContact.length > 0
-                                    ? 'border-blue-400 focus-visible:ring-blue-400'
+                                    ? 'border-primary/50 focus-visible:ring-primary'
                                     : ''
                                 }`}
                               maxLength={10}
@@ -2921,7 +3677,7 @@ export function WorkOrderForm({
                           <div className="space-y-2">
                             <Label className="text-sm font-semibold text-gray-700">Position/Role</Label>
                             <Select value={driverPosition} onValueChange={setDriverPosition}>
-                              <SelectTrigger className="h-11 text-base border-2">
+                              <SelectTrigger className="h-10 text-sm rounded-xl border border-input">
                                 <SelectValue placeholder="Select driver position..." />
                               </SelectTrigger>
                               <SelectContent>
@@ -2937,18 +3693,47 @@ export function WorkOrderForm({
                       )}
                     </div>
                   </div>
+                ) : (
+                  <div className="p-4 bg-blue-50/50 border border-dashed border-blue-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <User className="h-4 w-4 text-blue-500" />
+                      <span>Select a customer first to assign or add a driver.</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs text-blue-700 hover:text-blue-900 hover:bg-blue-100/60 font-medium ml-auto"
+                      onClick={() => {
+                        toast({
+                          title: "Select Customer",
+                          description: "Please select a customer first before adding a driver.",
+                          variant: "destructive"
+                        });
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      Add Driver
+                    </Button>
+                  </div>
                 )}
 
 
                 {/* General Description - Full Width */}
-                <div className="space-y-2 md:col-span-2">
-                  <Label className="text-sm font-semibold text-gray-700">General Description</Label>
+                <div id="general-description" className="space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <FileText className="h-4 w-4 text-primary" />
+                      General Service Description & Customer Complaints
+                    </Label>
+                    <span className="text-xs text-muted-foreground">Primary job card scope</span>
+                  </div>
                   <Textarea
-                    placeholder="Brief overview of the requested work..."
-                    rows={2}
+                    placeholder="Enter customer reported issues, requested service instructions, or general work notes..."
+                    rows={3}
                     value={generalDescription}
                     onChange={(e) => setGeneralDescription(e.target.value)}
-                    className="resize-none"
+                    className="resize-y min-h-[80px]"
                   />
                 </div>
 
@@ -3269,21 +4054,34 @@ export function WorkOrderForm({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div id="service-selection" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {displayedServices
-                  .map((type) => (
-                    <div key={type.id} className="group relative flex items-center space-x-2 border rounded-md p-3 hover:bg-muted/50 transition-colors pr-12">
-                      <Checkbox
-                        id={`service-${type.id}`}
-                        checked={selectedServices.includes(type.name)}
-                        onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
-                      />
-                      <Label
-                        htmlFor={`service-${type.id}`}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex-1"
+                  .map((type) => {
+                    const isSelected = selectedServices.includes(type.name);
+                    return (
+                      <div 
+                        key={type.id} 
+                        className={cn(
+                          "group relative flex items-center space-x-2 border rounded-xl p-3 transition-all cursor-pointer pr-12 select-none",
+                          isSelected 
+                            ? "bg-primary/10 border-primary/40 shadow-xs" 
+                            : "hover:bg-muted/50 border-input"
+                        )}
+                        onClick={() => handleServiceToggle(type.name, !isSelected)}
                       >
-                        {type.name}
-                      </Label>
+                        <Checkbox
+                          id={`service-${type.id}`}
+                          checked={isSelected}
+                          onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <Label
+                          htmlFor={`service-${type.id}`}
+                          className="text-sm font-medium leading-none cursor-pointer flex-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {type.name}
+                        </Label>
 
                       {/* Action Buttons */}
                       < div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity" >
@@ -3314,7 +4112,8 @@ export function WorkOrderForm({
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -3537,11 +4336,11 @@ export function WorkOrderForm({
                         htmlFor={arrivalUploadId}
                         className={cn(
                           "w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-all bg-muted/20 text-center p-1",
-                          isArrivalDragging && "border-blue-500 bg-blue-100 text-blue-700 font-semibold"
+                          isArrivalDragging && "border-primary bg-primary/10 text-primary font-semibold"
                         )}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <UploadIcon className={cn("h-6 w-6 text-muted-foreground", isArrivalDragging && "text-blue-600 animate-bounce")} />
+                        <UploadIcon className={cn("h-6 w-6 text-muted-foreground", isArrivalDragging && "text-primary animate-bounce")} />
                         <span className="text-[10px] mt-1 font-medium leading-tight">
                           {isArrivalDragging ? "Drop here" : "Upload / Drop"}
                         </span>
@@ -3592,11 +4391,11 @@ export function WorkOrderForm({
                         htmlFor={issueUploadId}
                         className={cn(
                           "w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-all bg-muted/20 text-center p-1",
-                          isIssueDragging && "border-blue-500 bg-blue-100 text-blue-700 font-semibold"
+                          isIssueDragging && "border-primary bg-primary/10 text-primary font-semibold"
                         )}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <UploadIcon className={cn("h-6 w-6 text-muted-foreground", isIssueDragging && "text-blue-600 animate-bounce")} />
+                        <UploadIcon className={cn("h-6 w-6 text-muted-foreground", isIssueDragging && "text-primary animate-bounce")} />
                         <span className="text-[10px] mt-1 font-medium leading-tight">
                           {isIssueDragging ? "Drop here" : "Upload / Drop"}
                         </span>
@@ -3608,7 +4407,7 @@ export function WorkOrderForm({
             </div>
 
             {/* 5. Vehicle Belongings Section */}
-            <div className="space-y-4 border-t pt-4">
+            <div id="belongings-section" className="space-y-4 border-t pt-4">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Package className="h-4 w-4" />
                 Vehicle Belongings Tracker
@@ -4130,6 +4929,130 @@ export function WorkOrderForm({
           }}
         />
       )}
-    </div >
+
+      {/* Add New Driver Dialog */}
+      <Dialog open={showAddDriverDialog} onOpenChange={setShowAddDriverDialog}>
+        <DialogContent className="max-w-md rounded-2xl border-border/80 shadow-2xl p-6">
+          <DialogHeader className="space-y-1.5 pb-2 border-b">
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-foreground">
+              <div className="h-9 w-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                <UserPlus className="h-5 w-5" />
+              </div>
+              Add New Driver
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Create and link a driver to this customer. It will automatically populate into this work order.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateDriver} className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="driver_fullname" className="text-sm font-semibold">
+                Driver Name <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="driver_fullname"
+                placeholder="e.g. Ramesh Kumar"
+                value={newDriverData.name}
+                onChange={(e) => setNewDriverData(prev => ({ ...prev, name: e.target.value }))}
+                className="h-10 rounded-xl"
+                disabled={isCreatingDriver}
+                autoFocus
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="driver_mobile" className="text-sm font-semibold">
+                Mobile Number <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="driver_mobile"
+                type="tel"
+                placeholder="10-digit mobile number"
+                value={newDriverData.phone}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setNewDriverData(prev => ({ ...prev, phone: val }));
+                }}
+                className={`h-10 rounded-xl ${
+                  newDriverData.phone.length === 10 && /^[6-9]/.test(newDriverData.phone)
+                    ? 'border-green-500 focus-visible:ring-green-500'
+                    : newDriverData.phone.length > 0
+                      ? 'border-amber-500 focus-visible:ring-amber-500'
+                      : ''
+                }`}
+                maxLength={10}
+                disabled={isCreatingDriver}
+                required
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {newDriverData.phone.length === 10 && /^[6-9]/.test(newDriverData.phone) ? (
+                  <span className="text-green-600 font-medium">✓ Valid 10-digit mobile number</span>
+                ) : newDriverData.phone.length > 0 ? (
+                  <span className="text-amber-600">Must be 10 digits starting with 6, 7, 8, or 9 ({newDriverData.phone.length}/10)</span>
+                ) : (
+                  "Indian mobile number (e.g. 9876543210)"
+                )}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Position / Role</Label>
+              <Select
+                value={newDriverData.position}
+                onValueChange={(val) => setNewDriverData(prev => ({ ...prev, position: val }))}
+                disabled={isCreatingDriver}
+              >
+                <SelectTrigger className="h-10 rounded-xl">
+                  <SelectValue placeholder="Select Position" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Driver">Driver</SelectItem>
+                  <SelectItem value="Fleet Supervisor">Fleet Supervisor</SelectItem>
+                  <SelectItem value="Transport Manager">Transport Manager</SelectItem>
+                  <SelectItem value="Owner">Owner</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="pt-3 border-t flex flex-row items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl h-10 px-4"
+                onClick={() => setShowAddDriverDialog(false)}
+                disabled={isCreatingDriver}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                disabled={
+                  isCreatingDriver ||
+                  !newDriverData.name.trim() ||
+                  newDriverData.phone.length !== 10 ||
+                  !/^[6-9]/.test(newDriverData.phone)
+                }
+              >
+                {isCreatingDriver ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding Driver...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add & Select Driver
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

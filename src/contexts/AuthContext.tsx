@@ -124,20 +124,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
-        handleAuthStateChange(event, currentSession);
+        handleAuthStateChange(event, currentSession).catch((err) => {
+          console.warn("[AuthContext] Auth state change handler warning:", err);
+        });
       }
     );
 
     // Initial session check
     if (!initRef.current) {
-      supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      supabase.auth.getSession().then(({ data, error }) => {
+        if (error) {
+          console.warn("[AuthContext] Session retrieval notice:", error.message || error);
+        }
+        const initialSession = data?.session;
         if (isMounted.current && !initRef.current) {
           initRef.current = true;
           if (initialSession) {
-            handleAuthStateChange("INITIAL_SESSION", initialSession);
+            handleAuthStateChange("INITIAL_SESSION", initialSession).catch((err) => {
+              console.warn("[AuthContext] Initial session handler warning:", err);
+            });
           } else {
             setLoading(false);
           }
+        }
+      }).catch((err) => {
+        console.warn("[AuthContext] Session initialization catch:", err);
+        if (isMounted.current) {
+          initRef.current = true;
+          setLoading(false);
         }
       });
     }

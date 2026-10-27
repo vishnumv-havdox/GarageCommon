@@ -22,6 +22,9 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import logo from "@/assets/logo.png"
+import { BrandFooter } from "@/components/brand/BrandFooter"
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader"
+import { useCompanyProfile } from "@/hooks/useCompanyProfile"
 import { PartRequestList } from "@/components/inventory/PartRequestList"
 import {
   Dialog,
@@ -509,30 +512,14 @@ export default function StaffDashboard() {
     }
   }
 
-  const [company, setCompany] = useState<any>(null);
-
-  useEffect(() => {
-    const fetchCompany = async () => {
-      const { data } = await supabase.from('company_profiles').select('company_name, logo_url').limit(1).maybeSingle();
-      if (data) setCompany(data);
-    };
-    fetchCompany();
-  }, []);
+  const { companyName, logoUrl } = useCompanyProfile();
 
   if (loading && workItems.length === 0) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground">
-        <div className="relative">
-          <div className="h-24 w-24 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-          <img src={company?.logo_url || logo} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-12 w-12 object-contain animate-pulse" alt="Logo" />
-        </div>
-        <p className="mt-4 text-xs font-bold text-primary uppercase tracking-wider animate-pulse">
-          Loading Dashboard...
-        </p>
-        <p className="mt-2 text-muted-foreground text-sm uppercase tracking-wider">
-          {company?.company_name || 'Service Center'} Dashboard
-        </p>
-      </div>
+      <HavDoxLoader
+        variant="fullscreen"
+        message="Loading assigned tasks and repair workflow..."
+      />
     );
   }
 
@@ -548,19 +535,28 @@ export default function StaffDashboard() {
       <header className="border-b border-border bg-background/80 sticky top-0 z-50 backdrop-blur-xl">
         <div className="container mx-auto px-4 h-20 grid grid-cols-3 items-center">
           {/* Column 1: Branding */}
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center shadow-[0_0_20px_rgba(var(--primary),0.3)] overflow-hidden shrink-0">
-              <img src={company?.logo_url || logo} className="h-9 w-9 object-contain brightness-0 invert" alt="Logo" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="h-11 w-11 rounded-xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-xs overflow-hidden shrink-0"
+              title="Drive Flow"
+            >
+              <img src="/logo-x.png" alt="Drive Flow" className="h-6 w-auto object-contain invert dark:invert-0" />
             </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-bold text-primary uppercase tracking-tight leading-tight">
-                {company?.company_name || "Service Center"}
-              </span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                  System Active
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-display font-bold text-base tracking-tight text-foreground">
+                  Drive Flow
                 </span>
+                <span className="text-muted-foreground/40 text-xs">•</span>
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  Powered by HavDox
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-muted-foreground truncate font-medium">
+                  {companyName}
+                </span>
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </div>
             </div>
           </div>
@@ -1381,9 +1377,12 @@ export default function StaffDashboard() {
                 </div>
               )}
             </div>
-          </div >
-        </div >
-      </main >
-    </div >
+          </div>
+        </div>
+      </main>
+
+      {/* Official Clean Brand Footer */}
+      <BrandFooter />
+    </div>
   );
 }

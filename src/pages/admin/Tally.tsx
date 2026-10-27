@@ -692,7 +692,7 @@ export default function AdminTally() {
                   <div className="flex flex-wrap items-center gap-3 pt-2">
                     <Button 
                       size="default" 
-                      className="gap-2 bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm"
+                      className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium shadow-sm"
                       disabled={syncingDirect || unsyncedInvoicesList.length === 0}
                       onClick={() => handleDirectSync(unsyncedInvoicesList)}
                     >
@@ -905,7 +905,7 @@ export default function AdminTally() {
               <div className="flex items-center gap-2 flex-wrap">
                 <Button 
                   size="sm" 
-                  className="h-8 gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                  className="h-8 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
                   onClick={() => handleDirectSync(selectedInvoicesList)}
                   disabled={syncingDirect}
                 >

@@ -12,6 +12,7 @@ import { VehicleForm } from "@/components/forms/VehicleForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { ModernVehicleCard } from "@/components/vehicles/ModernVehicleCard";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import {
   Dialog,
   DialogContent,
@@ -225,7 +226,7 @@ export default function AdminVehicles() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading...</div>
+                <HavDoxLoader variant="section" message="Loading registered garage vehicles..." />
               ) : filteredVehicles.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">No vehicles found</div>
               ) : (

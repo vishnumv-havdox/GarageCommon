@@ -767,13 +767,13 @@ function AppointmentCard({ app, onUpdateStatus, onDelete, onEditTime, onCreateJo
                         <div>
                             <div className="flex items-center gap-2 mb-1">
                                 <Badge variant="outline" className={cn("uppercase text-[10px] font-bold tracking-wider",
-                                    app.type === 'service' ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-purple-50 text-purple-700 border-purple-200"
+                                    app.type === 'service' ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-foreground border-border"
                                 )}>
                                     {app.type.replace('_', ' ')}
                                 </Badge>
                                 {app.status === 'pending' && <Badge className="bg-yellow-500 text-white hover:bg-yellow-600 animate-pulse">New Request</Badge>}
                                 {app.status === 'confirmed' && <Badge className="bg-emerald-500 text-white hover:bg-emerald-600">Confirmed</Badge>}
-                                {app.status === 'converted' && <Badge className="bg-blue-500 text-white">Job Card Opened</Badge>}
+                                {app.status === 'converted' && <Badge className="bg-primary text-primary-foreground">Job Card Opened</Badge>}
                                 {app.status === 'cancelled' && <Badge variant="destructive">Cancelled</Badge>}
                                 {app.status === 'completed' && <Badge className="bg-green-600 text-white">Completed</Badge>}
                             </div>

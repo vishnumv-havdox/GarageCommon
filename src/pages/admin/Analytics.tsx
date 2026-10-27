@@ -14,6 +14,7 @@ import {
     IndianRupee, RefreshCw, Filter,
     ClipboardList, Activity, Truck
 } from "lucide-react";
+import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { useToast } from "@/hooks/use-toast";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
@@ -33,26 +34,26 @@ export default function AdminAnalytics() {
     const fetchAnalytics = async () => {
         setLoading(true);
         try {
-            // Fetch Operational Data
-            const { data: opRes, error: opError } = await supabase.rpc('get_operational_analytics');
-            if (opError) throw opError;
-            setOpData(opRes);
+            // Fetch Operational, Financial, and Employee analytics concurrently in parallel
+            const [opRes, finRes, empRes] = await Promise.all([
+                supabase.rpc('get_operational_analytics'),
+                supabase.rpc('get_financial_analytics_v2').then(async (res) => {
+                    if (res.error) {
+                        console.error("Falling back to v1 analytics:", res.error);
+                        return await supabase.rpc('get_financial_analytics');
+                    }
+                    return res;
+                }),
+                supabase.rpc('get_employee_analytics'),
+            ]);
 
-            // Fetch Financial Data
-            const { data: finRes, error: finError } = await supabase.rpc('get_financial_analytics_v2');
-            if (finError) {
-                console.error("Falling back to v1 analytics:", finError);
-                const { data: v1Res, error: v1Error } = await supabase.rpc('get_financial_analytics');
-                if (v1Error) throw v1Error;
-                setFinData(v1Res);
-            } else {
-                setFinData(finRes);
-            }
+            if (opRes.error) throw opRes.error;
+            if (finRes.error) throw finRes.error;
+            if (empRes.error) throw empRes.error;
 
-            // Fetch Employee Data
-            const { data: empRes, error: empError } = await supabase.rpc('get_employee_analytics');
-            if (empError) throw empError;
-            setEmpData(empRes || []);
+            setOpData(opRes.data);
+            setFinData(finRes.data);
+            setEmpData(empRes.data || []);
 
         } catch (error: any) {
             console.error("Analytics error:", error);
@@ -61,10 +62,6 @@ export default function AdminAnalytics() {
             setLoading(false);
         }
     };
-
-    if (loading) {
-        return <div className="min-h-screen flex items-center justify-center">Loading analytics dashboard...</div>;
-    }
 
     // Process data for charts
     const statusChartData = opData?.status_counts ? Object.entries(opData.status_counts).map(([name, value]) => ({ name, value })) : [];
@@ -80,8 +77,8 @@ export default function AdminAnalytics() {
                         <p className="text-muted-foreground">Operational and financial analytics for the last 30 days</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={fetchAnalytics}>
-                            <RefreshCw className="h-4 w-4 mr-2" /> Refresh
+                        <Button variant="outline" onClick={fetchAnalytics} disabled={loading}>
+                            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
                         </Button>
                         <Button variant="outline">
                             <Filter className="h-4 w-4 mr-2" /> Filters
@@ -89,7 +86,14 @@ export default function AdminAnalytics() {
                     </div>
                 </div>
 
-                {/* KPI Cards */}
+                {loading && !opData && !finData ? (
+                    <HavDoxLoader
+                        variant="section"
+                        message="Computing garage performance analytics..."
+                    />
+                ) : (
+                    <>
+                        {/* KPI Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -104,7 +108,7 @@ export default function AdminAnalytics() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium">Orders Completed</CardTitle>
-                            <TrendingUp className="h-4 w-4 text-blue-600" />
+                            <TrendingUp className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{opData?.total_serviced}</div>
@@ -240,6 +244,8 @@ export default function AdminAnalytics() {
                         </div>
                     </CardContent>
                 </Card>
+                    </>
+                )}
             </main>
         </div>
     );

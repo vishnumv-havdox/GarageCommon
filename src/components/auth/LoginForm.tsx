@@ -7,33 +7,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, LogIn } from "lucide-react"
 
+import { useCompanyProfile } from "@/hooks/useCompanyProfile"
+
 interface LoginFormProps {
   onSuccess: () => void
-}
-
-interface CompanyProfile {
-  company_name: string;
-  logo_url?: string;
 }
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [profile, setProfile] = useState<CompanyProfile | null>(null)
+  const { profile } = useCompanyProfile()
   const { toast } = useToast()
-
-  useEffect(() => {
-    const fetchProfile = async () => {
-      const { data } = await supabase
-        .from('company_profiles')
-        .select('company_name, logo_url')
-        .limit(1)
-        .maybeSingle();
-      if (data) setProfile(data);
-    };
-    fetchProfile();
-  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

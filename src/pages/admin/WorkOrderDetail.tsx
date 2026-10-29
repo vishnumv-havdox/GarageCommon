@@ -53,6 +53,8 @@ import {
 } from "@/components/ui/select";
 import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
 import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
+import { getBillingSettings } from "@/utils/billingSettings";
+import { useRealtimeSync, broadcastDataUpdate } from "@/utils/realtimeSync";
 
 interface ServiceDetail {
     id: string;
@@ -180,6 +182,7 @@ export default function WorkOrderDetail() {
     const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
     const [details, setDetails] = useState<ServiceDetail[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
+    const billingSettings = useMemo(() => getBillingSettings(), []);
 
     // Dialog states
     const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
@@ -648,6 +651,12 @@ export default function WorkOrderDetail() {
     useEffect(() => {
         fetchDetails();
     }, [fetchDetails]);
+
+    // Realtime synchronization on work_orders, part_requests, and inventory
+    useRealtimeSync(["work_orders", "part_requests", "inventory"], () => {
+        fetchDetails(true);
+        fetchExtensions();
+    });
 
     useEffect(() => {
         if (selectedEmployeeId && employeeDialogOpen) {
@@ -1386,8 +1395,27 @@ export default function WorkOrderDetail() {
                             </span>
                         </div>
 
-                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchDetails()} title="Refresh Details">
-                            <RefreshCw className="h-3.5 w-3.5" />
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            className="h-8 w-8" 
+                            onClick={async () => {
+                                setLoading(true);
+                                try {
+                                    await Promise.all([
+                                        fetchDetails(),
+                                        fetchExtensions()
+                                    ]);
+                                    toast({ title: "Refreshed", description: "Work order details synchronized." });
+                                    broadcastDataUpdate("work_orders");
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }} 
+                            disabled={loading}
+                            title="Refresh Details"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
                         </Button>
 
                         <AlertDialog>
@@ -2957,6 +2985,28 @@ export default function WorkOrderDetail() {
                                                 </span>
                                             </div>
                                         </div>
+
+                                        {billingSettings.enable_dual_gst ? (
+                                            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/40 text-xs text-blue-900 dark:text-blue-300">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-200 border-blue-300 dark:border-blue-700 text-[10px] font-semibold">
+                                                        2 GST Rates Mode
+                                                    </Badge>
+                                                    <span className="font-medium">Service GST: <strong>{billingSettings.service_gst_rate}%</strong> ({billingSettings.service_gst_rate / 2}% CGST + {billingSettings.service_gst_rate / 2}% SGST)</span>
+                                                    <span className="text-muted-foreground/40">•</span>
+                                                    <span className="font-medium">Spare Bill GST: <strong>{billingSettings.spare_gst_rate}%</strong> ({billingSettings.spare_gst_rate / 2}% CGST + {billingSettings.spare_gst_rate / 2}% SGST)</span>
+                                                </div>
+                                                <span className="text-[11px] text-muted-foreground">Configured in Settings</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 border text-xs text-muted-foreground">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="secondary" className="text-[10px]">Single GST Rate</Badge>
+                                                    <span>Standard Rate: <strong>{billingSettings.single_gst_rate}% GST</strong> applied uniformly across services & spares</span>
+                                                </div>
+                                                <span className="text-[11px] text-muted-foreground">Configured in Settings</span>
+                                            </div>
+                                        )}
 
                                         <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-muted/20 border">
                                             <div className="space-y-1">

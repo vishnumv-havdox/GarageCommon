@@ -13,12 +13,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Save, Building2, FileText, Settings as SettingsIcon, QrCode, Trash2, Clock, Shield, Users, User, Key, Upload, Plus, Edit, Check, Palette } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, Save, Building2, FileText, Settings as SettingsIcon, QrCode, Trash2, Clock, Shield, Users, User, Key, Upload, Plus, Edit, Check, Palette, Receipt, Wrench, Package } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { ImageDropzone } from "@/components/shared/ImageDropzone";
 import { useCompanyProfile } from "@/hooks/useCompanyProfile";
 import { AppearanceSettingsTab } from "@/components/settings/AppearanceSettingsTab";
 import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
+import { BillingTaxSettings, getBillingSettings, saveBillingSettings, DEFAULT_BILLING_SETTINGS } from "@/utils/billingSettings";
+import { broadcastDataUpdate } from "@/utils/realtimeSync";
 
 export default function Settings() {
     const { user } = useAuth();
@@ -30,6 +34,7 @@ export default function Settings() {
 
     // Data States
     const [profile, setProfile] = useState<any>({});
+    const [billingSettings, setBillingSettings] = useState<BillingTaxSettings>(() => getBillingSettings());
     const [workSlipSettings, setWorkSlipSettings] = useState<any>({});
     const [invoiceSettings, setInvoiceSettings] = useState<any>({});
     const [workforceSettings, setWorkforceSettings] = useState<any>({});
@@ -105,7 +110,14 @@ export default function Settings() {
             if (settingsRes.error) throw settingsRes.error;
             if (workforceRes.error) throw workforceRes.error;
 
-            if (profileRes.data) setProfile(profileRes.data);
+            if (profileRes.data) {
+                setProfile(profileRes.data);
+                const bSettings = getBillingSettings(profileRes.data);
+                if (!bSettings.service_gst_number && profileRes.data.tax_id) {
+                    bSettings.service_gst_number = profileRes.data.tax_id;
+                }
+                setBillingSettings(bSettings);
+            }
 
             if (settingsRes.data) {
                 setWorkSlipSettings(settingsRes.data.find((s: any) => s.doc_type === 'work_slip') || { doc_type: 'work_slip' });
@@ -135,26 +147,51 @@ export default function Settings() {
             delete payload.created_at;
             delete payload.updated_at;
 
-            // Upsert
+            // Synchronize primary tax_id with billingSettings
+            if (billingSettings.enable_dual_gst) {
+                payload.tax_id = billingSettings.service_gst_number || payload.tax_id || "";
+            } else {
+                const singleGst = payload.tax_id || billingSettings.service_gst_number || "";
+                payload.tax_id = singleGst;
+                billingSettings.service_gst_number = singleGst;
+                billingSettings.spare_gst_number = singleGst;
+            }
+
             // Singleton Pattern: Check if ANY profile exists
             const { data: existing } = await supabase
                 .from('company_profiles')
-                .select('id')
+                .select('id, bank_details')
                 .order('updated_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
 
-            if (existing && (existing as any).id) {
+            const profileId = (existing as any)?.id || profile.id;
+            payload.bank_details = {
+                ...(payload.bank_details || (existing as any)?.bank_details || {}),
+                billing_settings: billingSettings
+            };
+
+            if (profileId) {
                 // Update existing
-                await supabase.from('company_profiles').update(payload).eq('id', (existing as any).id);
+                const { error: updateErr } = await supabase.from('company_profiles').update(payload).eq('id', profileId);
+                if (updateErr) throw updateErr;
             } else {
                 // Insert new
-                await supabase.from('company_profiles').insert(payload);
+                const { data: inserted, error: insertErr } = await supabase.from('company_profiles').insert(payload).select().single();
+                if (insertErr) throw insertErr;
+                if (inserted) profile.id = inserted.id;
             }
 
-            updateProfileCache(payload);
+            await saveBillingSettings(billingSettings, profileId || profile.id);
+
+            updateProfileCache({
+                ...payload,
+                billing_settings: billingSettings
+            });
             invalidateCompanyProfile();
-            toast({ title: "Saved", description: "Company profile updated." });
+            broadcastDataUpdate('all');
+            broadcastDataUpdate('company_profile');
+            toast({ title: "Saved", description: "Company profile & GST settings updated." });
             fetchSettings(); // Refresh
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -383,7 +420,46 @@ export default function Settings() {
                 await supabase.from('document_settings').insert(payload as any);
             }
 
-            toast({ title: "Saved", description: `${type === 'work_slip' ? 'Work Slip' : 'Invoice'} settings updated.` });
+            if (type === 'invoice') {
+                if (billingSettings.enable_dual_gst) {
+                    profile.tax_id = billingSettings.service_gst_number || profile.tax_id || "";
+                } else {
+                    const singleGst = profile.tax_id || billingSettings.service_gst_number || "";
+                    profile.tax_id = singleGst;
+                    billingSettings.service_gst_number = singleGst;
+                    billingSettings.spare_gst_number = singleGst;
+                }
+                
+                let targetProfileId = profile.id;
+                if (!targetProfileId) {
+                    const { data: latestProf } = await supabase.from('company_profiles').select('id').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+                    targetProfileId = latestProf?.id;
+                }
+
+                await saveBillingSettings(billingSettings, targetProfileId);
+                if (targetProfileId) {
+                    const { error: profError } = await supabase.from('company_profiles').update({
+                        tax_id: profile.tax_id,
+                        bank_details: {
+                            ...(profile.bank_details || {}),
+                            billing_settings: billingSettings
+                        }
+                    }).eq('id', targetProfileId);
+                    if (profError) throw profError;
+                }
+                updateProfileCache({
+                    tax_id: profile.tax_id,
+                    bank_details: {
+                        ...(profile.bank_details || {}),
+                        billing_settings: billingSettings
+                    }
+                });
+                invalidateCompanyProfile();
+                broadcastDataUpdate('all');
+                broadcastDataUpdate('company_profile');
+            }
+
+            toast({ title: "Saved", description: `${type === 'work_slip' ? 'Work Slip' : 'Invoice'} & Tax settings updated.` });
             fetchSettings();
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
@@ -527,12 +603,160 @@ export default function Settings() {
                                                 onChange={e => setProfile({ ...profile, address: e.target.value })}
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label>Tax ID (GSTIN)</Label>
-                                            <Input
-                                                value={profile.tax_id || ''}
-                                                onChange={e => setProfile({ ...profile, tax_id: e.target.value })}
-                                            />
+                                        {/* Integrated GST Configuration in Company Profile */}
+                                        <div className="md:col-span-2 p-4 rounded-xl border bg-slate-50/70 dark:bg-muted/20 space-y-4">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                                                <div>
+                                                    <h4 className="text-sm font-bold flex items-center gap-2 text-foreground">
+                                                        <Receipt className="h-4 w-4 text-primary" />
+                                                        GST Configuration (Single vs 2 GST Numbers & Rates)
+                                                    </h4>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        Enable 2 separate GST numbers (GSTIN) & tax rates for Service Bill and Spare Parts Bill, or use 1 universal GST.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2.5 bg-background px-3 py-1.5 rounded-lg border shadow-xs self-start sm:self-auto">
+                                                    <span className="text-xs font-semibold">
+                                                        {billingSettings.enable_dual_gst ? "2 GST Mode (Active)" : "1 GST Mode (Single)"}
+                                                    </span>
+                                                    <Switch
+                                                        id="company-enable-dual-gst-switch"
+                                                        checked={billingSettings.enable_dual_gst}
+                                                        onCheckedChange={(checked) => setBillingSettings(prev => ({ ...prev, enable_dual_gst: checked }))}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {!billingSettings.enable_dual_gst ? (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs font-semibold text-foreground">Universal GST Number (GSTIN) / Tax ID</Label>
+                                                        <Input
+                                                            placeholder="e.g. 33AAAAA0000A1Z5"
+                                                            value={billingSettings.service_gst_number || profile.tax_id || ''}
+                                                            onChange={e => {
+                                                                const val = e.target.value.toUpperCase();
+                                                                setProfile(prev => ({ ...prev, tax_id: val }));
+                                                                setBillingSettings(prev => ({ ...prev, service_gst_number: val, spare_gst_number: val }));
+                                                            }}
+                                                            className="font-mono uppercase tracking-wider text-sm h-9 bg-background"
+                                                        />
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            Your garage GSTIN printed on tax invoices, quotations, and official receipts.
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs font-semibold text-foreground">Universal GST Rate (%)</Label>
+                                                        <div className="flex items-center gap-2">
+                                                            <Input
+                                                                id="company-single-gst-rate"
+                                                                type="number"
+                                                                min="0"
+                                                                max="100"
+                                                                value={billingSettings.single_gst_rate}
+                                                                onChange={(e) => setBillingSettings(prev => ({ ...prev, single_gst_rate: parseFloat(e.target.value) || 0 }))}
+                                                                className="font-mono text-sm h-9 max-w-[120px] bg-background"
+                                                            />
+                                                            <span className="text-sm font-bold text-muted-foreground">%</span>
+                                                        </div>
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            Standard {billingSettings.single_gst_rate}% ({(billingSettings.single_gst_rate / 2)}% CGST + {(billingSettings.single_gst_rate / 2)}% SGST) applied uniformly across all bills.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    {/* 1. Service Bill GST Card */}
+                                                    <div className="space-y-3 p-3.5 rounded-xl border bg-background shadow-2xs">
+                                                        <div className="flex items-center justify-between border-b pb-2">
+                                                            <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                                <Wrench className="h-3.5 w-3.5 text-blue-600" /> 1. Service Bill GST (Labor & Services)
+                                                            </Label>
+                                                            <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                                                                CGST {(billingSettings.service_gst_rate / 2)}% + SGST {(billingSettings.service_gst_rate / 2)}%
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[11px] font-semibold text-slate-700">Service GST Number (GSTIN)</Label>
+                                                            <Input
+                                                                id="company-service-gst-number"
+                                                                placeholder="e.g. 33AAAAA0000A1Z5"
+                                                                value={billingSettings.service_gst_number || profile.tax_id || ''}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value.toUpperCase();
+                                                                    setProfile(prev => ({ ...prev, tax_id: val }));
+                                                                    setBillingSettings(prev => ({ ...prev, service_gst_number: val }));
+                                                                }}
+                                                                className="font-mono uppercase tracking-wider text-xs h-9 bg-slate-50/50"
+                                                            />
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                Printed on Section I (Service Charges / Labor Bill).
+                                                            </p>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[11px] font-semibold text-slate-700">Service GST Rate (%)</Label>
+                                                            <div className="flex items-center gap-2">
+                                                                <Input
+                                                                    id="company-service-gst-rate"
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="100"
+                                                                    value={billingSettings.service_gst_rate}
+                                                                    onChange={(e) => setBillingSettings(prev => ({ ...prev, service_gst_rate: parseFloat(e.target.value) || 0 }))}
+                                                                    className="font-mono text-sm h-9 max-w-[120px]"
+                                                                />
+                                                                <span className="text-sm font-bold text-muted-foreground">%</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                Applied to labor, diagnostic tests, repairs, and service tasks.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 2. Spare Parts Bill GST Card */}
+                                                    <div className="space-y-3 p-3.5 rounded-xl border bg-background shadow-2xs">
+                                                        <div className="flex items-center justify-between border-b pb-2">
+                                                            <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                                <Package className="h-3.5 w-3.5 text-orange-600" /> 2. Spare Parts Bill GST (Inventory & Parts)
+                                                            </Label>
+                                                            <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200">
+                                                                CGST {(billingSettings.spare_gst_rate / 2)}% + SGST {(billingSettings.spare_gst_rate / 2)}%
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[11px] font-semibold text-slate-700">Spare Parts GST Number (GSTIN)</Label>
+                                                            <Input
+                                                                id="company-spare-gst-number"
+                                                                placeholder="e.g. 33BBBBB1111B2Z6"
+                                                                value={billingSettings.spare_gst_number || ''}
+                                                                onChange={(e) => setBillingSettings(prev => ({ ...prev, spare_gst_number: e.target.value.toUpperCase() }))}
+                                                                className="font-mono uppercase tracking-wider text-xs h-9 bg-slate-50/50"
+                                                            />
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                Printed on Section II (Spare Parts & Inventory Bill).
+                                                            </p>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[11px] font-semibold text-slate-700">Spare Parts GST Rate (%)</Label>
+                                                            <div className="flex items-center gap-2">
+                                                                <Input
+                                                                    id="company-spare-gst-rate"
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="100"
+                                                                    value={billingSettings.spare_gst_rate}
+                                                                    onChange={(e) => setBillingSettings(prev => ({ ...prev, spare_gst_rate: parseFloat(e.target.value) || 0 }))}
+                                                                    className="font-mono text-sm h-9 max-w-[120px]"
+                                                                />
+                                                                <span className="text-sm font-bold text-muted-foreground">%</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                Applied to replacement parts, engine oils, and consumables.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="space-y-4 md:col-span-2">
@@ -1079,6 +1303,167 @@ export default function Settings() {
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
+
+                                    {/* GST Tax Structure (Single vs 2 GST Mode) */}
+                                    <div className="space-y-4 border p-4 sm:p-5 rounded-xl bg-slate-50/70 dark:bg-muted/20 border-border/80 shadow-sm">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                                            <div>
+                                                <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
+                                                    <Receipt className="h-4 w-4 text-primary" />
+                                                    GST Tax Configuration (Single vs 2 GST Numbers & Rates)
+                                                </h3>
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    Enable 2 separate GST numbers (GSTIN) & tax rates for Service Bill and Spare Parts Bill, or use 1 universal GST.
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2.5 bg-background px-3 py-1.5 rounded-lg border shadow-xs self-start sm:self-auto">
+                                                <span className="text-xs font-semibold">
+                                                    {billingSettings.enable_dual_gst ? "2 GST Mode (Enabled)" : "1 GST Mode (Single)"}
+                                                </span>
+                                                <Switch
+                                                    id="enable-dual-gst-switch"
+                                                    checked={billingSettings.enable_dual_gst}
+                                                    onCheckedChange={(checked) => setBillingSettings(prev => ({ ...prev, enable_dual_gst: checked }))}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {!billingSettings.enable_dual_gst ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="invoice-tax-id-input" className="text-xs font-semibold text-foreground">
+                                                        Universal Garage GST Number (GSTIN)
+                                                    </Label>
+                                                    <Input
+                                                        id="invoice-tax-id-input"
+                                                        placeholder="e.g. 33AAAAA0000A1Z5"
+                                                        value={billingSettings.service_gst_number || profile.tax_id || ''}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value.toUpperCase();
+                                                            setProfile(prev => ({ ...prev, tax_id: val }));
+                                                            setBillingSettings(prev => ({ ...prev, service_gst_number: val, spare_gst_number: val }));
+                                                        }}
+                                                        className="font-mono uppercase tracking-wider text-sm h-9 bg-background"
+                                                    />
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        Printed in the document header as your business GSTIN.
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="single-gst-rate-input" className="text-xs font-medium text-foreground">
+                                                        Default Universal GST Rate (%)
+                                                    </Label>
+                                                    <div className="flex items-center gap-2">
+                                                        <Input
+                                                            id="single-gst-rate-input"
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            value={billingSettings.single_gst_rate}
+                                                            onChange={(e) => setBillingSettings(prev => ({ ...prev, single_gst_rate: parseFloat(e.target.value) || 0 }))}
+                                                            className="font-mono text-sm h-9 max-w-[120px] bg-background"
+                                                        />
+                                                        <span className="text-sm font-bold text-muted-foreground">%</span>
+                                                    </div>
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        Standard {billingSettings.single_gst_rate}% ({(billingSettings.single_gst_rate / 2)}% CGST + {(billingSettings.single_gst_rate / 2)}% SGST) applied uniformly across all bill items.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                                                {/* 1. Service Bill GST Card */}
+                                                <div className="space-y-3 p-3.5 rounded-xl border bg-background/80 shadow-2xs">
+                                                    <div className="flex items-center justify-between border-b pb-2">
+                                                        <Label className="text-xs font-bold text-primary flex items-center gap-1.5">
+                                                            <Wrench className="h-3.5 w-3.5" /> 1. Service Bill GST (Labor & Services)
+                                                        </Label>
+                                                        <Badge variant="outline" className="text-[10px] font-mono border-primary/30 text-primary">
+                                                            CGST {(billingSettings.service_gst_rate / 2)}% + SGST {(billingSettings.service_gst_rate / 2)}%
+                                                        </Badge>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[11px] font-semibold text-slate-700">Service GST Number (GSTIN)</Label>
+                                                        <Input
+                                                            id="invoice-service-gst-number"
+                                                            placeholder="e.g. 33AAAAA0000A1Z5"
+                                                            value={billingSettings.service_gst_number || profile.tax_id || ''}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value.toUpperCase();
+                                                                setProfile(prev => ({ ...prev, tax_id: val }));
+                                                                setBillingSettings(prev => ({ ...prev, service_gst_number: val }));
+                                                            }}
+                                                            className="font-mono uppercase tracking-wider text-xs h-9 bg-slate-50/50"
+                                                        />
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            Printed on Section I (Service Charges / Labor Bill).
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[11px] font-semibold text-slate-700">Service GST Rate (%)</Label>
+                                                        <div className="flex items-center gap-2">
+                                                            <Input
+                                                                id="service-gst-rate-input"
+                                                                type="number"
+                                                                min="0"
+                                                                max="100"
+                                                                value={billingSettings.service_gst_rate}
+                                                                onChange={(e) => setBillingSettings(prev => ({ ...prev, service_gst_rate: parseFloat(e.target.value) || 0 }))}
+                                                                className="font-mono text-sm h-9 max-w-[120px]"
+                                                            />
+                                                            <span className="text-sm font-bold text-muted-foreground">%</span>
+                                                        </div>
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            Auto-applied to labor operations, diagnostic tests, and workshop service tasks.
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* 2. Spare Parts Bill GST Card */}
+                                                <div className="space-y-3 p-3.5 rounded-xl border bg-background/80 shadow-2xs">
+                                                    <div className="flex items-center justify-between border-b pb-2">
+                                                        <Label className="text-xs font-bold text-amber-600 dark:text-amber-500 flex items-center gap-1.5">
+                                                            <Package className="h-3.5 w-3.5" /> 2. Spare Bill GST (Inventory & Parts)
+                                                        </Label>
+                                                        <Badge variant="outline" className="text-[10px] font-mono border-amber-300 text-amber-700 dark:text-amber-400">
+                                                            CGST {(billingSettings.spare_gst_rate / 2)}% + SGST {(billingSettings.spare_gst_rate / 2)}%
+                                                        </Badge>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[11px] font-semibold text-slate-700">Spare Parts GST Number (GSTIN)</Label>
+                                                        <Input
+                                                            id="invoice-spare-gst-number"
+                                                            placeholder="e.g. 33BBBBB1111B2Z6"
+                                                            value={billingSettings.spare_gst_number || ''}
+                                                            onChange={(e) => setBillingSettings(prev => ({ ...prev, spare_gst_number: e.target.value.toUpperCase() }))}
+                                                            className="font-mono uppercase tracking-wider text-xs h-9 bg-slate-50/50"
+                                                        />
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            Printed on Section II (Spare Parts & Inventory Bill).
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[11px] font-semibold text-slate-700">Spare Parts GST Rate (%)</Label>
+                                                        <div className="flex items-center gap-2">
+                                                            <Input
+                                                                id="spare-gst-rate-input"
+                                                                type="number"
+                                                                min="0"
+                                                                max="100"
+                                                                value={billingSettings.spare_gst_rate}
+                                                                onChange={(e) => setBillingSettings(prev => ({ ...prev, spare_gst_rate: parseFloat(e.target.value) || 0 }))}
+                                                                className="font-mono text-sm h-9 max-w-[120px]"
+                                                            />
+                                                            <span className="text-sm font-bold text-muted-foreground">%</span>
+                                                        </div>
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            Auto-applied to spare parts, engine oils, consumables, and replacement accessories.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="space-y-4">

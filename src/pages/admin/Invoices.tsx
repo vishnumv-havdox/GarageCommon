@@ -74,6 +74,8 @@ import { generateInvoicePDF } from "@/utils/pdfGenerator";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { FinanceTabsNav } from "@/components/layout/FinanceTabsNav";
+import { getBillingSettings, getItemGstRate, calculateTaxSplit } from "@/utils/billingSettings";
+import { RecordCustomerPaymentModal } from "@/components/invoices/RecordCustomerPaymentModal";
 
 export default function AdminInvoices() {
   const { user } = useAuth();
@@ -96,6 +98,7 @@ export default function AdminInvoices() {
 
   // Create Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<string>("");
   const [creationType, setCreationType] = useState<'invoice' | 'quotation'>('invoice'); // New state
   const [creatingInvoice, setCreatingInvoice] = useState(false);
@@ -391,6 +394,8 @@ export default function AdminInvoices() {
   }
 
   const syncWorkOrderItems = async (invoiceId: string, workOrderId: string) => {
+    const billingSettings = getBillingSettings();
+
     // 1. Fetch Services
     const { data: services }: any = await supabase
       .from('work_order_services')
@@ -415,31 +420,48 @@ export default function AdminInvoices() {
     if (services && services.length > 0) {
       services.forEach(service => {
         const serviceTasks = tasks?.filter(t => t.service_id === service.id) || [];
+        const finalPrice = service.billing_price || service.estimated_cost || 0;
+        const gstRate = getItemGstRate('service', billingSettings);
+
         if (serviceTasks.length > 0) {
           serviceTasks.forEach((task, index) => {
-            const finalPrice = service.billing_price || service.estimated_cost;
+            const lineTotal = index === 0 ? finalPrice : 0;
+            const taxSplit = calculateTaxSplit(lineTotal, gstRate);
             invoiceItems.push({
               invoice_id: invoiceId,
               work_order_service_id: service.id,
               description: task.task_name,
               quantity: 1,
-              unit_price: index === 0 ? finalPrice : 0,
-              total: index === 0 ? finalPrice : 0,
+              unit_price: lineTotal,
+              total: lineTotal,
               type: 'service',
-              category: service.service_type
+              category: service.service_type,
+              taxable_value: lineTotal,
+              gst_rate: gstRate,
+              cgst_rate: gstRate / 2,
+              sgst_rate: gstRate / 2,
+              cgst_amount: taxSplit.cgstAmount,
+              sgst_amount: taxSplit.sgstAmount,
             });
           });
         } else {
-          const finalPrice = service.billing_price || service.estimated_cost;
+          const lineTotal = finalPrice;
+          const taxSplit = calculateTaxSplit(lineTotal, gstRate);
           invoiceItems.push({
             invoice_id: invoiceId,
             work_order_service_id: service.id,
             description: "",
             quantity: 1,
-            unit_price: finalPrice,
-            total: finalPrice,
+            unit_price: lineTotal,
+            total: lineTotal,
             type: 'service',
-            category: service.service_type
+            category: service.service_type,
+            taxable_value: lineTotal,
+            gst_rate: gstRate,
+            cgst_rate: gstRate / 2,
+            sgst_rate: gstRate / 2,
+            cgst_amount: taxSplit.cgstAmount,
+            sgst_amount: taxSplit.sgstAmount,
           });
         }
       });
@@ -447,15 +469,24 @@ export default function AdminInvoices() {
 
     // Add Parts
     if (parts && parts.length > 0) {
+      const spareGstRate = getItemGstRate('part', billingSettings);
       parts.forEach(part => {
+        const lineTotal = (part.quantity || 1) * (part.unit_price || 0);
+        const taxSplit = calculateTaxSplit(lineTotal, spareGstRate);
         invoiceItems.push({
           invoice_id: invoiceId,
           description: part.part_name,
-          quantity: part.quantity,
-          unit_price: part.unit_price,
-          total: part.quantity * part.unit_price,
+          quantity: part.quantity || 1,
+          unit_price: part.unit_price || 0,
+          total: lineTotal,
           type: 'part',
-          category: 'Spare'
+          category: 'Spare',
+          taxable_value: lineTotal,
+          gst_rate: spareGstRate,
+          cgst_rate: spareGstRate / 2,
+          sgst_rate: spareGstRate / 2,
+          cgst_amount: taxSplit.cgstAmount,
+          sgst_amount: taxSplit.sgstAmount,
         });
       });
     }
@@ -465,8 +496,10 @@ export default function AdminInvoices() {
       if (error) console.error("Error syncing items:", error);
 
       // Update Invoice Totals
-      const total = invoiceItems.reduce((acc, item) => acc + (item.total || 0), 0);
-      await supabase.from('invoices').update({ subtotal: total, total: total } as any).eq('id', invoiceId);
+      const subtotal = invoiceItems.reduce((acc, item) => acc + (item.total || 0), 0);
+      const tax = invoiceItems.reduce((acc, item) => acc + ((item.cgst_amount || 0) + (item.sgst_amount || 0)), 0);
+      const grandTotal = subtotal + tax;
+      await supabase.from('invoices').update({ subtotal, tax, total: grandTotal } as any).eq('id', invoiceId);
     }
   }
 
@@ -538,70 +571,79 @@ export default function AdminInvoices() {
                 </h1>
                 <p className="text-muted-foreground text-sm">Manage billing, customer tax invoices, and payment receipts</p>
               </div>
-              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogTrigger asChild>
-                  <Button className="rounded-xl font-semibold gap-1.5 shadow-sm">
-                    <Plus className="h-4 w-4" /> Create Invoice
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create New Invoice</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Document Type</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div
-                          className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'invoice' ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted'}`}
-                          onClick={() => setCreationType('invoice')}
-                        >
-                          <FileText className="h-6 w-6 text-primary" />
-                          <span className="font-medium">Tax Invoice</span>
-                          <span className="text-xs text-muted-foreground text-center">With GST & Final Bill</span>
-                        </div>
-                        <div
-                          className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'quotation' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-muted'}`}
-                          onClick={() => setCreationType('quotation')}
-                        >
-                          <FileText className="h-6 w-6 text-orange-500" />
-                          <span className="font-medium">Quotation</span>
-                          <span className="text-xs text-muted-foreground text-center">Estimate (No GST initially)</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsPaymentModalOpen(true)}
+                  className="rounded-xl font-semibold gap-1.5 shadow-sm border-emerald-600/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                >
+                  <IndianRupee className="h-4 w-4 text-emerald-600" /> Record Payment
+                </Button>
+                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="rounded-xl font-semibold gap-1.5 shadow-sm">
+                      <Plus className="h-4 w-4" /> Create Invoice
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create New Invoice</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Document Type</label>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div
+                            className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'invoice' ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted'}`}
+                            onClick={() => setCreationType('invoice')}
+                          >
+                            <FileText className="h-6 w-6 text-primary" />
+                            <span className="font-medium">Tax Invoice</span>
+                            <span className="text-xs text-muted-foreground text-center">With GST & Final Bill</span>
+                          </div>
+                          <div
+                            className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'quotation' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-muted'}`}
+                            onClick={() => setCreationType('quotation')}
+                          >
+                            <FileText className="h-6 w-6 text-orange-500" />
+                            <span className="font-medium">Quotation</span>
+                            <span className="text-xs text-muted-foreground text-center">Estimate (No GST initially)</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <Separator />
+                      <Separator />
 
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Select Work Order</label>
-                      <Select onValueChange={setSelectedWorkOrder} value={selectedWorkOrder}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a pending work order..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {pendingWorkOrders.map((wo) => {
-                            const custName = wo.vehicle?.customer?.name || wo.customer?.name || 'Customer';
-                            const compName = wo.vehicle?.customer?.company_name || wo.customer?.company_name;
-                            return (
-                              <SelectItem key={wo.id} value={wo.id}>
-                                {wo.vehicle?.vehicle_number || 'Vehicle'} - {wo.service_type || 'General'} ({custName}){compName ? ` - ${compName}` : ''}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Select Work Order</label>
+                        <Select onValueChange={setSelectedWorkOrder} value={selectedWorkOrder}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a pending work order..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pendingWorkOrders.map((wo) => {
+                              const custName = wo.vehicle?.customer?.name || wo.customer?.name || 'Customer';
+                              const compName = wo.vehicle?.customer?.company_name || wo.customer?.company_name;
+                              return (
+                                <SelectItem key={wo.id} value={wo.id}>
+                                  {wo.vehicle?.vehicle_number || 'Vehicle'} - {wo.service_type || 'General'} ({custName}){compName ? ` - ${compName}` : ''}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                    <Button onClick={handleCreateInvoice} disabled={creatingInvoice || !selectedWorkOrder}>
-                      {creatingInvoice ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                      Create {creationType === 'invoice' ? 'Invoice' : 'Quotation'}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                      <Button onClick={handleCreateInvoice} disabled={creatingInvoice || !selectedWorkOrder}>
+                        {creatingInvoice ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Create {creationType === 'invoice' ? 'Invoice' : 'Quotation'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
 
             <FinanceTabsNav />
@@ -972,6 +1014,13 @@ export default function AdminInvoices() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Lump-Sum Customer Payment Modal */}
+          <RecordCustomerPaymentModal
+            open={isPaymentModalOpen}
+            onOpenChange={setIsPaymentModalOpen}
+            onSuccess={() => fetchData()}
+          />
         </main>
       </div>
     </div>

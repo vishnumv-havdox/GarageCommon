@@ -174,7 +174,7 @@ export function useExpenses() {
 
       if (!createdItem) {
         createdItem = {
-          id: `exp-${Date.now()}`,
+          id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `exp-${Date.now()}`,
           expense_number: generatedExpNumber,
           ...newExpensePayload,
         } as GarageExpense;
@@ -211,13 +211,18 @@ export function useExpenses() {
     const nowIso = newStatus ? new Date().toISOString() : null;
 
     try {
-      try {
-        await supabase
-          .from("garage_expenses" as any)
-          .update({ is_reimbursed: newStatus, reimbursed_at: nowIso })
-          .eq("id", id);
-      } catch (e) {
-        // Ignore
+      if (!id.startsWith("init-exp-")) {
+        try {
+          const { error } = await supabase
+            .from("garage_expenses" as any)
+            .update({ is_reimbursed: newStatus, reimbursed_at: nowIso })
+            .eq("id", id);
+          if (error && error.code !== "22P02") {
+            console.warn("Could not sync reimbursement to Supabase:", error);
+          }
+        } catch (e) {
+          // Ignore network / syntax errors
+        }
       }
 
       const updated = expenses.map((e) =>
@@ -246,13 +251,18 @@ export function useExpenses() {
   // Delete Expense
   const deleteExpense = async (id: string): Promise<boolean> => {
     try {
-      try {
-        await supabase
-          .from("garage_expenses" as any)
-          .delete()
-          .eq("id", id);
-      } catch (e) {
-        // Ignore
+      if (!id.startsWith("init-exp-")) {
+        try {
+          const { error } = await supabase
+            .from("garage_expenses" as any)
+            .delete()
+            .eq("id", id);
+          if (error && error.code !== "22P02") {
+            console.warn("Could not delete expense from Supabase:", error);
+          }
+        } catch (e) {
+          // Ignore network / syntax errors
+        }
       }
 
       const updated = expenses.filter((e) => e.id !== id);
@@ -277,13 +287,18 @@ export function useExpenses() {
   // Update Expense
   const updateExpense = async (id: string, formData: Partial<ExpenseFormData>): Promise<boolean> => {
     try {
-      try {
-        await supabase
-          .from("garage_expenses" as any)
-          .update(formData)
-          .eq("id", id);
-      } catch (e) {
-        // Ignore
+      if (!id.startsWith("init-exp-")) {
+        try {
+          const { error } = await supabase
+            .from("garage_expenses" as any)
+            .update(formData)
+            .eq("id", id);
+          if (error && error.code !== "22P02") {
+            console.warn("Could not update expense in Supabase:", error);
+          }
+        } catch (e) {
+          // Ignore network / syntax errors
+        }
       }
 
       const updated = expenses.map((item) =>

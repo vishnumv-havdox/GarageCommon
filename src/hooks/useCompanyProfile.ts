@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { initTheme } from "@/utils/themeManager";
+import { BillingTaxSettings, getBillingSettings } from "@/utils/billingSettings";
 
 export interface CompanyProfile {
   id?: string;
@@ -13,6 +14,7 @@ export interface CompanyProfile {
   gst_number?: string;
   bank_details?: any;
   theme_settings?: any;
+  billing_settings?: BillingTaxSettings;
   payment_qr_code_url?: string;
   created_at?: string;
   updated_at?: string;
@@ -30,6 +32,11 @@ const getStoredProfile = (): CompanyProfile | null => {
     if (parsed) {
       const theme = parsed.theme_settings || parsed.bank_details?.theme_settings;
       if (theme) initTheme(theme);
+      
+      const billing = parsed.billing_settings || parsed.bank_details?.billing_settings;
+      if (billing) {
+        localStorage.setItem("driveflow_billing_settings", JSON.stringify(billing));
+      }
     }
     return parsed;
   } catch {
@@ -42,6 +49,10 @@ const storeProfile = (profile: CompanyProfile | null) => {
   try {
     if (profile) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+      const billing = (profile as any)?.billing_settings || (profile as any)?.bank_details?.billing_settings;
+      if (billing) {
+        localStorage.setItem("driveflow_billing_settings", JSON.stringify(billing));
+      }
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }

@@ -10,13 +10,14 @@ import {
     QrCode, ScanLine, LogOut, Package, ClipboardList,
     Search, CheckCircle2, AlertTriangle, ArrowLeft, Loader2,
     Droplet, Zap, Wrench, Car, Settings, Activity, ShieldCheck,
-    Sparkles, Check, X, Keyboard, ChevronRight
+    Sparkles, Check, X, Keyboard, ChevronRight, RefreshCw, Phone, User as UserIcon
 } from "lucide-react";
 import { Html5QrcodeScanner } from "html5-qrcode";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { BrandFooter } from "@/components/brand/BrandFooter";
 import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
+import { useRealtimeSync, broadcastDataUpdate } from "@/utils/realtimeSync";
 
 export default function InventoryRoom() {
     const { user, signOut } = useAuth();
@@ -46,8 +47,43 @@ export default function InventoryRoom() {
         };
     }, []);
 
-    const fetchApprovedWorkOrders = async () => {
-        setLoading(true);
+    // Realtime synchronization across work orders, part requests, and inventory
+    useRealtimeSync(["part_requests", "work_orders", "inventory"], () => {
+        fetchApprovedWorkOrders(true);
+        if (selectedWO?.id) {
+            fetchApprovedParts(selectedWO.id);
+        }
+    });
+
+    // Helper functions for synchronized vehicle and customer display
+    const getVehicleDisplay = (wo: any) => {
+        const v = wo?.vehicle;
+        if (!v) return { plate: "No Vehicle", title: "General Service", details: "" };
+        const plate = v.vehicle_number || v.vehicle_no || "No Plate";
+        const modelName = v.vehicle_models?.name || v.model;
+        const makeName = v.vehicle_models?.vehicle_manufacturers?.name;
+        const title = [makeName, modelName].filter(Boolean).join(" ") || v.vehicle_type || "Vehicle";
+        const details = [v.year, v.color].filter(Boolean).join(" • ");
+        return { plate, title, details };
+    };
+
+    const getCustomerDisplay = (wo: any) => {
+        const cust = wo?.vehicle?.customers;
+        const contact = wo?.contact;
+        const driver = wo?.driver;
+
+        const company = cust?.company_name?.trim();
+        const customerName = cust?.name?.trim();
+        const displayName = company
+            ? `${company}${customerName && customerName.toLowerCase() !== company.toLowerCase() ? ` (${customerName})` : ''}`
+            : (customerName || contact?.name || driver?.name || "Walk-in Customer");
+
+        const phone = cust?.phone || contact?.phone || driver?.contact_number || "";
+        return { displayName, phone, email: cust?.email || "" };
+    };
+
+    const fetchApprovedWorkOrders = async (isSilent = false) => {
+        if (!isSilent) setLoading(true);
         try {
             // Get WOs that have approved part requests which are not yet fully issued
             const { data, error } = await supabase
@@ -57,12 +93,35 @@ export default function InventoryRoom() {
                   service_type, 
                   status,
                   vehicle:vehicles(
+                    id,
                     vehicle_number,
+                    vehicle_no,
                     model,
-                    customers(
+                    vehicle_type,
+                    year,
+                    color,
+                    vehicle_models(
+                      id,
                       name,
-                      company_name
+                      vehicle_manufacturers(id, name)
+                    ),
+                    customers(
+                      id,
+                      name,
+                      company_name,
+                      phone,
+                      email
                     )
+                  ),
+                  driver:drivers(
+                    id,
+                    name,
+                    contact_number
+                  ),
+                  contact:customer_contacts(
+                    id,
+                    name,
+                    phone
                   ),
                   part_requests!inner(*)
                 `)
@@ -80,7 +139,7 @@ export default function InventoryRoom() {
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         } finally {
-            setLoading(false);
+            if (!isSilent) setLoading(false);
         }
     };
 
@@ -215,7 +274,9 @@ export default function InventoryRoom() {
                 }, ...prev]);
 
                 lastScannedTimeRef.current[decodedText] = Date.now();
-                fetchApprovedParts(selectedWO.id);
+                await fetchApprovedParts(selectedWO.id);
+                fetchApprovedWorkOrders(true);
+                broadcastDataUpdate('all');
                 return;
             }
 
@@ -286,7 +347,9 @@ export default function InventoryRoom() {
                 description: `${request.inventory.item_name} has been added to the Work Order.`
             });
 
-            fetchApprovedParts(selectedWO.id);
+            await fetchApprovedParts(selectedWO.id);
+            fetchApprovedWorkOrders(true);
+            broadcastDataUpdate('all');
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         } finally {
@@ -339,21 +402,43 @@ export default function InventoryRoom() {
                             </div>
                         </div>
 
-                        <Button 
-                            variant="outline" 
-                            size="icon" 
-                            className="rounded-xl border-border/60 hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-all duration-200"
-                            onClick={() => {
-                                if (user?.role === 'admin') {
-                                    navigate("/admin/inventory");
-                                } else {
-                                    signOut().then(() => window.location.href = "/inventory/login");
-                                }
-                            }}
-                            title={user?.role === 'admin' ? "Return to Inventory Dashboard" : "Sign Out"}
-                        >
-                            {user?.role === 'admin' ? <LogOut className="h-5 w-5 rotate-180" /> : <LogOut className="h-5 w-5" />}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button 
+                                variant="outline" 
+                                size="icon" 
+                                className="rounded-xl border-border/60 hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-all duration-200"
+                                onClick={async () => {
+                                    setLoading(true);
+                                    try {
+                                        await fetchApprovedWorkOrders();
+                                        toast({ title: "Refreshed", description: "Active work orders updated." });
+                                        broadcastDataUpdate('work_orders');
+                                    } finally {
+                                        setLoading(false);
+                                    }
+                                }}
+                                disabled={loading}
+                                title="Refresh Active Work Orders"
+                            >
+                                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                            </Button>
+
+                            <Button 
+                                variant="outline" 
+                                size="icon" 
+                                className="rounded-xl border-border/60 hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-all duration-200"
+                                onClick={() => {
+                                    if (user?.role === 'admin') {
+                                        navigate("/admin/inventory");
+                                    } else {
+                                        signOut().then(() => window.location.href = "/inventory/login");
+                                    }
+                                }}
+                                title={user?.role === 'admin' ? "Return to Inventory Dashboard" : "Sign Out"}
+                            >
+                                {user?.role === 'admin' ? <LogOut className="h-5 w-5 rotate-180" /> : <LogOut className="h-5 w-5" />}
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Search & Filter bar */}
@@ -362,7 +447,7 @@ export default function InventoryRoom() {
                             <div className="relative">
                                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/70" />
                                 <Input
-                                    placeholder="Search by Vehicle Number plate or Service Type..."
+                                    placeholder="Search by Vehicle Plate, Model, Customer, Phone, or Service..."
                                     className="pl-11 h-12 bg-muted/40 border-border/50 focus-visible:ring-primary rounded-xl text-md"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -378,13 +463,16 @@ export default function InventoryRoom() {
                             ) : (
                                 <div className="p-4 md:p-6">
                                     {workOrders.filter(wo => {
-                                        const search = searchTerm.toLowerCase();
+                                        const search = searchTerm.toLowerCase().trim();
+                                        if (!search) return true;
+                                        const { plate, title } = getVehicleDisplay(wo);
+                                        const { displayName, phone } = getCustomerDisplay(wo);
                                         return (
-                                            wo.vehicle?.vehicle_number?.toLowerCase().includes(search) ||
-                                            (wo.vehicle?.model && wo.vehicle.model.toLowerCase().includes(search)) ||
-                                            (wo.vehicle?.customers?.company_name && wo.vehicle.customers.company_name.toLowerCase().includes(search)) ||
-                                            (wo.vehicle?.customers?.name && wo.vehicle.customers.name.toLowerCase().includes(search)) ||
-                                            wo.service_type?.toLowerCase().includes(search)
+                                            plate.toLowerCase().includes(search) ||
+                                            title.toLowerCase().includes(search) ||
+                                            displayName.toLowerCase().includes(search) ||
+                                            phone.toLowerCase().includes(search) ||
+                                            (wo.service_type && wo.service_type.toLowerCase().includes(search))
                                         );
                                     }).length === 0 ? (
                                         <div className="py-16 text-center border-2 border-dashed border-border/60 rounded-xl bg-muted/10">
@@ -397,18 +485,22 @@ export default function InventoryRoom() {
                                     ) : (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                                             {workOrders.filter(wo => {
-                                                const search = searchTerm.toLowerCase();
+                                                const search = searchTerm.toLowerCase().trim();
+                                                if (!search) return true;
+                                                const { plate, title } = getVehicleDisplay(wo);
+                                                const { displayName, phone } = getCustomerDisplay(wo);
                                                 return (
-                                                    wo.vehicle?.vehicle_number?.toLowerCase().includes(search) ||
-                                                    (wo.vehicle?.model && wo.vehicle.model.toLowerCase().includes(search)) ||
-                                                    (wo.vehicle?.customers?.company_name && wo.vehicle.customers.company_name.toLowerCase().includes(search)) ||
-                                                    (wo.vehicle?.customers?.name && wo.vehicle.customers.name.toLowerCase().includes(search)) ||
-                                                    wo.service_type?.toLowerCase().includes(search)
+                                                    plate.toLowerCase().includes(search) ||
+                                                    title.toLowerCase().includes(search) ||
+                                                    displayName.toLowerCase().includes(search) ||
+                                                    phone.toLowerCase().includes(search) ||
+                                                    (wo.service_type && wo.service_type.toLowerCase().includes(search))
                                                 );
                                             }).map((wo) => {
                                                 const ServiceIcon = getServiceIcon(wo.service_type);
                                                 const approvedCount = wo.part_requests.filter((p: any) => p.status === 'approved').length;
-                                                const ownerName = wo.vehicle?.customers?.company_name || wo.vehicle?.customers?.name;
+                                                const { plate, title } = getVehicleDisplay(wo);
+                                                const { displayName, phone } = getCustomerDisplay(wo);
                                                 
                                                 // Icon color based on service type
                                                 let iconBg = "bg-blue-500/10 text-blue-500 border-blue-500/20";
@@ -424,7 +516,7 @@ export default function InventoryRoom() {
                                                     <button
                                                         key={wo.id}
                                                         onClick={() => selectWorkOrder(wo)}
-                                                        className="group relative flex flex-col justify-between p-5 bg-card/40 border border-border/60 hover:border-primary/50 hover:bg-card rounded-2xl transition-all duration-300 hover:shadow-lg text-left h-44 cursor-pointer overflow-hidden"
+                                                        className="group relative flex flex-col justify-between p-5 bg-card/40 border border-border/60 hover:border-primary/50 hover:bg-card rounded-2xl transition-all duration-300 hover:shadow-lg text-left h-48 cursor-pointer overflow-hidden"
                                                     >
                                                         {/* Top row */}
                                                         <div className="flex items-start justify-between w-full gap-3">
@@ -434,26 +526,29 @@ export default function InventoryRoom() {
                                                             {/* Vehicle License Plate Visual */}
                                                             <div className="px-3 py-1 bg-secondary border border-border/80 text-foreground font-mono text-xs font-bold rounded shadow-sm uppercase tracking-wider relative flex items-center gap-1.5">
                                                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                                {wo.vehicle?.vehicle_number}
+                                                                {plate}
                                                             </div>
                                                         </div>
 
                                                         {/* Middle detail */}
-                                                        <div className="space-y-0.5">
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Vehicle</span>
-                                                                {ownerName && (
-                                                                    <span className="text-[9px] font-black text-primary bg-primary/10 px-1.5 py-0.25 rounded border border-primary/20 uppercase max-w-[120px] truncate">
-                                                                        {ownerName}
+                                                        <div className="space-y-1">
+                                                            <div className="flex justify-between items-center gap-2">
+                                                                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Customer</span>
+                                                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20 uppercase truncate max-w-[150px]">
+                                                                    {displayName}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-sm font-bold truncate text-foreground/90 uppercase">
+                                                                {title}
+                                                            </p>
+                                                            <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold">
+                                                                <span className="truncate uppercase">{wo.service_type}</span>
+                                                                {phone && (
+                                                                    <span className="text-[11px] font-mono text-muted-foreground/80 flex items-center gap-1">
+                                                                        <Phone className="h-3 w-3" /> {phone}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <p className="text-sm font-bold truncate text-foreground/90 uppercase">
-                                                                {wo.vehicle?.model || "Unknown Vehicle"}
-                                                            </p>
-                                                            <p className="text-xs text-muted-foreground truncate uppercase font-semibold">
-                                                                {wo.service_type}
-                                                            </p>
                                                         </div>
 
                                                         {/* Bottom status */}
@@ -544,30 +639,57 @@ export default function InventoryRoom() {
                         <div className="h-6 w-px bg-border hidden sm:block" />
                         <div>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-xl font-extrabold tracking-tight uppercase">{selectedWO.vehicle?.vehicle_number}</h2>
+                                <h2 className="text-xl font-extrabold tracking-tight uppercase">{getVehicleDisplay(selectedWO).plate}</h2>
                                 <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">Active Console</Badge>
                             </div>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5 font-semibold">
-                                <span className="text-foreground uppercase">{selectedWO.vehicle?.model || "Unknown Model"}</span>
+                                <span className="text-foreground uppercase font-bold">{getVehicleDisplay(selectedWO).title}</span>
                                 <span className="h-2.5 w-px bg-border" />
-                                {(selectedWO.vehicle?.customers?.company_name || selectedWO.vehicle?.customers?.name) && (
+                                <span className="text-primary uppercase font-bold flex items-center gap-1">
+                                    <UserIcon className="h-3 w-3" />
+                                    {getCustomerDisplay(selectedWO).displayName}
+                                </span>
+                                {getCustomerDisplay(selectedWO).phone && (
                                     <>
-                                        <span className="text-primary uppercase">
-                                            {selectedWO.vehicle.customers.company_name || selectedWO.vehicle.customers.name}
-                                        </span>
                                         <span className="h-2.5 w-px bg-border" />
+                                        <span className="font-mono text-muted-foreground flex items-center gap-1">
+                                            <Phone className="h-3 w-3" /> {getCustomerDisplay(selectedWO).phone}
+                                        </span>
                                     </>
                                 )}
+                                <span className="h-2.5 w-px bg-border" />
                                 <span className="uppercase tracking-wider">{selectedWO.service_type}</span>
                             </div>
                         </div>
                     </div>
                     
-                    {/* Compact progress indicator */}
-                    <div className="flex items-center gap-3 bg-background/50 border border-border/60 py-1.5 px-3.5 rounded-xl text-sm self-start sm:self-auto">
-                        <Activity className="h-4 w-4 text-primary animate-pulse" />
-                        <span className="font-bold text-foreground">{completionPercent}%</span>
-                        <span className="text-muted-foreground text-xs">Issued ({totalIssued}/{totalApproved})</span>
+                    {/* Compact progress indicator & Refresh */}
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="rounded-xl border-border/60 hover:bg-muted/80 text-muted-foreground hover:text-foreground h-9 w-9"
+                            onClick={async () => {
+                                setLoading(true);
+                                try {
+                                    await fetchApprovedParts(selectedWO.id);
+                                    await fetchApprovedWorkOrders(true);
+                                    toast({ title: "Refreshed", description: "Approved parts synchronized." });
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }}
+                            disabled={loading}
+                            title="Refresh Approved Parts"
+                        >
+                            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                        </Button>
+
+                        <div className="flex items-center gap-3 bg-background/50 border border-border/60 py-1.5 px-3.5 rounded-xl text-sm">
+                            <Activity className="h-4 w-4 text-primary animate-pulse" />
+                            <span className="font-bold text-foreground">{completionPercent}%</span>
+                            <span className="text-muted-foreground text-xs">Issued ({totalIssued}/{totalApproved})</span>
+                        </div>
                     </div>
                 </div>
 

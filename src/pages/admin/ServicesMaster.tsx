@@ -65,8 +65,9 @@ import {
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { ServicesTabsNav } from "@/components/layout/ServicesTabsNav";
 import { SearchInput } from "@/components/shared/SearchInput";
-import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { useRealtimeSync, broadcastDataUpdate } from "@/utils/realtimeSync";
 
 import {
     Tabs,
@@ -250,6 +251,12 @@ export default function ServicesMaster() {
         fetchCategories();
         fetchServiceCategories();
     }, []);
+
+    useRealtimeSync(["service_types", "task_templates", "service_categories"], () => {
+        fetchServices();
+        fetchCategories();
+        fetchServiceCategories();
+    });
 
     const fetchServiceCategories = async () => {
         const { data } = await supabase.from('service_categories').select('*').order('name');
@@ -732,8 +739,27 @@ export default function ServicesMaster() {
                         <p className="text-muted-foreground">Manage service types, pricing, and tasks centrally</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="icon" onClick={() => fetchServices()} disabled={loading} title="Refresh Services">
-                            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            onClick={async () => {
+                                setLoading(true);
+                                try {
+                                    await Promise.all([
+                                        fetchServices(),
+                                        fetchCategories(),
+                                        fetchServiceCategories()
+                                    ]);
+                                    toast({ title: "Refreshed", description: "Services master data synchronized." });
+                                    broadcastDataUpdate("services");
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }} 
+                            disabled={loading} 
+                            title="Refresh Services"
+                        >
+                            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
                         </Button>
                         <Button onClick={() => handleOpenDialog()}>
                             <Plus className="h-4 w-4 mr-2" /> Add New Service

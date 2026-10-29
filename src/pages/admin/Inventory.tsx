@@ -18,6 +18,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { useRealtimeSync, broadcastDataUpdate } from "@/utils/realtimeSync";
 
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { InventoryForm } from "@/components/inventory/InventoryForm";
@@ -183,6 +184,32 @@ export default function AdminInventory() {
       setActiveTab(tab);
     }
   }, [searchParams]);
+
+  // Realtime synchronization across inventory, part requests, and returns
+  useRealtimeSync(["inventory", "part_requests", "inventory_returns"], () => {
+    fetchInventory();
+    fetchHistory();
+    fetchPendingReturns();
+    fetchActiveWorkOrdersAndEmployees();
+  });
+
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchInventory(),
+        fetchHistory(),
+        fetchPendingReturns(),
+        fetchActiveWorkOrdersAndEmployees()
+      ]);
+      toast({ title: "Refreshed", description: "Inventory data synchronized successfully." });
+      broadcastDataUpdate("inventory");
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Refresh Failed", description: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchActiveWorkOrdersAndEmployees = async () => {
     try {
@@ -1047,13 +1074,14 @@ export default function AdminInventory() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => {
-              fetchInventory();
-              fetchHistory();
-              fetchPendingReturns();
-              toast({ title: "Refreshing", description: "Updating inventory data..." });
-            }} title="Refresh Data">
-              <RefreshCw className="h-4 w-4" />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleRefresh}
+              disabled={loading}
+              title="Refresh Inventory Data"
+            >
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             </Button>
             <Button variant="outline" onClick={() => navigate("/inventory/room")}>
               <ScanLine className="h-4 w-4 mr-2" /> Scan & Issue Parts

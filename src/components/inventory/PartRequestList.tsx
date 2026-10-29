@@ -11,6 +11,7 @@ import {
     Package, Plus, Search, CheckCircle2, Clock, AlertCircle,
     Triangle, Trash2, QrCode, ClipboardList, ArrowLeftRight, ChevronRight
 } from "lucide-react";
+import { useRealtimeSync, broadcastDataUpdate } from "@/utils/realtimeSync";
 import {
     Dialog,
     DialogContent,
@@ -95,6 +96,10 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
             fetchInventoryAndEmployees();
         }
     }, [workOrderId, isRequestDialogOpen, user?.id]);
+
+    useRealtimeSync(["part_requests", "inventory_returns"], () => {
+        fetchRequests();
+    });
 
     const fetchCurrentEmployee = async () => {
         if (!user) return;
@@ -236,6 +241,27 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
         }
     };
 
+    const handleDirectIssue = async (req: PartRequest) => {
+        try {
+            const employeeId = req.requested_by || currentEmployeeId || selectedEmployeeId;
+            const remainingToIssue = (req.approved_qty || req.requested_qty) - (req.issued_qty || 0);
+            if (remainingToIssue <= 0) return;
+
+            const { error: issueError } = await supabase.rpc("issue_part_request", {
+                _request_id: req.id,
+                _issued_qty: remainingToIssue,
+                _employee_id: employeeId
+            });
+
+            if (issueError) throw issueError;
+            toast({ title: "Part Issued", description: `Successfully issued ${remainingToIssue} units.` });
+            fetchRequests();
+            broadcastDataUpdate("all");
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Issue Failed", description: error.message });
+        }
+    };
+
     const handleCreateRequest = async () => {
         const finalRequesterId = isAdmin ? selectedEmployeeId : currentEmployeeId;
 
@@ -245,55 +271,54 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
         }
 
         try {
-            const initialStatus = isAdmin
-                ? (isIssueImmediately ? "issued" : "approved")
-                : "pending";
-
-            // If issuing immediately, we might need to handle the quantity deduction if the trigger/function doesn't do it automatically for 'issued' inserts.
-            // Assuming the simple insert works and triggers handle it, or we rely on the standard flow.
-            // *Standard flow usually uses RPC for issuing to ensure stock checks.*
-            // Ideally, for "Issued", we might want to call `issue_part_request` immediately after insert, or insert with 'issued' if DB handles it.
-            // Let's assume for now we insert as 'approved' then call issue if needed, OR just insert as 'approved' and let them click issue?
-            // User asked to "Assign", so 'approved' is the safe default for assignment. 
-            // If 'Issue Immediately' is checked, we should probably do a 2-step or RPC.
-            // Simplest path: Insert as 'approved' (Assigned). If issue immediately, call the issue RPC.
-
-            // Wait, inserting as 'issued' directly might bypass checks. safely: insert as 'pending' then approve?
-            // Or insert as 'approved' directly.
-
-            let status = "pending";
-            if (isAdmin) status = "approved"; // Default to approved (assigned) for admins
-
-            const { data: newReq, error } = await (supabase.from("part_requests") as any).insert([{
+            // 1. Insert new part request as pending
+            const { data: newReq, error: insertError } = await (supabase.from("part_requests") as any).insert([{
                 work_order_id: workOrderId,
                 item_id: selectedItemId,
                 requested_by: finalRequesterId,
                 requested_qty: qty,
-                status: status,
-                approved_qty: isAdmin ? qty : 0, // Auto-approve qty if admin
-                approved_by: isAdmin ? currentEmployeeId : null
+                status: "pending"
             }]).select().single();
 
-            if (error) throw error;
+            if (insertError) throw insertError;
 
-            if (isAdmin && isIssueImmediately && newReq) {
-                // Call issue RPC
-                const { error: issueError } = await supabase.rpc("issue_part_request", {
+            // 2. If Admin, approve via RPC so inventory stock is properly reserved (available_qty -> reserved_qty)
+            if (isAdmin && newReq) {
+                const adminId = currentEmployeeId || finalRequesterId;
+                const { error: approveError } = await (supabase.rpc as any)("approve_part_request", {
                     _request_id: newReq.id,
-                    _issued_qty: qty,
-                    _employee_id: currentEmployeeId
+                    _approved_qty: qty,
+                    _admin_id: adminId
                 });
-                if (issueError) {
-                    toast({ variant: "destructive", title: "Issue Failed", description: "Part assigned but failed to issue: " + issueError.message });
+
+                if (approveError) {
+                    await (supabase.from("part_requests") as any).delete().eq("id", newReq.id);
+                    throw new Error("Failed to reserve part stock: " + approveError.message);
+                }
+
+                // 3. If Issue Immediately was checked, issue the reserved stock
+                if (isIssueImmediately) {
+                    const { error: issueError } = await supabase.rpc("issue_part_request", {
+                        _request_id: newReq.id,
+                        _issued_qty: qty,
+                        _employee_id: finalRequesterId || adminId
+                    });
+
+                    if (issueError) {
+                        toast({ variant: "destructive", title: "Issue Failed", description: "Part reserved, but issue failed: " + issueError.message });
+                    } else {
+                        toast({ title: "Success", description: "Part assigned and issued successfully" });
+                    }
                 } else {
-                    toast({ title: "Success", description: "Part assigned and issued" });
+                    toast({ title: "Success", description: "Part assigned and stock reserved" });
                 }
             } else {
-                toast({ title: "Success", description: isAdmin ? "Part assigned (Approved)" : "Part request submitted" });
+                toast({ title: "Success", description: "Part request submitted for approval" });
             }
 
             setIsRequestDialogOpen(false);
             fetchRequests();
+            broadcastDataUpdate("all");
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         }
@@ -330,6 +355,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
             setReturnReason("");
             setReturnQty(1);
             fetchRequests();
+            broadcastDataUpdate("all");
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         } finally {
@@ -361,6 +387,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
             if (rpcError) throw rpcError;
             toast({ title: "Approved", description: "Request approved and stock reserved" });
             fetchRequests();
+            broadcastDataUpdate("all");
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         }
@@ -385,6 +412,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
             if (rpcError) throw rpcError;
             toast({ title: "Updated", description: "Part request has been rejected/cancelled and stock unreserved if applicable." });
             fetchRequests();
+            broadcastDataUpdate("all");
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         }
@@ -407,6 +435,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
             if (rpcError) throw rpcError;
             toast({ title: "Stock Released", description: "Unissued reserved units have been returned to available stock." });
             fetchRequests();
+            broadcastDataUpdate("all");
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message });
         }
@@ -610,7 +639,15 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                                     )}
                                                     {isAdmin && req.status === 'approved' && (
                                                         <div className="flex items-center gap-2">
-                                                            <div className="text-xs italic text-muted-foreground">Awaiting Scan</div>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="text-xs h-7 px-2 font-medium border-primary/30 text-primary hover:bg-primary/5"
+                                                                onClick={() => handleDirectIssue(req)}
+                                                            >
+                                                                Issue Part
+                                                            </Button>
+                                                            <div className="text-xs italic text-muted-foreground hidden sm:inline">or scan</div>
                                                             <Button
                                                                 size="sm"
                                                                 variant="ghost"

@@ -46,6 +46,7 @@ import { useRequests } from "@/contexts/RequestsContext";
 import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 
 import { cn } from "@/lib/utils";
+import { useRealtimeSync, broadcastDataUpdate } from "@/utils/realtimeSync";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -180,6 +181,7 @@ export default function AdminWorkOrders() {
   // State
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'overdue' | 'today' | 'week' | 'none' | 'completed'>('all');
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -223,14 +225,19 @@ export default function AdminWorkOrders() {
 
   useEffect(() => { fetchWorkOrders(); }, []);
 
+  // Realtime synchronization on work_orders and part_requests
+  useRealtimeSync(["work_orders", "part_requests"], () => {
+    fetchWorkOrders(true);
+  });
+
   const [activeTab, setActiveTab] = useState<"in_progress" | "ready" | "completed" | "all">("in_progress");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
     key: "created_at",
     direction: "desc",
   });
 
-  const fetchWorkOrders = async () => {
-    setLoading(true);
+  const fetchWorkOrders = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const { data, error } = await supabase
         .from("work_orders")
@@ -293,7 +300,9 @@ export default function AdminWorkOrders() {
     } catch (error: any) {
       console.error("Fetch error:", error);
       toast({ variant: "destructive", title: "Error", description: error.message });
-    } finally { setLoading(false); }
+    } finally {
+      if (!isSilent) setLoading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -303,6 +312,7 @@ export default function AdminWorkOrders() {
 
       toast({ title: "Deleted", description: "Work order deleted successfully" });
       fetchWorkOrders();
+      broadcastDataUpdate("work_orders");
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     }
@@ -515,8 +525,25 @@ export default function AdminWorkOrders() {
               <p className="text-muted-foreground">Manage service work orders and approvals</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="icon" onClick={fetchWorkOrders} title="Refresh List">
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={async () => {
+                  try {
+                    setIsRefreshing(true);
+                    await fetchWorkOrders(true);
+                    toast({ title: "Refreshed", description: "Work orders list updated." });
+                    broadcastDataUpdate("work_orders");
+                  } catch (e: any) {
+                    toast({ variant: "destructive", title: "Error", description: e.message });
+                  } finally {
+                    setIsRefreshing(false);
+                  }
+                }}
+                disabled={isRefreshing}
+                title="Refresh Work Orders"
+              >
+                <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
               </Button>
               <Button onClick={() => {
                 sessionStorage.removeItem('wo_form_draft_new');

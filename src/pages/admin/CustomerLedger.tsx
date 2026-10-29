@@ -32,6 +32,7 @@ import {
 import { HavDoxLoader } from "@/components/brand/HavDoxLoader";
 import { generateLedgerPDF } from "@/utils/pdfGenerator";
 import { useToast } from "@/hooks/use-toast";
+import { RecordCustomerPaymentModal } from "@/components/invoices/RecordCustomerPaymentModal";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -60,6 +61,7 @@ export default function CustomerLedger() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
+    const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
     const [exportOptions, setExportOptions] = useState({
         status: 'all', // all, paid, unpaid, finalized
         includeDeductions: true
@@ -302,6 +304,12 @@ export default function CustomerLedger() {
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 no-print">
+                        <Button 
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 h-9 font-semibold text-xs"
+                            onClick={() => setRecordPaymentOpen(true)}
+                        >
+                            <IndianRupee className="h-4 w-4" /> Record Payment
+                        </Button>
                         <Button variant="outline" onClick={() => window.print()}>
                             <Printer className="mr-2 h-4 w-4" /> Print
                         </Button>
@@ -465,6 +473,15 @@ export default function CustomerLedger() {
                         </Table>
                     </CardContent>
                 </Card>
+
+                {/* Lump-Sum Customer Payment Modal */}
+                <RecordCustomerPaymentModal
+                    open={recordPaymentOpen}
+                    onOpenChange={setRecordPaymentOpen}
+                    customerId={id}
+                    customerName={customer?.name}
+                    onSuccess={() => fetchCustomerData()}
+                />
             </main>
         </div>
     );

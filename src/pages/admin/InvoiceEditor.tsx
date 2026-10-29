@@ -43,8 +43,12 @@ import {
     ChevronUp,
     ChevronDown,
     CheckCircle2,
-    XCircle
+    XCircle,
+    Wrench,
+    Package
 } from "lucide-react";
+import { BillingTaxSettings, getBillingSettings, getItemGstRate } from "@/utils/billingSettings";
+import { subscribeToDataUpdates, broadcastDataUpdate } from "@/utils/realtimeSync";
 import {
     DropdownMenuContent,
     DropdownMenuItem,
@@ -456,7 +460,8 @@ export default function InvoiceEditor() {
     const [invoice, setInvoice] = useState<any>(null);
     const [items, setItems] = useState<InvoiceItem[]>([]);
     const [payments, setPayments] = useState<any[]>([]);
-    const [taxRate, setTaxRate] = useState(18); // Default 18% GST (should be configurable)
+    const [taxSettings, setTaxSettings] = useState<BillingTaxSettings>(() => getBillingSettings());
+    const [taxRate, setTaxRate] = useState(18); // Single GST rate fallback
 
     // Work Order Intake / Sync Data
     const [woServices, setWoServices] = useState<any[]>([]);
@@ -469,30 +474,44 @@ export default function InvoiceEditor() {
     const [inventoryItems, setInventoryItems] = useState<any[]>([]);
 
     // Derived Totals (Memoized for high performance and to prevent redundant renders)
-    const { subtotal, taxAmount, grandTotal } = useMemo(() => {
+    const { subtotal, serviceTaxable, spareTaxable, serviceTax, spareTax, taxAmount, grandTotal } = useMemo(() => {
         let sub = 0;
-        let cgst_total = 0;
-        let sgst_total = 0;
+        let servTaxable = 0;
+        let spTaxable = 0;
+        let servTax = 0;
+        let spTax = 0;
 
         items.forEach(item => {
             const taxable = (item.quantity || 0) * (item.unit_price || 0);
-            const cgst_rate = item.cgst_rate ?? (taxRate / 2);
-            const sgst_rate = item.sgst_rate ?? (taxRate / 2);
+            const defaultItemRate = getItemGstRate(item.type || 'service', taxSettings);
+            const gst_rate = item.gst_rate ?? (taxSettings.enable_dual_gst ? defaultItemRate : taxRate);
+            const cgst_rate = item.cgst_rate ?? (gst_rate / 2);
+            const sgst_rate = item.sgst_rate ?? (gst_rate / 2);
 
             const cgst = taxable * (cgst_rate / 100);
             const sgst = taxable * (sgst_rate / 100);
+            const itemTax = cgst + sgst;
 
             sub += taxable;
-            cgst_total += cgst;
-            sgst_total += sgst;
+            if (item.type === 'part') {
+                spTaxable += taxable;
+                spTax += itemTax;
+            } else {
+                servTaxable += taxable;
+                servTax += itemTax;
+            }
         });
 
         return {
             subtotal: sub,
-            taxAmount: cgst_total + sgst_total,
-            grandTotal: sub + cgst_total + sgst_total
+            serviceTaxable: servTaxable,
+            spareTaxable: spTaxable,
+            serviceTax: servTax,
+            spareTax: spTax,
+            taxAmount: servTax + spTax,
+            grandTotal: sub + servTax + spTax
         };
-    }, [items, taxRate]);
+    }, [items, taxRate, taxSettings]);
     const [companyProfile, setCompanyProfile] = useState<any>(null);
     const [invoiceSettings, setInvoiceSettings] = useState<any>(null);
 
@@ -504,14 +523,29 @@ export default function InvoiceEditor() {
         const stored = localStorage.getItem('invoice_show_logo');
         return stored === null ? true : stored === 'true';
     });
+    const [billViewMode, setBillViewMode] = useState<'both' | 'service' | 'spare' | 'combined'>(() => {
+        const s = getBillingSettings();
+        return s.enable_dual_gst ? 'both' : 'combined';
+    });
+    const [isSyncingGst, setIsSyncingGst] = useState<boolean>(false);
+
+    // Keep bill view mode in sync with dual GST settings
+    useEffect(() => {
+        if (!taxSettings.enable_dual_gst) {
+            setBillViewMode('combined');
+        } else {
+            setBillViewMode(prev => prev === 'combined' ? 'both' : prev);
+        }
+    }, [taxSettings.enable_dual_gst]);
+
     const [customTerms, setCustomTerms] = useState<string>(() => {
-        return localStorage.getItem('invoice_custom_terms') || '';
+        return (localStorage.getItem('invoice_custom_terms') || '').replace(/\\n/g, '\n');
     });
     const [customFooter, setCustomFooter] = useState<string>(() => {
         return localStorage.getItem('invoice_custom_footer') || '';
     });
     const [showDesignerPanel, setShowDesignerPanel] = useState<boolean>(false);
-    const [showLivePreview, setShowLivePreview] = useState<boolean>(false);
+    const [showLivePreview, setShowLivePreview] = useState<boolean>(true);
 
     // Quick Add Search States
     const [serviceQuickAddOpen, setServiceQuickAddOpen] = useState(false);
@@ -521,6 +555,7 @@ export default function InvoiceEditor() {
 
     const handleQuickAddService = (template: { name: string, category: string, price?: number, hsn_code?: string }) => {
         const price = template.price || 0;
+        const effectiveGst = taxSettings.enable_dual_gst ? taxSettings.service_gst_rate : taxRate;
         const newItem: InvoiceItem = {
             id: `temp-${Date.now()}-${Math.random()}`,
             description: template.name,
@@ -530,9 +565,9 @@ export default function InvoiceEditor() {
             type: 'service',
             category: template.category,
             hsn_code: template.hsn_code || "",
-            gst_rate: taxRate,
-            cgst_rate: taxRate / 2,
-            sgst_rate: taxRate / 2,
+            gst_rate: effectiveGst,
+            cgst_rate: effectiveGst / 2,
+            sgst_rate: effectiveGst / 2,
             cgst_amount: 0,
             sgst_amount: 0
         };
@@ -550,6 +585,7 @@ export default function InvoiceEditor() {
     const handleQuickAddPart = (part: { name: string, brand?: string, price?: number, hsn_code?: string }) => {
         const price = part.price || 0;
         const displayName = part.brand ? `[${part.brand}] ${part.name}` : part.name;
+        const effectiveGst = taxSettings.enable_dual_gst ? taxSettings.spare_gst_rate : taxRate;
         const newItem: InvoiceItem = {
             id: `temp-${Date.now()}-${Math.random()}`,
             description: displayName,
@@ -559,9 +595,9 @@ export default function InvoiceEditor() {
             type: 'part',
             category: 'Spare',
             hsn_code: part.hsn_code || "",
-            gst_rate: taxRate,
-            cgst_rate: taxRate / 2,
-            sgst_rate: taxRate / 2,
+            gst_rate: effectiveGst,
+            cgst_rate: effectiveGst / 2,
+            sgst_rate: effectiveGst / 2,
             cgst_amount: 0,
             sgst_amount: 0
         };
@@ -588,6 +624,9 @@ export default function InvoiceEditor() {
         }
 
         const newId = `temp-${Date.now()}-${Math.random()}`;
+        const effectiveGst = taxSettings.enable_dual_gst
+            ? (type === 'part' ? taxSettings.spare_gst_rate : taxSettings.service_gst_rate)
+            : taxRate;
         const newItem: InvoiceItem = {
             id: newId,
             description: "",
@@ -596,9 +635,9 @@ export default function InvoiceEditor() {
             total: 0,
             type: type,
             category: type === 'service' ? "General" : "Spare",
-            gst_rate: taxRate,
-            cgst_rate: taxRate / 2,
-            sgst_rate: taxRate / 2,
+            gst_rate: effectiveGst,
+            cgst_rate: effectiveGst / 2,
+            sgst_rate: effectiveGst / 2,
             cgst_amount: 0,
             sgst_amount: 0
         };
@@ -631,8 +670,9 @@ export default function InvoiceEditor() {
     };
 
     const handleCustomTermsChange = (val: string) => {
-        setCustomTerms(val);
-        localStorage.setItem('invoice_custom_terms', val);
+        const cleaned = val.replace(/\\n/g, '\n');
+        setCustomTerms(cleaned);
+        localStorage.setItem('invoice_custom_terms', cleaned);
     };
 
     const handleCustomFooterChange = (val: string) => {
@@ -664,6 +704,14 @@ export default function InvoiceEditor() {
         if (id) fetchInvoiceData();
         fetchCatalogs();
         fetchCompanyProfile();
+
+        // Subscribe to cross-tab & realtime updates
+        const unsub = subscribeToDataUpdates((entity) => {
+            if (entity === 'all' || entity === 'company_profile' || entity === 'invoices') {
+                fetchCompanyProfile();
+            }
+        });
+        return () => unsub();
     }, [id]);
 
     const printRef = React.useRef<HTMLDivElement>(null);
@@ -673,11 +721,42 @@ export default function InvoiceEditor() {
     });
 
     const fetchCompanyProfile = async () => {
-        const { data: profile } = await supabase.from('company_profiles').select('*').limit(1).maybeSingle();
-        setCompanyProfile(profile);
+        const { data: profile } = await supabase
+            .from('company_profiles')
+            .select('*')
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-        const { data: settings } = await supabase.from('document_settings').select('*').eq('doc_type', 'invoice').single();
-        setInvoiceSettings(settings);
+        setCompanyProfile(profile);
+        const settings = getBillingSettings(profile);
+        setTaxSettings(settings);
+        if (!settings.enable_dual_gst && settings.single_gst_rate) {
+            setTaxRate(settings.single_gst_rate);
+        }
+
+        const { data: docSettings } = await supabase.from('document_settings').select('*').eq('doc_type', 'invoice').maybeSingle();
+        if (docSettings) {
+            if (docSettings.terms_and_conditions) {
+                docSettings.terms_and_conditions = docSettings.terms_and_conditions.replace(/\\n/g, '\n');
+            }
+            setInvoiceSettings(docSettings);
+        }
+    };
+
+    const syncGstFromProfile = async () => {
+        setIsSyncingGst(true);
+        try {
+            await fetchCompanyProfile();
+            toast({
+                title: "GST Numbers Synchronized",
+                description: "Updated to latest GSTIN and rate configuration from Company Settings."
+            });
+        } catch (e: any) {
+            toast({ variant: "destructive", title: "Sync Error", description: e.message });
+        } finally {
+            setIsSyncingGst(false);
+        }
     };
 
 
@@ -750,12 +829,40 @@ export default function InvoiceEditor() {
                 .order('created_at', { ascending: true });
 
             if (itemsError) throw itemsError;
-            setItems(invItems || []);
+
+            // Recalculate item totals and tax amounts mathematically to eliminate historical drift
+            const currentBilling = getBillingSettings();
+            const recalculatedItems = (invItems || []).map((item: any) => {
+                const qty = Number(item.quantity) || 1;
+                const price = Number(item.unit_price) || 0;
+                const defaultRate = getItemGstRate(item.type || 'service', currentBilling);
+                const gst = Number(item.gst_rate ?? (currentBilling.enable_dual_gst ? defaultRate : 18));
+                const cgstRate = Number(item.cgst_rate ?? (gst / 2));
+                const sgstRate = Number(item.sgst_rate ?? (gst / 2));
+                const taxable = Number((item.taxable_value ?? (qty * price)).toFixed(2));
+                const cgstAmt = Number((taxable * (cgstRate / 100)).toFixed(2));
+                const sgstAmt = Number((taxable * (sgstRate / 100)).toFixed(2));
+                const total = Number((taxable + cgstAmt + sgstAmt).toFixed(2));
+
+                return {
+                    ...item,
+                    quantity: qty,
+                    unit_price: price,
+                    taxable_value: taxable,
+                    gst_rate: gst,
+                    cgst_rate: cgstRate,
+                    sgst_rate: sgstRate,
+                    cgst_amount: cgstAmt,
+                    sgst_amount: sgstAmt,
+                    total
+                };
+            });
+            setItems(recalculatedItems);
 
             // Initialize last saved state ref to prevent loop on initial fetch
             const initialTaxRate = inv.type === 'quotation' && (!inv.subtotal || inv.tax === 0) ? 0 : 18;
             lastSavedStateRef.current = JSON.stringify({
-                items: invItems || [],
+                items: recalculatedItems,
                 notes: inv.notes || '',
                 taxRate: initialTaxRate
             });
@@ -824,6 +931,9 @@ export default function InvoiceEditor() {
     };
 
     const handleAddItem = (category: string = "", type: string = "service") => {
+        const effectiveGst = taxSettings.enable_dual_gst
+            ? (type === 'part' ? taxSettings.spare_gst_rate : taxSettings.service_gst_rate)
+            : taxRate;
         const newItem: InvoiceItem = {
             id: `temp-${Date.now()}-${Math.random()}`, // Unique temp ID
             description: "",
@@ -832,9 +942,9 @@ export default function InvoiceEditor() {
             total: 0,
             type: type,
             category: category,
-            gst_rate: taxRate,
-            cgst_rate: taxRate / 2,
-            sgst_rate: taxRate / 2,
+            gst_rate: effectiveGst,
+            cgst_rate: effectiveGst / 2,
+            sgst_rate: effectiveGst / 2,
             cgst_amount: 0,
             sgst_amount: 0
         };
@@ -999,8 +1109,9 @@ export default function InvoiceEditor() {
 
     // Helper functions for importing items from the Work Order
     const importService = (service: any, task: any, price: number) => {
-        const cgst = price * ((taxRate / 2) / 100);
-        const sgst = price * ((taxRate / 2) / 100);
+        const rate = taxSettings.enable_dual_gst ? taxSettings.service_gst_rate : taxRate;
+        const cgst = price * ((rate / 2) / 100);
+        const sgst = price * ((rate / 2) / 100);
         return {
             id: `temp-${Date.now()}-${Math.random()}`,
             description: task ? task.task_name : service.service_type,
@@ -1009,9 +1120,9 @@ export default function InvoiceEditor() {
             total: price + cgst + sgst,
             type: 'service',
             category: service.service_type,
-            gst_rate: taxRate,
-            cgst_rate: taxRate / 2,
-            sgst_rate: taxRate / 2,
+            gst_rate: rate,
+            cgst_rate: rate / 2,
+            sgst_rate: rate / 2,
             cgst_amount: cgst,
             sgst_amount: sgst,
             taxable_value: price
@@ -1022,8 +1133,9 @@ export default function InvoiceEditor() {
         const qty = part.quantity || 1;
         const price = part.unit_price || 0;
         const taxable = qty * price;
-        const cgst = taxable * ((taxRate / 2) / 100);
-        const sgst = taxable * ((taxRate / 2) / 100);
+        const rate = taxSettings.enable_dual_gst ? taxSettings.spare_gst_rate : taxRate;
+        const cgst = taxable * ((rate / 2) / 100);
+        const sgst = taxable * ((rate / 2) / 100);
         return {
             id: `temp-${Date.now()}-${Math.random()}`,
             description: part.part_name,
@@ -1032,9 +1144,9 @@ export default function InvoiceEditor() {
             total: taxable + cgst + sgst,
             type: 'part',
             category: 'Spare',
-            gst_rate: taxRate,
-            cgst_rate: taxRate / 2,
-            sgst_rate: taxRate / 2,
+            gst_rate: rate,
+            cgst_rate: rate / 2,
+            sgst_rate: rate / 2,
             cgst_amount: cgst,
             sgst_amount: sgst,
             taxable_value: taxable
@@ -1163,7 +1275,19 @@ export default function InvoiceEditor() {
                     {/* Hidden Invoice for printing */}
                     <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', minHeight: '297mm' }}>
                         <div ref={printRef}>
-                            <InvoiceTemplate invoice={invoice} items={items} companyProfile={companyProfile} settings={invoiceSettings} themeColor={themeColor} showLogo={showLogo} customTerms={customTerms} customFooter={customFooter} selectedSignatureUrl={selectedSignatureUrl} />
+                            <InvoiceTemplate
+                                invoice={invoice}
+                                items={items}
+                                companyProfile={companyProfile}
+                                settings={invoiceSettings}
+                                billingSettings={taxSettings}
+                                themeColor={themeColor}
+                                showLogo={showLogo}
+                                customTerms={customTerms}
+                                customFooter={customFooter}
+                                selectedSignatureUrl={selectedSignatureUrl}
+                                viewMode={billViewMode}
+                            />
                         </div>
                     </div>
 
@@ -1183,7 +1307,7 @@ export default function InvoiceEditor() {
                                         </div>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="p-4 space-y-4">
+                                <CardContent className="p-3.5 space-y-3">
                                     {/* Services */}
                                     {woServices.length > 0 && (
                                         <div className="space-y-2">
@@ -1354,9 +1478,48 @@ export default function InvoiceEditor() {
                                 {/* Service Bill Section */}
                                 <div className="space-y-4">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-2">
-                                        <h3 className="text-sm font-bold text-primary tracking-wide flex items-center gap-2">
-                                            <Receipt className="h-4 w-4" /> I. SERVICE BILL
-                                        </h3>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-sm font-bold text-primary tracking-wide flex items-center gap-2">
+                                                <Receipt className="h-4 w-4" /> I. SERVICE BILL
+                                            </h3>
+                                            {taxSettings.enable_dual_gst ? (
+                                                taxSettings.service_gst_number && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-blue-700 bg-blue-50 border-blue-200">
+                                                            GSTIN: {taxSettings.service_gst_number}
+                                                        </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={isSyncingGst}
+                                                            onClick={syncGstFromProfile}
+                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            title="Sync latest GST numbers from Settings"
+                                                        >
+                                                            <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
+                                                        </Button>
+                                                    </div>
+                                                )
+                                            ) : (
+                                                (companyProfile?.tax_id || taxSettings.service_gst_number) && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-slate-700 bg-slate-50 border-slate-200">
+                                                            GSTIN: {taxSettings.service_gst_number || companyProfile?.tax_id}
+                                                        </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={isSyncingGst}
+                                                            onClick={syncGstFromProfile}
+                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            title="Sync latest GST numbers from Settings"
+                                                        >
+                                                            <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
+                                                        </Button>
+                                                    </div>
+                                                )
+                                            )}
+                                        </div>
                                         {!isFinalized && (
                                             <div className="flex gap-2 items-center flex-wrap">
                                                 {/* Quick Search Combobox */}
@@ -1471,7 +1634,7 @@ export default function InvoiceEditor() {
                                                             isReadOnly={isFinalized}
                                                             serviceTypes={serviceTypes}
                                                             itemType="service"
-                                                            taxRate={taxRate}
+                                                            taxRate={taxSettings.enable_dual_gst ? taxSettings.service_gst_rate : taxRate}
                                                             templates={taskTemplates}
                                                             onRowComplete={() => handleRowComplete('service')}
                                                         />
@@ -1492,9 +1655,48 @@ export default function InvoiceEditor() {
                                 {/* Inventory Bill Section */}
                                 <div className="space-y-4">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-2">
-                                        <h3 className="text-sm font-bold text-primary tracking-wide flex items-center gap-2">
-                                            <Receipt className="h-4 w-4" /> II. INVENTORY / SPARES BILL
-                                        </h3>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-sm font-bold text-primary tracking-wide flex items-center gap-2">
+                                                <Receipt className="h-4 w-4" /> II. INVENTORY / SPARES BILL
+                                            </h3>
+                                            {taxSettings.enable_dual_gst ? (
+                                                taxSettings.spare_gst_number && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-orange-700 bg-orange-50 border-orange-200">
+                                                            GSTIN: {taxSettings.spare_gst_number}
+                                                        </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={isSyncingGst}
+                                                            onClick={syncGstFromProfile}
+                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            title="Sync latest GST numbers from Settings"
+                                                        >
+                                                            <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
+                                                        </Button>
+                                                    </div>
+                                                )
+                                            ) : (
+                                                (companyProfile?.tax_id || taxSettings.spare_gst_number) && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-slate-700 bg-slate-50 border-slate-200">
+                                                            GSTIN: {taxSettings.spare_gst_number || companyProfile?.tax_id}
+                                                        </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={isSyncingGst}
+                                                            onClick={syncGstFromProfile}
+                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            title="Sync latest GST numbers from Settings"
+                                                        >
+                                                            <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
+                                                        </Button>
+                                                    </div>
+                                                )
+                                            )}
+                                        </div>
                                         {!isFinalized && (
                                             <div className="flex gap-2 items-center flex-wrap">
                                                 {/* Quick Search Spares Combobox */}
@@ -1604,7 +1806,7 @@ export default function InvoiceEditor() {
                                                             onRemove={handleRemoveItem}
                                                             isReadOnly={isFinalized}
                                                             itemType="part"
-                                                            taxRate={taxRate}
+                                                            taxRate={taxSettings.enable_dual_gst ? taxSettings.spare_gst_rate : taxRate}
                                                             templates={inventoryItems}
                                                             onRowComplete={() => handleRowComplete('part')}
                                                         />
@@ -1660,24 +1862,45 @@ export default function InvoiceEditor() {
                                                 <span className="font-mono">₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                             </div>
 
-                                            <div className="flex justify-between items-center text-muted-foreground">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span>Tax (GST)</span>
-                                                    {!isFinalized && (
-                                                        <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                                            <span className="text-[10px] text-slate-500">Global Rate:</span>
-                                                            <Input
-                                                                type="number"
-                                                                className="w-10 h-5 text-[10px] p-0.5 text-center font-mono border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                                value={taxRate}
-                                                                onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                                                            />
-                                                            <span className="text-[10px] text-slate-500">%</span>
-                                                        </div>
-                                                    )}
+                                            {taxSettings.enable_dual_gst ? (
+                                                <div className="space-y-1.5 py-1">
+                                                    <div className="flex justify-between items-center text-muted-foreground">
+                                                        <span className="flex items-center gap-1 text-[11px]">
+                                                            <Wrench className="h-3 w-3 text-primary" /> Service GST ({taxSettings.service_gst_rate}%)
+                                                        </span>
+                                                        <span className="font-mono">₹{serviceTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-muted-foreground">
+                                                        <span className="flex items-center gap-1 text-[11px]">
+                                                            <Package className="h-3 w-3 text-amber-600" /> Spare GST ({taxSettings.spare_gst_rate}%)
+                                                        </span>
+                                                        <span className="font-mono">₹{spareTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center font-medium text-foreground pt-1 border-t border-dashed">
+                                                        <span>Total Tax (GST)</span>
+                                                        <span className="font-mono">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
                                                 </div>
-                                                <span className="font-mono">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                            </div>
+                                            ) : (
+                                                <div className="flex justify-between items-center text-muted-foreground">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span>Tax (GST)</span>
+                                                        {!isFinalized && (
+                                                            <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                                                <span className="text-[10px] text-slate-500">Rate:</span>
+                                                                <Input
+                                                                    type="number"
+                                                                    className="w-10 h-5 text-[10px] p-0.5 text-center font-mono border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                    value={taxRate}
+                                                                    onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                                                                />
+                                                                <span className="text-[10px] text-slate-500">%</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <span className="font-mono">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                            )}
 
                                             <Separator className="my-2" />
 
@@ -1739,7 +1962,7 @@ export default function InvoiceEditor() {
                                 <CardDescription className="text-[11px] mt-0.5">Customize layout styles, colors, and terms</CardDescription>
                             </CardHeader>
                             {showDesignerPanel && (
-                                <CardContent className="p-4 space-y-4 animate-in fade-in duration-200">
+                                <CardContent className="p-3.5 space-y-3 animate-in fade-in duration-200">
                                     {/* Accent Color Selection */}
                                     <div className="space-y-2">
                                         <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Accent Theme Color</Label>
@@ -1842,23 +2065,99 @@ export default function InvoiceEditor() {
                                     <CardTitle className="text-xs font-bold flex items-center gap-1.5 text-slate-800">
                                         <Eye className="h-3.5 w-3.5 text-primary" /> Live Document Preview
                                     </CardTitle>
-                                    <CardDescription className="text-[10px]">Real-time visual display of printing layout</CardDescription>
+                                    <CardDescription className="text-[10px]">Real-time visual display of printing layout & separate bills</CardDescription>
                                 </div>
                                 {showLivePreview ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
                             </CardHeader>
                             {showLivePreview && (
-                                <CardContent className="p-4 max-h-[70vh] overflow-y-auto bg-slate-100 animate-in fade-in duration-200">
-                                    <div className="bg-white rounded-lg shadow border border-slate-200 p-6 min-h-[500px] text-xs">
+                                <CardContent className="p-3.5 max-h-[75vh] overflow-y-auto bg-slate-100 animate-in fade-in duration-200 space-y-3">
+                                    {/* Document View Switcher & Action Bar */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-xs font-bold text-slate-700">Document View:</span>
+                                            {taxSettings.enable_dual_gst ? (
+                                                <div className="inline-flex rounded-md shadow-2xs bg-slate-100 p-0.5 border border-slate-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setBillViewMode('both')}
+                                                        className={cn(
+                                                            "px-2.5 py-1 text-xs font-semibold rounded transition-all",
+                                                            billViewMode === 'both' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                        )}
+                                                    >
+                                                        2 Bills (Print Both)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setBillViewMode('service')}
+                                                        className={cn(
+                                                            "px-2.5 py-1 text-xs font-semibold rounded transition-all",
+                                                            billViewMode === 'service' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                        )}
+                                                    >
+                                                        Bill 1 (Services)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setBillViewMode('spare')}
+                                                        className={cn(
+                                                            "px-2.5 py-1 text-xs font-semibold rounded transition-all",
+                                                            billViewMode === 'spare' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                        )}
+                                                    >
+                                                        Bill 2 (Spares)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setBillViewMode('combined')}
+                                                        className={cn(
+                                                            "px-2.5 py-1 text-xs font-semibold rounded transition-all",
+                                                            billViewMode === 'combined' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                        )}
+                                                    >
+                                                        Combined Single
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <Badge variant="outline" className="text-xs font-semibold text-slate-800 bg-slate-100 border-slate-300 py-1 px-3">
+                                                    1 GST Mode: Single Universal GST Bill
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-7 text-xs gap-1.5"
+                                                onClick={syncGstFromProfile}
+                                                disabled={isSyncingGst}
+                                                title="Re-fetch latest GST numbers from Company Settings"
+                                            >
+                                                <RefreshCw className={cn("h-3 w-3", isSyncingGst && "animate-spin")} /> Sync GST
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                className="h-7 text-xs gap-1.5"
+                                                onClick={() => handlePrint()}
+                                            >
+                                                <Printer className="h-3.5 w-3.5" /> Print This View
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-lg shadow border border-slate-200 p-4 sm:p-6 min-h-[500px] text-xs">
                                         <InvoiceTemplate
                                             invoice={invoice}
                                             items={items}
                                             companyProfile={companyProfile}
                                             settings={invoiceSettings}
+                                            billingSettings={taxSettings}
                                             themeColor={themeColor}
                                             showLogo={showLogo}
                                             customTerms={customTerms}
                                             customFooter={customFooter}
                                             selectedSignatureUrl={selectedSignatureUrl}
+                                            viewMode={billViewMode}
                                         />
                                     </div>
                                 </CardContent>
@@ -1899,7 +2198,8 @@ export default function InvoiceEditor() {
                                 </CardContent>
                             </Card>
                         )}
-                    </div>\n                </main>
+                    </div>
+                </main>
             </div>
         </div>
     );

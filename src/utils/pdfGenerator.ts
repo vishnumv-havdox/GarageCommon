@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { supabase } from '@/integrations/supabase/client';
 import { ToWords } from 'to-words';
 import { format } from "date-fns";
+import { getBillingSettings, BillingTaxSettings, getItemGstRate, calculateTaxSplit } from "@/utils/billingSettings";
 
 // Constants for consistent styling
 const COLORS: Record<string, [number, number, number]> = {
@@ -493,9 +494,30 @@ class PDFGenerator {
 
             this.doc.text(contactLine, nameX, detailY);
 
-            if (ownerName) {
+            const billingSettings = getBillingSettings(company);
+            let gstinLine = '';
+            if (billingSettings?.enable_dual_gst) {
+                const sGst = billingSettings.service_gst_number || (company as any).tax_id;
+                const pGst = billingSettings.spare_gst_number;
+                if (sGst && pGst) {
+                    gstinLine = `Service GSTIN: ${sGst} | Spare GSTIN: ${pGst}`;
+                } else if (sGst) {
+                    gstinLine = `Service GSTIN: ${sGst}`;
+                } else if (pGst) {
+                    gstinLine = `Spare GSTIN: ${pGst}`;
+                }
+            } else {
+                const gstin = (company as any).tax_id || (company as any).gst_number || billingSettings?.service_gst_number;
+                if (gstin) gstinLine = `GSTIN: ${gstin}`;
+            }
+
+            if (gstinLine || ownerName) {
                 detailY += 4;
-                this.doc.text(`Proprietor: ${ownerName}`, nameX, detailY);
+                let subLine = '';
+                if (gstinLine) subLine += gstinLine;
+                if (gstinLine && ownerName) subLine += ` | `;
+                if (ownerName) subLine += `Proprietor: ${ownerName}`;
+                this.doc.text(subLine, nameX, detailY);
             }
         }
 
@@ -646,9 +668,14 @@ class PDFGenerator {
         this.currentY = (this.doc as any).lastAutoTable.finalY + 8;
     }
 
-    drawSectionHeader(title: string, sectionNumber: string = '') {
+    drawSectionHeader(title: string, sectionNumber: string = '', gstin?: string) {
         this.setStyle(14, true, COLORS.primary);
         this.doc.text(`${sectionNumber} ${title.toUpperCase()}`, 15, this.currentY);
+
+        if (gstin) {
+            this.setStyle(8, true, COLORS.secondary);
+            this.doc.text(`GSTIN: ${gstin}`, this.pageWidth - 15, this.currentY, { align: 'right' });
+        }
 
         // Underline
         this.doc.setDrawColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
@@ -658,8 +685,8 @@ class PDFGenerator {
         this.currentY += 8;
     }
 
-    drawItemsTable(items: LineItem[], sectionTitle: string, sectionNumber: string = 'I', assignments: EmployeeAssignment[] = []) {
-        this.drawSectionHeader(sectionTitle, sectionNumber);
+    drawItemsTable(items: LineItem[], sectionTitle: string, sectionNumber: string = 'I', assignments: EmployeeAssignment[] = [], gstin?: string) {
+        this.drawSectionHeader(sectionTitle, sectionNumber, gstin);
 
         const isWorkshop = this.copyType === 'workshop';
         const isCustomerSlip = this.copyType === 'customer' && this.docType === 'work_slip';
@@ -783,7 +810,8 @@ class PDFGenerator {
         company: CompanyProfile,
         showTaxes: boolean,
         isQuotation: boolean,
-        workOrder?: any
+        workOrder?: any,
+        billingSettings?: BillingTaxSettings
     ) {
         const isWorkshop = this.copyType === 'workshop';
         const isCustomerSlip = this.copyType === 'customer' && this.docType === 'work_slip';
@@ -792,7 +820,7 @@ class PDFGenerator {
         // Minimum space needed from bottom
         const footerSpace = 45; // Terms and Signatures
         const summarySpace = (isWorkshop || isCustomerSlip) ? 25 : (hasSavings ? 75 : 65);
-        const taxBankSpace = (showTaxes && !isQuotation && !isWorkshop && !isCustomerSlip) ? 35 : 0;
+        const taxBankSpace = (showTaxes && !isQuotation && !isWorkshop && !isCustomerSlip) ? (billingSettings?.enable_dual_gst ? 42 : 35) : 0;
 
         const totalNeeded = footerSpace + summarySpace + taxBankSpace;
         const targetStartY = this.pageHeight - totalNeeded;
@@ -845,7 +873,7 @@ class PDFGenerator {
             this.currentY += (wordsLines.length * 4) + 4;
 
             if (showTaxes && !isQuotation) {
-                this.drawSplitTaxAndBank(serviceTotals, partTotals, company);
+                this.drawSplitTaxAndBank(serviceTotals, partTotals, company, billingSettings);
             }
         } else if (isCustomerSlip) {
             // Simplified total ONLY - Professional Centered Alignment
@@ -866,7 +894,7 @@ class PDFGenerator {
         }
     }
 
-    private drawSplitTaxAndBank(serviceTotals: SectionTotals, partTotals: SectionTotals, company: CompanyProfile) {
+    private drawSplitTaxAndBank(serviceTotals: SectionTotals, partTotals: SectionTotals, company: CompanyProfile, billingSettings?: BillingTaxSettings) {
         const boxY = this.currentY;
 
         // Left Column: Bank Details
@@ -888,9 +916,19 @@ class PDFGenerator {
         this.doc.text("TAX SUMMARY", this.pageWidth / 2 + 10, boxY);
         this.setStyle(7.5, false, COLORS.darkText);
         this.doc.text(`Taxable Value: Rs. ${totalTaxable.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 5);
-        this.doc.text(`Total GST (18%): Rs. ${totalGST.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 9);
 
-        this.currentY += 15;
+        if (billingSettings?.enable_dual_gst) {
+            const serviceGst = serviceTotals.cgst + serviceTotals.sgst;
+            const spareGst = partTotals.cgst + partTotals.sgst;
+            this.doc.text(`Service GST (${billingSettings.service_gst_rate}%): Rs. ${serviceGst.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 9);
+            this.doc.text(`Spare GST (${billingSettings.spare_gst_rate}%): Rs. ${spareGst.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 13);
+            this.doc.text(`Total GST: Rs. ${totalGST.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 17);
+            this.currentY += 22;
+        } else {
+            const singleRate = billingSettings?.single_gst_rate ?? 18;
+            this.doc.text(`Total GST (${singleRate}%): Rs. ${totalGST.toFixed(2)}`, this.pageWidth / 2 + 10, boxY + 9);
+            this.currentY += 15;
+        }
     }
 
     drawFooter(settings: DocumentSettings, type: 'work_slip' | 'invoice') {
@@ -899,7 +937,8 @@ class PDFGenerator {
         // Terms and Conditions (Very small, one line if short)
         if (settings.terms_and_conditions) {
             this.setStyle(7, true, COLORS.lightText);
-            const termsLines = this.doc.splitTextToSize(`Terms: ${settings.terms_and_conditions}`, this.pageWidth - 30);
+            const cleanTerms = settings.terms_and_conditions.replace(/\\n/g, '  •  ');
+            const termsLines = this.doc.splitTextToSize(`Terms: ${cleanTerms}`, this.pageWidth - 30);
             this.doc.text(termsLines, 15, footerY - 10);
         }
 
@@ -1001,7 +1040,7 @@ const generateDocument = async (
             invoiceRes,
             tasksRes
         ] = await Promise.all([
-            supabase.from('company_profiles').select('*').limit(1).single(),
+            supabase.from('company_profiles').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
             supabase.from('document_settings').select('*').eq('doc_type', type).single(),
             supabase.from('work_orders').select(`
                 *,
@@ -1088,7 +1127,8 @@ const generateDocument = async (
         let isQuotation = false;
         let finalTotal = 0;
 
-        // Determine items and totals based on document type
+        const billingSettings = getBillingSettings(profile);
+
         // Determine items and totals based on document type
         if (type === 'invoice' && invoice) {
             const inv = invoice as any;
@@ -1108,23 +1148,37 @@ const generateDocument = async (
             }
         } else {
             // For work slip or new invoice
+            const serviceRate = getItemGstRate('service', billingSettings);
             if (tasks.length > 0) {
-                finalItems = tasks.map((t: any) => ({
-                    id: t.id,
-                    description: t.task_name || 'Task',
-                    taxable_value: t.price || 0,
-                    total: t.price || 0,
-                    type: 'service' as const,
-                    hsn_code: '-',
-                    gst_rate: 18,
-                    cgst_amount: (t.price || 0) * 0.09,
-                    sgst_amount: (t.price || 0) * 0.09
-                }));
+                finalItems = tasks.map((t: any) => {
+                    const price = t.price || 0;
+                    const taxSplit = calculateTaxSplit(price, serviceRate);
+                    return {
+                        id: t.id,
+                        description: t.task_name || 'Task',
+                        taxable_value: price,
+                        total: price,
+                        type: 'service' as const,
+                        hsn_code: '-',
+                        gst_rate: serviceRate,
+                        cgst_amount: taxSplit.cgstAmount,
+                        sgst_amount: taxSplit.sgstAmount
+                    };
+                });
             } else {
-                finalItems = (services || []).map((s: any) => ({
-                    ...s,
-                    type: 'service' as const
-                }));
+                finalItems = (services || []).map((s: any) => {
+                    const price = s.billing_price || s.estimated_cost || 0;
+                    const taxSplit = calculateTaxSplit(price, serviceRate);
+                    return {
+                        ...s,
+                        type: 'service' as const,
+                        taxable_value: price,
+                        total: price,
+                        gst_rate: serviceRate,
+                        cgst_amount: taxSplit.cgstAmount,
+                        sgst_amount: taxSplit.sgstAmount
+                    };
+                });
             }
             finalTotal = finalItems.reduce((sum, item) => sum + item.total, 0);
         }
@@ -1156,9 +1210,12 @@ const generateDocument = async (
         pdfGen.drawHeader(company, settings, workOrder, isQuotation, billNumberDisplay, type);
         pdfGen.drawCustomerVehicleInfo(workOrder);
 
+        const serviceGst = billingSettings.enable_dual_gst ? billingSettings.service_gst_number : undefined;
+        const spareGst = billingSettings.enable_dual_gst ? billingSettings.spare_gst_number : undefined;
+
         if (serviceItems.length > 0) {
             const serviceAssignments = assignments.filter(a => services?.some((s: any) => s.id === a.service_id));
-            pdfGen.drawItemsTable(serviceItems, 'Service Bill', 'I', serviceAssignments);
+            pdfGen.drawItemsTable(serviceItems, 'Service Bill', 'I', serviceAssignments, serviceGst);
             pdfGen.drawSectionSummary(serviceTotals, 'Service');
         }
 
@@ -1171,7 +1228,7 @@ const generateDocument = async (
             } else {
                 pdfGen.setCurrentY(pdfGen.getCurrentY() + 5);
             }
-            pdfGen.drawItemsTable(partItems, 'Inventory Bill', 'II');
+            pdfGen.drawItemsTable(partItems, 'Inventory Bill', 'II', [], spareGst);
             pdfGen.drawSectionSummary(partTotals, 'Parts');
         }
 
@@ -1190,7 +1247,8 @@ const generateDocument = async (
             company,
             settings.show_taxes && type === 'invoice',
             isQuotation,
-            workOrder
+            workOrder,
+            billingSettings
         );
 
         // Draw footer on all pages

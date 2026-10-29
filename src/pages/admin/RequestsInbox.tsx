@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { useRealtimeSync, broadcastDataUpdate } from "@/utils/realtimeSync";
 
 export default function RequestsInbox() {
     const { user } = useAuth();
@@ -154,6 +155,11 @@ export default function RequestsInbox() {
         fetchRequests();
     }, []);
 
+    useRealtimeSync(["work_orders", "part_requests", "inventory_returns", "appointments", "payments"], () => {
+        fetchRequests();
+        refreshCounts();
+    });
+
     const handleApproveWorkOrder = async (workOrder: any) => {
         setProcessingId(workOrder.id);
         try {
@@ -193,6 +199,17 @@ export default function RequestsInbox() {
             const { data: emp } = await supabase.from("employees").select("id").eq("user_id", user?.id).single();
             if (!emp) throw new Error("Employee record not found for your account");
 
+            // 1. If still pending, approve first to reserve stock in inventory
+            if (request.status === 'pending') {
+                const { error: approveError } = await (supabase.rpc as any)("approve_part_request", {
+                    _request_id: request.id,
+                    _approved_qty: request.requested_qty,
+                    _admin_id: (emp as any).id
+                });
+                if (approveError) throw approveError;
+            }
+
+            // 2. Issue the reserved part
             // @ts-ignore
             const { error } = await supabase.rpc('issue_part_request', {
                 _request_id: request.id,
@@ -387,7 +404,12 @@ export default function RequestsInbox() {
                             </div>
                             <Button
                                 variant="outline"
-                                onClick={fetchRequests}
+                                onClick={async () => {
+                                    await fetchRequests();
+                                    await refreshCounts();
+                                    toast({ title: "Synchronized", description: "All requests and approvals are up to date." });
+                                    broadcastDataUpdate("all");
+                                }}
                                 disabled={loading}
                                 className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-md border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-all rounded-2xl h-12 px-6"
                             >

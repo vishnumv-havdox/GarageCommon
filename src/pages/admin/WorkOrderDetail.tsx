@@ -460,11 +460,13 @@ export default function WorkOrderDetail() {
             if (pRes.data) setPhotos(pRes.data);
             if (bRes.data) {
                 setBelongings(bRes.data);
-                const initialConfirmed = {};
-                bRes.data.forEach(item => {
-                    if (item.confirmed_at) initialConfirmed[item.id] = true;
+                setConfirmedItems(prev => {
+                    const next = { ...prev };
+                    bRes.data.forEach(item => {
+                        if (item.confirmed_at) next[item.id] = true;
+                    });
+                    return next;
                 });
-                setConfirmedItems(initialConfirmed);
             }
         } catch (error) {
             console.error("Error fetching extensions:", error);
@@ -600,6 +602,7 @@ export default function WorkOrderDetail() {
                     id, 
                     total, 
                     total_deductions,
+                    status,
                     payment_links(amount_applied, payment:payments(*))
                 `)
                 .eq('work_order_id', id);
@@ -610,6 +613,7 @@ export default function WorkOrderDetail() {
                 let totalDeductions = 0;
 
                 (invoices as any[]).forEach((inv: any) => {
+                    if (inv.status?.toLowerCase() === 'cancelled') return;
                     totalInvoiced += inv.total || 0;
                     totalDeductions += inv.total_deductions || 0;
                     inv.payment_links?.forEach((link: any) => {
@@ -646,7 +650,7 @@ export default function WorkOrderDetail() {
         } finally {
             if (!isSilent) setLoading(false);
         }
-    }, [id, navigate, toast, workOrder]);
+    }, [id, navigate, toast]);
 
     useEffect(() => {
         fetchDetails();
@@ -3658,29 +3662,98 @@ export default function WorkOrderDetail() {
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="py-4 space-y-3 max-h-[50vh] overflow-y-auto pr-2">
-                        {belongings.map((item) => (
-                            <div key={item.id} className="flex items-center gap-3 p-3 border rounded-xl bg-muted/10">
-                                <div className="w-14 h-14 rounded-lg overflow-hidden border bg-background shadow-sm">
-                                    <img src={item.photo_url} className="w-full h-full object-cover" alt={item.item_name} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="font-bold text-sm truncate">{item.item_name}</h4>
-                                    <p className="text-[10px] text-muted-foreground truncate">{item.description}</p>
-                                </div>
-                                <div className="flex flex-col items-center gap-1">
-                                    <Checkbox
-                                        id={`confirm-modal-${item.id}`}
-                                        checked={!!confirmedItems[item.id]}
-                                        onCheckedChange={(checked) => {
-                                            setConfirmedItems(prev => ({ ...prev, [item.id]: !!checked }));
+                    {belongings.length > 1 && (
+                        <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5 pt-2">
+                            <span>
+                                {belongings.filter(b => confirmedItems[b.id]).length} of {belongings.length} items verified
+                            </span>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs font-semibold text-primary hover:text-primary px-2"
+                                onClick={() => {
+                                    const allSelected = belongings.every(b => confirmedItems[b.id]);
+                                    const updated: Record<string, boolean> = {};
+                                    belongings.forEach(b => {
+                                        updated[b.id] = !allSelected;
+                                    });
+                                    setConfirmedItems(prev => ({ ...prev, ...updated }));
+                                }}
+                            >
+                                {belongings.every(b => confirmedItems[b.id]) ? "Deselect All" : "Select All Items"}
+                            </Button>
+                        </div>
+                    )}
+
+                    <div className="py-2 space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                        {belongings.map((item) => {
+                            const isChecked = Boolean(confirmedItems[item.id]);
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={cn(
+                                        "flex items-center gap-3 p-3 border rounded-xl transition-all cursor-pointer select-none",
+                                        isChecked
+                                            ? "bg-emerald-50/70 border-emerald-300 dark:bg-emerald-950/20 dark:border-emerald-800 shadow-xs"
+                                            : "bg-muted/10 hover:bg-muted/20 border-border hover:border-border/80"
+                                    )}
+                                    onClick={() => {
+                                        setConfirmedItems(prev => ({ ...prev, [item.id]: !isChecked }));
+                                    }}
+                                >
+                                    <div className="w-14 h-14 rounded-lg overflow-hidden border bg-background shadow-xs shrink-0">
+                                        {item.photo_url ? (
+                                            <img src={item.photo_url} className="w-full h-full object-cover" alt={item.item_name} />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-muted/40 text-muted-foreground">
+                                                <Package className="h-6 w-6 opacity-40" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="font-bold text-sm truncate">{item.item_name}</h4>
+                                        <p className="text-[10px] text-muted-foreground truncate">{item.description || 'Customer belonging'}</p>
+                                        <span className={cn(
+                                            "inline-block mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded",
+                                            isChecked ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300" : "bg-muted text-muted-foreground"
+                                        )}>
+                                            {isChecked ? "✓ Verified & Returned" : "Tap to verify"}
+                                        </span>
+                                    </div>
+                                    <div
+                                        className="flex flex-col items-center gap-1 shrink-0 p-1 rounded-md"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setConfirmedItems(prev => ({ ...prev, [item.id]: !isChecked }));
                                         }}
-                                        className="h-5 w-5 rounded-md"
-                                    />
-                                    <Label htmlFor={`confirm-modal-${item.id}`} className="text-[9px] font-bold uppercase text-muted-foreground">Returned</Label>
+                                    >
+                                        <Checkbox
+                                            id={`confirm-modal-${item.id}`}
+                                            checked={isChecked}
+                                            onCheckedChange={(checked) => {
+                                                setConfirmedItems(prev => ({ ...prev, [item.id]: Boolean(checked) }));
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="h-5 w-5 rounded-md cursor-pointer data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                                        />
+                                        <Label
+                                            htmlFor={`confirm-modal-${item.id}`}
+                                            className={cn(
+                                                "text-[9px] font-bold uppercase cursor-pointer select-none",
+                                                isChecked ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"
+                                            )}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setConfirmedItems(prev => ({ ...prev, [item.id]: !isChecked }));
+                                            }}
+                                        >
+                                            Returned
+                                        </Label>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     <DialogFooter className="flex-col sm:flex-row gap-2">

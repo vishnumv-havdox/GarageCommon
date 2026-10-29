@@ -132,15 +132,16 @@ export default function CustomerLedger() {
                     .reduce((sum, p) => sum + (p.amount || 0), 0);
 
                 const approvedPayments = linkedPayAmount + directPayAmount;
-                const balance = Math.max(0, (inv.total || 0) - approvedPayments - (inv.total_deductions || 0));
+                const isCancelled = inv.status?.toLowerCase() === 'cancelled';
+                const balance = isCancelled ? 0 : Math.max(0, (inv.total || 0) - approvedPayments - (inv.total_deductions || 0));
 
                 return {
                     id: inv.id,
                     created_at: inv.created_at,
                     bill_number: inv.bill_number,
                     status: inv.status,
-                    total: inv.total || 0,
-                    total_deductions: inv.total_deductions || 0,
+                    total: isCancelled ? 0 : (inv.total || 0),
+                    total_deductions: isCancelled ? 0 : (inv.total_deductions || 0),
                     paid_amount: approvedPayments,
                     balance,
                     type: inv.type || 'invoice',
@@ -450,7 +451,10 @@ export default function CustomerLedger() {
                                                 </span>
                                             </TableCell>
                                             <TableCell className="text-center">
-                                                <Badge variant={item.status === 'Paid' ? 'default' : item.status === 'Draft' ? 'outline' : 'destructive'} className="text-[10px]">
+                                                <Badge
+                                                    variant={item.status === 'Paid' ? 'default' : item.status === 'Draft' ? 'outline' : 'destructive'}
+                                                    className={`text-[10px] ${item.status?.toLowerCase() === 'cancelled' ? 'bg-rose-500 text-white' : ''}`}
+                                                >
                                                     {item.status}
                                                 </Badge>
                                             </TableCell>

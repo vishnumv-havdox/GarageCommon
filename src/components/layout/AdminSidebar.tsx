@@ -19,6 +19,7 @@ import { navConfig } from "@/config/accessControl";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { UserProfileDialog } from "@/components/profile/UserProfileDialog";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 export { navConfig };
 
@@ -383,18 +384,21 @@ export function AdminSidebar() {
               </p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              signOut();
-            }}
-            title="Sign Out"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <ThemeToggle className="h-7 w-7 rounded-lg" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                signOut();
+              }}
+              title="Sign Out"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
 
         {/* Mobile Drawer Brand Signature */}
@@ -477,7 +481,7 @@ export function AdminSidebar() {
       <div className="hidden lg:block w-64 shrink-0" />
 
       {/* Desktop Topbar */}
-      <header className="hidden lg:flex fixed top-0 right-0 left-64 h-16 border-b bg-card/90 backdrop-blur-md items-center justify-between px-8 z-20 transition-all duration-300">
+      <header className="hidden lg:flex fixed top-0 right-0 left-64 h-16 border-b bg-card/90 backdrop-blur-md items-center justify-between px-8 z-20">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-3 min-w-0">
             <h1
@@ -494,7 +498,8 @@ export function AdminSidebar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
           <NotificationBell />
 
           <div

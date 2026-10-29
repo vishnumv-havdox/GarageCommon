@@ -159,6 +159,36 @@ export default function AdminInventory() {
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: "Inventory_Labels",
+    bodyClass: "printing-thermal-labels",
+    pageStyle: `
+      @page {
+        size: 50mm 30mm;
+        margin: 0;
+      }
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+      }
+      .printable-label-batch {
+        display: block !important;
+        visibility: visible !important;
+        width: 50mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+      }
+      .single-label-sticker {
+        page-break-after: always !important;
+        break-after: page !important;
+        width: 50mm !important;
+        height: 30mm !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        overflow: hidden !important;
+      }
+    `
   });
 
   // Manage Reservations State

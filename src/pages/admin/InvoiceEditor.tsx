@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -45,15 +45,31 @@ import {
     CheckCircle2,
     XCircle,
     Wrench,
-    Package
+    Package,
+    Pencil,
+    Ban,
+    RotateCcw,
+    X,
+    MoreHorizontal
 } from "lucide-react";
 import { BillingTaxSettings, getBillingSettings, getItemGstRate } from "@/utils/billingSettings";
 import { subscribeToDataUpdates, broadcastDataUpdate } from "@/utils/realtimeSync";
 import {
+    DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
     Command,
     CommandEmpty,
@@ -686,9 +702,108 @@ export default function InvoiceEditor() {
     };
 
 
-    // Quotation specific
+    const [searchParams] = useSearchParams();
+    const [isEditingFinalized, setIsEditingFinalized] = useState(false);
+    const [discarding, setDiscarding] = useState(false);
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+
+    useEffect(() => {
+        if (searchParams.get('edit') === 'true') {
+            setIsEditingFinalized(true);
+        }
+    }, [searchParams]);
+
+    // Quotation and status specific
     const isQuotation = invoice?.type === 'quotation';
-    const isFinalized = invoice?.status !== 'Draft';
+    const isDraft = invoice?.status === 'Draft';
+    const isCancelled = invoice?.status === 'Cancelled';
+    const isFinalized = Boolean(invoice && !isDraft && !isCancelled);
+    const isReadOnly = (isFinalized && !isEditingFinalized) || isCancelled;
+
+    const handleCancelInvoice = async () => {
+        try {
+            setSaving(true);
+            const { error } = await (supabase.from('invoices') as any)
+                .update({ status: 'Cancelled' })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            toast({
+                title: "Invoice Cancelled",
+                description: `Invoice ${invoice?.bill_number ? 'INV-' + invoice.bill_number : (invoice?.quotation_number ? 'QTN-' + invoice.quotation_number : invoice?.invoice_number)} has been cancelled.`,
+            });
+            setShowCancelDialog(false);
+            setIsEditingFinalized(false);
+            await fetchInvoiceData(false);
+        } catch (error: any) {
+            console.error("Cancel invoice error:", error);
+            toast({ variant: "destructive", title: "Error cancelling invoice", description: error.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleReactivateInvoice = async () => {
+        try {
+            setSaving(true);
+            const targetStatus = 'Sent';
+            const { error } = await (supabase.from('invoices') as any)
+                .update({ status: targetStatus })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            toast({
+                title: "Invoice Restored",
+                description: `Invoice status restored to ${targetStatus}.`,
+            });
+            await fetchInvoiceData(false);
+        } catch (error: any) {
+            console.error("Reactivate invoice error:", error);
+            toast({ variant: "destructive", title: "Error restoring invoice", description: error.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleRevertToDraft = async () => {
+        if (!confirm("Revert this invoice to Draft? The bill number will be preserved, but it will return to Draft state for editing and re-finalizing.")) return;
+        try {
+            setSaving(true);
+            const { error } = await (supabase.from('invoices') as any)
+                .update({ status: 'Draft' })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            toast({
+                title: "Reverted to Draft",
+                description: "Invoice is now in Draft status.",
+            });
+            setIsEditingFinalized(false);
+            await fetchInvoiceData(false);
+        } catch (error: any) {
+            console.error("Revert to draft error:", error);
+            toast({ variant: "destructive", title: "Error", description: error.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCancelEditing = async () => {
+        try {
+            setDiscarding(true);
+            await fetchInvoiceData(false);
+            setIsEditingFinalized(false);
+            toast({ title: "Edits Discarded", description: "Reverted to last saved finalized state." });
+        } catch (error: any) {
+            console.error("Discard edits error:", error);
+            toast({ variant: "destructive", title: "Error", description: "Failed to discard changes." });
+        } finally {
+            setDiscarding(false);
+        }
+    };
 
     // Effect to set initial tax rate based on type
     useEffect(() => {
@@ -701,7 +816,7 @@ export default function InvoiceEditor() {
     }, [invoice?.type]);
 
     useEffect(() => {
-        if (id) fetchInvoiceData();
+        if (id) fetchInvoiceData(true);
         fetchCatalogs();
         fetchCompanyProfile();
 
@@ -718,6 +833,82 @@ export default function InvoiceEditor() {
     const handlePrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: invoice ? `${invoice.type === 'quotation' ? 'QTN' : 'INV'}-${invoice.bill_number || invoice.invoice_number}` : 'Invoice',
+        pageStyle: `
+            @page {
+                size: A4 portrait;
+                margin: 8mm 10mm;
+            }
+            @media print {
+                html, body {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                .invoice-print-container {
+                    background: #ffffff !important;
+                    width: 100% !important;
+                    max-width: 210mm !important;
+                    margin: 0 auto !important;
+                    display: block !important;
+                    visibility: visible !important;
+                }
+                .single-bill-page {
+                    background: #ffffff !important;
+                    width: 100% !important;
+                    max-width: 210mm !important;
+                    margin: 0 auto !important;
+                    box-sizing: border-box !important;
+                    padding: 0 !important;
+                    display: block !important;
+                    visibility: visible !important;
+                }
+                /* Secondary bills must start on a fresh page without creating empty pages */
+                .bill-page-break,
+                .single-bill-page + .single-bill-page {
+                    break-before: page !important;
+                    page-break-before: always !important;
+                }
+                /* Table pagination rules */
+                table.invoice-items-table {
+                    width: 100% !important;
+                    border-collapse: collapse !important;
+                    page-break-inside: auto !important;
+                }
+                thead.invoice-table-header {
+                    display: table-header-group !important;
+                }
+                tr.invoice-item-row,
+                tr.invoice-header-row {
+                    break-inside: avoid !important;
+                    page-break-inside: avoid !important;
+                }
+                /* Structural blocks: never slice or divide across page breaks */
+                .invoice-header,
+                .invoice-customer-card,
+                .invoice-summary-block,
+                .invoice-tax-summary-box,
+                .invoice-payable-box,
+                .invoice-tax-table,
+                .invoice-terms-block,
+                .invoice-signatures-block,
+                .invoice-footer {
+                    break-inside: avoid !important;
+                    page-break-inside: avoid !important;
+                }
+                /* Ensure side-by-side flex layout remains intact during printing */
+                .invoice-summary-block > div {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    justify-content: space-between !important;
+                    align-items: flex-start !important;
+                    gap: 16px !important;
+                    width: 100% !important;
+                }
+            }
+        `,
     });
 
     const fetchCompanyProfile = async () => {
@@ -774,8 +965,8 @@ export default function InvoiceEditor() {
         setInventoryItems(inv || []);
     };
 
-    const fetchInvoiceData = async () => {
-        setLoading(true);
+    const fetchInvoiceData = async (showFullScreen = false) => {
+        if (showFullScreen) setLoading(true);
         try {
             // 1. Fetch Invoice
             const { data: inv, error: invError } = await supabase
@@ -883,7 +1074,7 @@ export default function InvoiceEditor() {
             console.error("Error fetching invoice:", error);
             toast({ variant: "destructive", title: "Error", description: error.message });
         } finally {
-            setLoading(false);
+            if (showFullScreen) setLoading(false);
         }
     };
 
@@ -1052,7 +1243,7 @@ export default function InvoiceEditor() {
                 }, 3000);
             } else {
                 toast({ title: "Saved", description: finalize ? "Invoice finalized!" : "Invoice updated successfully." });
-                fetchInvoiceData();
+                await fetchInvoiceData(false);
             }
 
         } catch (error: any) {
@@ -1178,7 +1369,10 @@ export default function InvoiceEditor() {
                             <div>
                                 <h1 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                                     {isQuotation ? (invoice.quotation_number ? `Quotation #${invoice.quotation_number}` : (invoice.id ? `Draft Quotation` : 'New Quotation')) : (invoice.bill_number ? `Invoice #${invoice.bill_number}` : 'Draft Invoice')}
-                                    <Badge variant={isFinalized ? "default" : "secondary"} className={`ml-2 ${isQuotation ? 'bg-orange-500 hover:bg-orange-600' : ''}`}>
+                                    <Badge
+                                        variant={isCancelled ? "destructive" : isFinalized ? "default" : "secondary"}
+                                        className={`ml-2 ${isCancelled ? 'bg-rose-500 hover:bg-rose-600 text-white' : isQuotation ? 'bg-orange-500 hover:bg-orange-600' : ''}`}
+                                    >
                                         {invoice.status}
                                     </Badge>
                                     {isQuotation && <Badge variant="outline" className="ml-2 border-orange-500 text-orange-600">Estimate</Badge>}
@@ -1189,8 +1383,8 @@ export default function InvoiceEditor() {
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            {/* Auto-save status toggle & indicator */}
-                            {!isFinalized && (
+                            {/* Auto-save status toggle & indicator (Drafts only) */}
+                            {isDraft && (
                                 <div className="flex items-center gap-3 text-xs mr-2 self-center bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60">
                                     <div className="flex items-center gap-2">
                                         <Switch
@@ -1226,28 +1420,108 @@ export default function InvoiceEditor() {
                                     )}
                                 </div>
                             )}
+
+                            {/* Download PDF button */}
                             <Button variant="outline" size="sm" onClick={() => generateInvoicePDF(invoice.work_order_id, 'save', themeColor)} title="Download PDF">
                                 <Download className="h-4 w-4 mr-2" /> PDF
                             </Button>
-                            {!isFinalized && (
-                                <Button size="sm" onClick={() => handleSave(false)} disabled={saving} variant="outline">
-                                    <Save className="h-4 w-4 mr-2" /> Save Draft
-                                </Button>
-                            )}
-                            {!isFinalized && (
-                                <Button size="sm" onClick={() => handleSave(true)} disabled={saving} className={isQuotation ? "bg-orange-600 hover:bg-orange-700 text-white" : ""}>
-                                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    <Lock className="h-4 w-4 mr-2" /> {isQuotation ? 'Finalize Estimate' : 'Finalize Invoice'}
-                                </Button>
-                            )}
-                            {!isFinalized && isQuotation && (
-                                <Button size="sm" onClick={handleConvertToInvoice} disabled={saving} className="bg-orange-600 hover:bg-orange-700 text-white">
-                                    <RefreshCw className="h-4 w-4 mr-2" /> Convert to Invoice
-                                </Button>
-                            )}
+
+                            {/* Print button */}
                             <Button size="sm" variant="outline" onClick={() => handlePrint()} className="bg-primary/5 hover:bg-primary/10 text-primary border-primary/20">
                                 <Printer className="h-4 w-4 mr-2" /> Print
                             </Button>
+
+                            {/* Actions for DRAFT status */}
+                            {isDraft && (
+                                <>
+                                    <Button size="sm" onClick={() => handleSave(false)} disabled={saving || discarding} variant="outline">
+                                        {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />} Save Draft
+                                    </Button>
+                                    <Button size="sm" onClick={() => handleSave(true)} disabled={saving || discarding} className={isQuotation ? "bg-orange-600 hover:bg-orange-700 text-white" : ""}>
+                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4 mr-2" />} {isQuotation ? 'Finalize Estimate' : 'Finalize Invoice'}
+                                    </Button>
+                                    {isQuotation && (
+                                        <Button size="sm" onClick={handleConvertToInvoice} disabled={saving || discarding} className="bg-orange-600 hover:bg-orange-700 text-white">
+                                            <RefreshCw className="h-4 w-4 mr-2" /> Convert to Invoice
+                                        </Button>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Actions for FINALIZED status (View Mode) */}
+                            {isFinalized && !isEditingFinalized && (
+                                <>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setIsEditingFinalized(true)}
+                                        className="border-amber-400/80 text-amber-800 bg-amber-50/70 hover:bg-amber-100 font-semibold shadow-xs"
+                                    >
+                                        <Pencil className="h-4 w-4 mr-1.5 text-amber-600" /> Edit Invoice
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setShowCancelDialog(true)}
+                                        className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 font-medium"
+                                    >
+                                        <Ban className="h-4 w-4 mr-1.5" /> Cancel Invoice
+                                    </Button>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                                                <MoreHorizontal className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={handleRevertToDraft} className="text-slate-700">
+                                                <RotateCcw className="mr-2 h-4 w-4" /> Revert to Draft
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </>
+                            )}
+
+                            {/* Actions when EDITING a FINALIZED invoice */}
+                            {isFinalized && isEditingFinalized && (
+                                <>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleCancelEditing}
+                                        disabled={saving || discarding}
+                                    >
+                                        {discarding ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <X className="h-4 w-4 mr-1.5" />} Discard Changes
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                            await handleSave(false);
+                                            setIsEditingFinalized(false);
+                                        }}
+                                        disabled={saving || discarding}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                                    >
+                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
+                                        Save Changes
+                                    </Button>
+                                </>
+                            )}
+
+                            {/* Actions for CANCELLED status */}
+                            {isCancelled && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleReactivateInvoice}
+                                    disabled={saving}
+                                    className="border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold"
+                                >
+                                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1.5" />}
+                                    Restore Invoice
+                                </Button>
+                            )}
+
                             <Button
                                 variant="destructive"
                                 size="icon"
@@ -1272,9 +1546,83 @@ export default function InvoiceEditor() {
                         </div>
                     </div>
 
+                    {/* Prominent Banners for Cancelled / Editing Finalized States */}
+                    {isCancelled && (
+                        <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/90 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-lg bg-rose-100 text-rose-700 shrink-0">
+                                    <Ban className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-sm text-rose-900 flex items-center gap-2">
+                                        This Invoice is Cancelled
+                                        <Badge variant="destructive" className="text-[10px] py-0">Voided</Badge>
+                                    </h3>
+                                    <p className="text-xs text-rose-700 mt-0.5">
+                                        This document has been voided. It is excluded from active ledger balances and sales totals.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-rose-300 bg-white hover:bg-rose-100 text-rose-800 shrink-0 font-medium"
+                                onClick={handleReactivateInvoice}
+                                disabled={saving}
+                            >
+                                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1.5" />}
+                                Restore Invoice
+                            </Button>
+                        </div>
+                    )}
+
+                    {isFinalized && isEditingFinalized && (
+                        <div className="p-4 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-lg bg-amber-100 text-amber-800 shrink-0">
+                                    <Pencil className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-sm text-amber-950">Editing Finalized Invoice</h3>
+                                        <Badge variant="outline" className="border-amber-400 bg-amber-100 text-amber-900 text-[10px] py-0 font-mono">
+                                            {invoice.bill_number ? `INV-${invoice.bill_number}` : invoice.invoice_number}
+                                        </Badge>
+                                    </div>
+                                    <p className="text-xs text-amber-800 mt-0.5">
+                                        You can modify items, add or remove services/parts, update quantities, rates, and notes. Click <strong>Save Changes</strong> to update.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-white hover:bg-amber-100 border-amber-300 text-amber-900 text-xs"
+                                    onClick={handleCancelEditing}
+                                    disabled={saving || discarding}
+                                >
+                                    {discarding ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <X className="h-3.5 w-3.5 mr-1" />} Discard Changes
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs"
+                                    onClick={async () => {
+                                        await handleSave(false);
+                                        setIsEditingFinalized(false);
+                                    }}
+                                    disabled={saving || discarding}
+                                >
+                                    {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Hidden Invoice for printing */}
-                    <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm', minHeight: '297mm' }}>
-                        <div ref={printRef}>
+                    <div style={{ position: 'fixed', top: 0, left: 0, opacity: 0, pointerEvents: 'none', zIndex: -9999 }}>
+                        <div ref={printRef} className="bg-white">
                             <InvoiceTemplate
                                 invoice={invoice}
                                 items={items}
@@ -1293,7 +1641,7 @@ export default function InvoiceEditor() {
 
                     <div className="w-full space-y-6">
                         {/* Work Order Sync / Import panel */}
-                        {!isFinalized && (woServices.length > 0 || woParts.length > 0) && (
+                        {!isReadOnly && (woServices.length > 0 || woParts.length > 0) && (
                             <Card className="border border-orange-200/60 bg-orange-50/20 shadow-sm overflow-hidden">
                                 <CardHeader className="pb-3 bg-orange-50/40 border-b border-orange-100">
                                     <div className="flex items-center justify-between">
@@ -1428,7 +1776,7 @@ export default function InvoiceEditor() {
                                         <CardTitle className="text-base font-bold text-slate-800">Invoice Creator</CardTitle>
                                         <CardDescription className="text-xs">Add, edit, or customize tasks and parts for billing</CardDescription>
                                     </div>
-                                    {!isFinalized && (
+                                    {!isReadOnly && (
                                         <div className="flex gap-2">
                                             <Select onValueChange={(val) => handleAddItem(val)}>
                                                 <SelectTrigger className="w-[180px] h-9 text-xs bg-white">
@@ -1520,7 +1868,7 @@ export default function InvoiceEditor() {
                                                 )
                                             )}
                                         </div>
-                                        {!isFinalized && (
+                                        {!isReadOnly && (
                                             <div className="flex gap-2 items-center flex-wrap">
                                                 {/* Quick Search Combobox */}
                                                 <Popover open={serviceQuickAddOpen} onOpenChange={setServiceQuickAddOpen}>
@@ -1618,7 +1966,7 @@ export default function InvoiceEditor() {
                                                     <TableHead className="w-[120px] text-right text-xs font-semibold">Unit Price</TableHead>
                                                     <TableHead className="w-[140px] text-xs font-semibold">GST Rate</TableHead>
                                                     <TableHead className="w-[120px] text-right text-xs font-semibold">Total</TableHead>
-                                                    {!isFinalized && <TableHead className="w-10 text-center"></TableHead>}
+                                                    {!isReadOnly && <TableHead className="w-10 text-center"></TableHead>}
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -1631,7 +1979,7 @@ export default function InvoiceEditor() {
                                                             index={originalIndex}
                                                             onChange={handleItemChange}
                                                             onRemove={handleRemoveItem}
-                                                            isReadOnly={isFinalized}
+                                                            isReadOnly={isReadOnly}
                                                             serviceTypes={serviceTypes}
                                                             itemType="service"
                                                             taxRate={taxSettings.enable_dual_gst ? taxSettings.service_gst_rate : taxRate}
@@ -1642,7 +1990,7 @@ export default function InvoiceEditor() {
                                                 })}
                                                 {items.filter(i => i.type === 'service').length === 0 && (
                                                     <TableRow>
-                                                        <TableCell colSpan={isFinalized ? 8 : 9} className="text-center py-6 text-xs text-muted-foreground bg-slate-50/10">
+                                                        <TableCell colSpan={isReadOnly ? 8 : 9} className="text-center py-6 text-xs text-muted-foreground bg-slate-50/10">
                                                             No service items added.
                                                         </TableCell>
                                                     </TableRow>
@@ -1697,7 +2045,7 @@ export default function InvoiceEditor() {
                                                 )
                                             )}
                                         </div>
-                                        {!isFinalized && (
+                                        {!isReadOnly && (
                                             <div className="flex gap-2 items-center flex-wrap">
                                                 {/* Quick Search Spares Combobox */}
                                                 <Popover open={partQuickAddOpen} onOpenChange={setPartQuickAddOpen}>
@@ -1791,7 +2139,7 @@ export default function InvoiceEditor() {
                                                     <TableHead className="w-[120px] text-right text-xs font-semibold">Unit Price</TableHead>
                                                     <TableHead className="w-[140px] text-xs font-semibold">GST Rate</TableHead>
                                                     <TableHead className="w-[120px] text-right text-xs font-semibold">Total</TableHead>
-                                                    {!isFinalized && <TableHead className="w-10 text-center"></TableHead>}
+                                                    {!isReadOnly && <TableHead className="w-10 text-center"></TableHead>}
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -1804,7 +2152,7 @@ export default function InvoiceEditor() {
                                                             index={originalIndex}
                                                             onChange={handleItemChange}
                                                             onRemove={handleRemoveItem}
-                                                            isReadOnly={isFinalized}
+                                                            isReadOnly={isReadOnly}
                                                             itemType="part"
                                                             taxRate={taxSettings.enable_dual_gst ? taxSettings.spare_gst_rate : taxRate}
                                                             templates={inventoryItems}
@@ -1814,7 +2162,7 @@ export default function InvoiceEditor() {
                                                 })}
                                                 {items.filter(i => i.type === 'part').length === 0 && (
                                                     <TableRow>
-                                                        <TableCell colSpan={isFinalized ? 7 : 8} className="text-center py-6 text-xs text-muted-foreground bg-slate-50/10">
+                                                        <TableCell colSpan={isReadOnly ? 7 : 8} className="text-center py-6 text-xs text-muted-foreground bg-slate-50/10">
                                                             No spare parts added.
                                                         </TableCell>
                                                     </TableRow>
@@ -1834,7 +2182,7 @@ export default function InvoiceEditor() {
                                                 value={invoice.notes || ''}
                                                 onChange={(e) => setInvoice({ ...invoice, notes: e.target.value })}
                                                 placeholder="Add payment guidelines, warranty specifications, or general notes..."
-                                                disabled={isFinalized}
+                                                disabled={isReadOnly}
                                                 className="min-h-[100px] text-xs bg-slate-50/30"
                                             />
                                         </div>
@@ -1885,7 +2233,7 @@ export default function InvoiceEditor() {
                                                 <div className="flex justify-between items-center text-muted-foreground">
                                                     <div className="flex items-center gap-1.5">
                                                         <span>Tax (GST)</span>
-                                                        {!isFinalized && (
+                                                        {!isReadOnly && (
                                                             <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-slate-200">
                                                                 <span className="text-[10px] text-slate-500">Rate:</span>
                                                                 <Input
@@ -2199,6 +2547,49 @@ export default function InvoiceEditor() {
                             </Card>
                         )}
                     </div>
+
+                    {/* Cancel Invoice Confirmation Modal */}
+                    <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle className="flex items-center gap-2 text-rose-600">
+                                    <Ban className="h-5 w-5" /> Cancel Invoice?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription className="space-y-3 pt-2 text-left">
+                                    <p className="text-sm text-slate-700">
+                                        Are you sure you want to cancel{" "}
+                                        <strong className="text-slate-900">
+                                            {isQuotation ? 'Quotation' : 'Invoice'} #{invoice?.bill_number || invoice?.quotation_number || invoice?.invoice_number}
+                                        </strong>
+                                        ?
+                                    </p>
+                                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 space-y-1">
+                                        <p>• The invoice status will be marked as <strong>Cancelled</strong>.</p>
+                                        <p>• It will be excluded from outstanding customer ledger balances and revenue totals.</p>
+                                        <p>• You can restore this invoice anytime if needed.</p>
+                                    </div>
+                                    {payments && payments.length > 0 && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                                            <strong>⚠️ Notice:</strong> This invoice has <strong>{payments.length} payment(s)</strong> totalling{" "}
+                                            <strong>₹{payments.reduce((s: number, p: any) => s + (p.amount_applied || p.amount || 0), 0).toLocaleString()}</strong>.
+                                            Cancelling will void the invoice, but payment records will remain in financial logs.
+                                        </div>
+                                    )}
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel disabled={saving}>No, Keep Invoice</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={handleCancelInvoice}
+                                    disabled={saving}
+                                    className="bg-rose-600 hover:bg-rose-700 text-white font-medium"
+                                >
+                                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Yes, Cancel Invoice
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                 </main>
             </div>
         </div>

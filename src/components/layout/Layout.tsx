@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useCompanyProfile } from "@/hooks/useCompanyProfile";
 import { BrandFooter } from "@/components/brand/BrandFooter";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
@@ -86,8 +87,13 @@ export default function Layout({ children }: LayoutProps) {
               })}
             </nav>
 
-            {/* Mobile menu button */}
-            <div className="md:hidden">
+            <div className="hidden md:flex items-center ml-2">
+              <ThemeToggle />
+            </div>
+
+            {/* Mobile menu button & theme toggle */}
+            <div className="flex md:hidden items-center gap-1">
+              <ThemeToggle size="sm" />
               <Button
                 variant="ghost"
                 size="sm"

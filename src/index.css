@@ -143,8 +143,8 @@
     --destructive: 345 100% 62%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 100% / 0.14;
-    --input: 0 0% 100% / 0.14;
+    --border: 220 20% 18%;
+    --input: 220 20% 18%;
     --ring: 218 100% 65%;
 
     /* Dark status colors */
@@ -171,7 +171,7 @@
     --sidebar-primary-foreground: 0 0% 0%;
     --sidebar-accent: 216 61% 18%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 100% / 0.14;
+    --sidebar-border: 220 20% 18%;
     --sidebar-ring: 218 100% 65%;
   }
 }
@@ -196,6 +196,56 @@
   body {
     font-family: var(--havdox-font-body);
     @apply bg-background text-foreground antialiased;
+  }
+
+  /* Disable transitions on all elements during theme switches for atomic snapshot capture */
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    -webkit-transition: none !important;
+    -moz-transition: none !important;
+    -o-transition: none !important;
+    -ms-transition: none !important;
+    transition: none !important;
+  }
+
+  /* GPU-Accelerated View Transitions for seamless crossfade across all surfaces simultaneously */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 200ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(root) {
+    animation-name: driveflow-fade-out;
+  }
+
+  ::view-transition-new(root) {
+    animation-name: driveflow-fade-in;
+  }
+
+  @keyframes driveflow-fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @keyframes driveflow-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Dynamic theme badges and text selection */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.2);
+    color: hsl(var(--primary));
+  }
+
+  .theme-primary-badge {
+    background-color: hsl(var(--primary) / 0.1);
+    color: hsl(var(--primary));
+    border: 1px solid hsl(var(--primary) / 0.25);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -276,48 +326,45 @@
   animation: blink-blue 2s ease-in-out infinite;
 }
 
-/* Print Styles for QR Label Printing */
+/* General Print Optimization */
 @media print {
-  @page {
-    size: 50mm 30mm;
-    margin: 0;
-  }
-
-  body {
+  html, body {
     background-color: #ffffff !important;
     color: #000000 !important;
+    color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* Hide everything on screen during printing */
-  body * {
-    visibility: hidden;
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Print Styles for QR Label Printing when printing thermal labels */
+@media print {
+  body.printing-thermal-labels {
+    width: 50mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
-  /* Show only the printable labels container and its descendants */
-  .printable-label-batch,
-  .printable-label-batch * {
+  body.printing-thermal-labels .printable-label-batch {
+    display: block !important;
     visibility: visible !important;
+    width: 50mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
   }
 
-  /* Position the printable labels in the top-left corner */
-  .printable-label-batch {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 50mm;
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  /* Force page breaks after each single label sticker */
-  .single-label-sticker {
-    page-break-after: always;
-    break-after: page;
-    width: 50mm;
-    height: 30mm;
-    box-sizing: border-box;
+  body.printing-thermal-labels .single-label-sticker {
+    page-break-after: always !important;
+    break-after: page !important;
+    width: 50mm !important;
+    height: 30mm !important;
+    box-sizing: border-box !important;
     display: flex !important;
-    overflow: hidden;
+    overflow: hidden !important;
   }
 }

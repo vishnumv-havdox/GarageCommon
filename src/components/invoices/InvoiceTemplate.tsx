@@ -121,8 +121,8 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
         const activeSignatureUrl = selectedSignatureUrl || defaultSignature;
 
         // Categorize items
-        const serviceItems = React.useMemo(() => normalizedItems.filter(i => i.type === 'service'), [normalizedItems]);
-        const partItems = React.useMemo(() => normalizedItems.filter(i => i.type === 'part'), [normalizedItems]);
+        const serviceItems = React.useMemo(() => normalizedItems.filter(i => (i.type || 'service').toLowerCase() !== 'part' && (i.type || '').toLowerCase() !== 'spare'), [normalizedItems]);
+        const partItems = React.useMemo(() => normalizedItems.filter(i => (i.type || '').toLowerCase() === 'part' || (i.type || '').toLowerCase() === 'spare'), [normalizedItems]);
 
         // Clean terms
         const rawTermsText = customTerms || settings?.terms_and_conditions || '';
@@ -248,10 +248,15 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
             const ratesUsed = Array.from(new Set(billItems.map(i => i.gst_rate || 18)));
             const ratesLabel = ratesUsed.map(r => `${r}%`).join(', ');
 
+            const isSecondaryBill = Boolean(billIndex && billIndex > 1);
+
             return (
-                <div key={billType} className="single-bill-page p-6 sm:p-8 max-w-[210mm] mx-auto bg-white text-slate-900 font-sans leading-normal">
+                <div
+                    key={billType}
+                    className={`single-bill-page ${isSecondaryBill ? 'bill-page-break print:break-before-page' : ''} p-6 sm:p-8 print:p-0 max-w-[210mm] mx-auto bg-white text-slate-900 font-sans leading-normal`}
+                >
                     {/* Header */}
-                    <div className={`border-b-2 ${theme.thickBorder} pb-4 mb-5 flex justify-between items-start`}>
+                    <div className={`invoice-header border-b-2 ${theme.thickBorder} pb-3 mb-4 print:pb-2 print:mb-3 flex justify-between items-start print:break-inside-avoid`}>
                         <div className="flex gap-4 items-start">
                             {showLogo && companyProfile?.logo_url && (
                                 <img
@@ -343,8 +348,8 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                     </div>
 
                     {/* Customer & Vehicle Details Card */}
-                    <div className={`${theme.bgLight} p-4 rounded-lg mb-5 border ${theme.border}`}>
-                        <div className="grid grid-cols-2 gap-6">
+                    <div className={`invoice-customer-card ${theme.bgLight} p-3.5 sm:p-4 rounded-lg mb-4 print:p-2.5 print:mb-3 border ${theme.border} print:break-inside-avoid`}>
+                        <div className="grid grid-cols-2 gap-4 sm:gap-6 print:grid-cols-2 print:gap-4">
                             {/* Billed To */}
                             <div>
                                 <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1 tracking-wide">Billed To</span>
@@ -379,8 +384,8 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                     </div>
 
                     {/* Line Items Table */}
-                    <div className="mb-5">
-                        <div className="flex items-center justify-between mb-2 border-b border-slate-200 pb-1">
+                    <div className="invoice-table-container mb-4 print:mb-3">
+                        <div className="flex items-center justify-between mb-1.5 border-b border-slate-200 pb-1">
                             <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.primaryText}`}>
                                 {billType === 'service'
                                     ? 'Service Charges & Labor'
@@ -393,47 +398,47 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                             </span>
                         </div>
 
-                        <table className="w-full text-xs text-left border-collapse">
-                            <thead className="text-[10px] uppercase text-slate-600 font-bold border-b border-slate-200 bg-slate-50">
-                                <tr>
-                                    <th className="py-2 px-2 w-8 text-center">#</th>
-                                    <th className="py-2 px-2">Description</th>
-                                    <th className="py-2 px-2 w-20 text-center">{billType === 'service' ? 'SAC Code' : billType === 'spare' ? 'HSN Code' : 'HSN/SAC'}</th>
-                                    {billType !== 'service' && <th className="py-2 px-2 w-12 text-center">Qty</th>}
-                                    <th className="py-2 px-2 text-right w-24">Price</th>
-                                    <th className="py-2 px-2 w-14 text-center">GST %</th>
-                                    <th className="py-2 px-2 text-right w-20">Tax Amt</th>
-                                    <th className="py-2 px-2 text-right w-24">Total</th>
+                        <table className="invoice-items-table w-full text-xs text-left border-collapse">
+                            <thead className="invoice-table-header text-[10px] uppercase text-slate-600 font-bold border-b border-slate-200 bg-slate-50 print:bg-slate-100">
+                                <tr className="invoice-header-row print:break-inside-avoid">
+                                    <th className="py-1.5 px-2 w-8 text-center">#</th>
+                                    <th className="py-1.5 px-2">Description</th>
+                                    <th className="py-1.5 px-2 w-20 text-center">{billType === 'service' ? 'SAC Code' : billType === 'spare' ? 'HSN Code' : 'HSN/SAC'}</th>
+                                    {billType !== 'service' && <th className="py-1.5 px-2 w-12 text-center">Qty</th>}
+                                    <th className="py-1.5 px-2 text-right w-24">Price</th>
+                                    <th className="py-1.5 px-2 w-14 text-center">GST %</th>
+                                    <th className="py-1.5 px-2 text-right w-20">Tax Amt</th>
+                                    <th className="py-1.5 px-2 text-right w-24">Total</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 border-b border-slate-200">
                                 {billItems.map((item, idx) => (
-                                    <tr key={item.id || idx} className="hover:bg-slate-50/50">
-                                        <td className="py-2 px-2 text-center text-slate-400 text-xs">{idx + 1}</td>
-                                        <td className="py-2 px-2 font-medium text-slate-800">
+                                    <tr key={item.id || idx} className="invoice-item-row hover:bg-slate-50/50 print:break-inside-avoid">
+                                        <td className="py-1.5 px-2 text-center text-slate-400 text-xs">{idx + 1}</td>
+                                        <td className="py-1.5 px-2 font-medium text-slate-800">
                                             {item.description}
                                             {item.category && item.category !== 'Spare' && (
                                                 <span className="text-[10px] text-slate-400 block font-normal">{item.category}</span>
                                             )}
                                         </td>
-                                        <td className="py-2 px-2 text-center text-slate-600 font-medium text-xs">
+                                        <td className="py-1.5 px-2 text-center text-slate-600 font-medium text-xs">
                                             {item.hsn_code || '-'}
                                         </td>
                                         {billType !== 'service' && (
-                                            <td className="py-2 px-2 text-center font-medium text-slate-700">
+                                            <td className="py-1.5 px-2 text-center font-medium text-slate-700">
                                                 {item.quantity}
                                             </td>
                                         )}
-                                        <td className="py-2 px-2 text-right text-slate-700 font-medium">
+                                        <td className="py-1.5 px-2 text-right text-slate-700 font-medium">
                                             {formatCurrency(item.taxable_value || (item.unit_price * item.quantity))}
                                         </td>
-                                        <td className="py-2 px-2 text-center text-slate-600 text-xs font-medium">
+                                        <td className="py-1.5 px-2 text-center text-slate-600 text-xs font-medium">
                                             {item.gst_rate || 18}%
                                         </td>
-                                        <td className="py-2 px-2 text-right text-slate-600 text-xs font-medium">
+                                        <td className="py-1.5 px-2 text-right text-slate-600 text-xs font-medium">
                                             {formatCurrency((item.cgst_amount || 0) + (item.sgst_amount || 0))}
                                         </td>
-                                        <td className={`py-2 px-2 text-right font-bold ${theme.primaryText}`}>
+                                        <td className={`py-1.5 px-2 text-right font-bold ${theme.primaryText}`}>
                                             {formatCurrency(item.total)}
                                         </td>
                                     </tr>
@@ -442,20 +447,20 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                         </table>
                     </div>
 
-                    {/* Summary & Final Settlement Block */}
-                    <div className="mb-5">
-                        <div className="flex flex-col sm:flex-row justify-between items-start gap-6">
+                    {/* Summary & Final Settlement Block - Kept intact in print to prevent split across pages */}
+                    <div className="invoice-summary-block mb-4 print:mb-3 print:break-inside-avoid">
+                        <div className="flex flex-col sm:flex-row justify-between items-start gap-4 print:flex print:flex-row print:justify-between print:items-start print:gap-4 print:w-full">
                             {/* Left: Tax Summary & Words */}
-                            <div className="w-full sm:w-1/2 space-y-3">
+                            <div className="w-full sm:w-1/2 space-y-2.5 print:w-[52%] print:space-y-2 invoice-tax-summary-box print:break-inside-avoid">
                                 {/* Tax Summary */}
-                                <div>
+                                <div className="invoice-tax-table-container">
                                     <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-1 flex items-center justify-between">
                                         <span>Tax Summary</span>
                                         <span className="text-[10px] font-semibold text-slate-600">
                                             GST Rate: {ratesLabel}
                                         </span>
                                     </h4>
-                                    <table className={`w-full text-xs text-left border ${theme.border} bg-white rounded overflow-hidden`}>
+                                    <table className={`invoice-tax-table w-full text-xs text-left border ${theme.border} bg-white rounded overflow-hidden print:break-inside-avoid`}>
                                         <thead className={`${theme.bgLight} text-slate-600 font-bold border-b ${theme.border}`}>
                                             <tr>
                                                 <th className="py-1 px-2.5">Tax Component</th>
@@ -484,17 +489,17 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                                 </div>
 
                                 {/* Amount in Words */}
-                                <div className={`text-xs text-slate-700 ${theme.bgLight} p-2.5 rounded border ${theme.border}`}>
+                                <div className={`invoice-amount-words text-xs text-slate-700 ${theme.bgLight} p-2 rounded border ${theme.border} print:break-inside-avoid`}>
                                     <span className="font-bold text-slate-500 text-[9px] uppercase block mb-0.5 tracking-wide">Amount in Words</span>
-                                    <span className="font-medium text-slate-800 capitalize leading-tight block">
+                                    <span className="font-medium text-slate-800 capitalize leading-tight block text-[11px]">
                                         {toWords.convert(totalPayableRounded)}
                                     </span>
                                 </div>
                             </div>
 
                             {/* Right: Net Payable Box */}
-                            <div className="w-full sm:w-5/12 space-y-2">
-                                <div className="space-y-1.5 text-xs">
+                            <div className="w-full sm:w-5/12 space-y-2 print:w-[44%] print:space-y-1.5 invoice-payable-box print:break-inside-avoid">
+                                <div className="space-y-1 text-xs">
                                     <div className="flex justify-between text-slate-600">
                                         <span>Taxable Amount:</span>
                                         <span className="font-semibold text-slate-800">{formatCurrency(taxableSum)}</span>
@@ -512,14 +517,14 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                                 <div className={`border-t ${theme.border} my-1`}></div>
 
                                 {/* Highlight Net Payable */}
-                                <div className={`${theme.bgHighlight} p-3 rounded-lg shadow-sm`}>
+                                <div className={`invoice-payable-card ${theme.bgHighlight} p-2.5 sm:p-3 rounded-lg shadow-sm print:break-inside-avoid`}>
                                     <div className="flex justify-between items-center mb-0.5">
                                         <span className="text-[10px] uppercase tracking-wider text-slate-200 font-bold">
                                             {isQuotation ? 'Estimated Payable' : 'Net Payable'}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-baseline">
-                                        <span className="text-xl sm:text-2xl font-bold tracking-tight">
+                                        <span className="text-xl font-bold tracking-tight">
                                             ₹{totalPayableRounded.toLocaleString('en-IN')}
                                         </span>
                                         <span className="text-[10px] text-slate-200 font-medium">(Rounded)</span>
@@ -530,7 +535,7 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                     </div>
 
                     {/* Terms, Notes & Bank Details */}
-                    <div className={`grid grid-cols-2 gap-6 pt-3 border-t ${theme.border} mb-4`}>
+                    <div className={`invoice-terms-block grid grid-cols-2 gap-4 sm:gap-6 pt-2.5 border-t ${theme.border} mb-3 print:grid-cols-2 print:gap-4 print:break-inside-avoid`}>
                         <div className="space-y-2">
                             {termsList.length > 0 && (
                                 <div>
@@ -567,7 +572,7 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                     </div>
 
                     {/* Signatures */}
-                    <div className={`grid grid-cols-2 gap-10 pt-4 border-t ${theme.border}`}>
+                    <div className={`invoice-signatures-block grid grid-cols-2 gap-8 sm:gap-10 pt-3 border-t ${theme.border} print:grid-cols-2 print:gap-8 print:break-inside-avoid`}>
                         <div>
                             <div className="h-10 mb-1"></div>
                             <div className="border-t border-slate-300 pt-1 text-[9px] font-bold uppercase text-slate-500">Customer Signature</div>
@@ -589,7 +594,7 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                     </div>
 
                     {/* Footer */}
-                    <div className="mt-4 text-center">
+                    <div className="invoice-footer mt-3 text-center print:break-inside-avoid">
                         <p className="text-[9px] text-slate-400 uppercase tracking-wider">
                             {customFooter || settings?.footer_text || `Generated via Admin Portal • ${format(new Date(), "PP pp")}`}
                         </p>
@@ -605,20 +610,20 @@ export const InvoiceTemplate = React.forwardRef<HTMLDivElement, InvoiceTemplateP
                         {/* Bill 1: Service Bill */}
                         {serviceItems.length > 0 && renderSingleBill('service', 1, partItems.length > 0 ? 2 : 1)}
 
-                        {/* Visual divider in screen view & strict Page Break in print */}
+                        {/* Visual divider in screen view (completely hidden in print to avoid empty blank pages) */}
                         {serviceItems.length > 0 && partItems.length > 0 && (
-                            <div
-                                className="page-break-after-always print:break-after-page my-6 print:my-0 py-2 border-b-2 border-dashed border-slate-300 print:border-none text-center relative"
-                                style={{ pageBreakAfter: 'always', breakAfter: 'page' }}
-                            >
-                                <span className="print:hidden bg-slate-200 text-slate-700 text-[11px] font-semibold px-3 py-1 rounded-full border border-slate-300 shadow-2xs">
+                            <div className="print:hidden my-6 py-2 border-b-2 border-dashed border-slate-300 text-center relative">
+                                <span className="bg-slate-200 text-slate-700 text-[11px] font-semibold px-3 py-1 rounded-full border border-slate-300 shadow-2xs">
                                     Page 2: Spare Parts Bill (Separate Bill)
                                 </span>
                             </div>
                         )}
 
-                        {/* Bill 2: Spare Parts Bill */}
+                        {/* Bill 2: Spare Parts Bill (Starts on next fresh page via break-before in print) */}
                         {partItems.length > 0 && renderSingleBill('spare', 2, 2)}
+
+                        {/* Fallback if both service and spare items are empty */}
+                        {serviceItems.length === 0 && partItems.length === 0 && renderSingleBill('combined', 1, 1)}
                     </div>
                 ) : effectiveViewMode === 'service' ? (
                     renderSingleBill('service', 1, 1)

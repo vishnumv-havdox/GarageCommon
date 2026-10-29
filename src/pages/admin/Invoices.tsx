@@ -58,7 +58,9 @@ import {
   XCircle,
   CheckCircle,
   IndianRupee,
-  ExternalLink
+  ExternalLink,
+  Ban,
+  RotateCcw
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -1031,6 +1033,7 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
   const navigate = useNavigate();
   const { toast } = useToast();
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [cancelTarget, setCancelTarget] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
 
@@ -1066,6 +1069,42 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
       onRefresh();
     }
     setDeleteTarget(null);
+  };
+
+  const handleCancelInvoice = async () => {
+    if (!cancelTarget) return;
+    const { error } = await supabase
+      .from('invoices')
+      .update({ status: 'Cancelled' } as any)
+      .eq('id', cancelTarget.id);
+
+    if (error) {
+      toast({ variant: "destructive", title: "Error cancelling invoice", description: error.message });
+    } else {
+      toast({
+        title: "Invoice Cancelled",
+        description: `Invoice ${cancelTarget.bill_number ? 'INV-' + cancelTarget.bill_number : cancelTarget.invoice_number} has been cancelled.`
+      });
+      onRefresh();
+    }
+    setCancelTarget(null);
+  };
+
+  const handleReactivateInvoice = async (inv: any) => {
+    const { error } = await supabase
+      .from('invoices')
+      .update({ status: 'Sent' } as any)
+      .eq('id', inv.id);
+
+    if (error) {
+      toast({ variant: "destructive", title: "Error restoring invoice", description: error.message });
+    } else {
+      toast({
+        title: "Invoice Restored",
+        description: `Invoice ${inv.bill_number ? 'INV-' + inv.bill_number : inv.invoice_number} has been restored to Sent.`
+      });
+      onRefresh();
+    }
   };
 
   const confirmBulkDelete = async () => {
@@ -1226,12 +1265,39 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                               const cleanPath = `/admin/invoices/${inv.id}`.trim();
                               navigate(cleanPath);
                             }}>
-                              <Eye className="mr-2 h-4 w-4" /> View/Edit Details
+                              <Eye className="mr-2 h-4 w-4" /> View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              const cleanPath = `/admin/invoices/${inv.id}?edit=true`.trim();
+                              navigate(cleanPath);
+                            }}>
+                              <Edit className="mr-2 h-4 w-4" /> Edit Invoice
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => generateInvoicePDF(inv.work_order_id)}>
                               <Download className="mr-2 h-4 w-4" /> Download PDF
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
+                            {inv.status !== 'Cancelled' ? (
+                              <DropdownMenuItem
+                                className="text-amber-600 focus:text-amber-600"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCancelTarget(inv);
+                                }}
+                              >
+                                <Ban className="mr-2 h-4 w-4" /> Cancel Invoice
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                className="text-emerald-600 focus:text-emerald-600"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReactivateInvoice(inv);
+                                }}
+                              >
+                                <RotateCcw className="mr-2 h-4 w-4" /> Restore Invoice
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={(e) => {
@@ -1266,6 +1332,35 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
               Delete Record
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => !open && setCancelTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-rose-600">
+              <Ban className="h-5 w-5" /> Cancel Invoice?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Are you sure you want to cancel{" "}
+                <b>
+                  {cancelTarget?.type === "quotation" ? "Quotation" : "Invoice"} #
+                  {cancelTarget?.bill_number || cancelTarget?.invoice_number || "Draft"}
+                </b>
+                ?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This will mark the invoice as <b>Cancelled</b>. It will be excluded from outstanding customer ledger balances and revenue totals. You can restore it anytime if needed.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancelInvoice} className="bg-rose-600 hover:bg-rose-700 text-white">
+              Yes, Cancel Invoice
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

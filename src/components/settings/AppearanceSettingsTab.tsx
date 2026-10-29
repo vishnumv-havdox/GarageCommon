@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Check, Sparkles, Palette, RefreshCw, Eye, Sliders, CheckCircle2 } from "lucide-react";
+import { Check, Sparkles, Palette, RefreshCw, Eye, Sliders, CheckCircle2, Sun, Moon, Laptop } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,8 @@ import {
   getActiveTheme,
   applyTheme,
   getContrastForeground,
+  useColorMode,
+  ColorMode,
 } from "@/utils/themeManager";
 
 interface AppearanceSettingsTabProps {
@@ -25,6 +27,7 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
   onProfileUpdated,
 }) => {
   const { toast } = useToast();
+  const { mode, isDark, setMode } = useColorMode();
   const [selectedPresetId, setSelectedPresetId] = useState<string>("havdox-onyx");
   const [primaryHex, setPrimaryHex] = useState<string>("#000000");
   const [ringHex, setRingHex] = useState<string>("#4d8dff");
@@ -34,29 +37,44 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
   const isInitializedRef = React.useRef<boolean>(false);
 
-  // Synchronize on mount from database or localStorage (only once to avoid clobbering user clicks)
+  // Synchronize on mount from database or localStorage
   useEffect(() => {
     const dbTheme = profile?.theme_settings || profile?.bank_details?.theme_settings;
-    if (dbTheme && dbTheme.primaryHex && !isInitializedRef.current) {
+    if (dbTheme && !isInitializedRef.current) {
       isInitializedRef.current = true;
-      setSelectedPresetId(dbTheme.id || "custom");
-      setPrimaryHex(dbTheme.primaryHex);
-      setRingHex(dbTheme.ringHex || dbTheme.primaryHex);
-      setAccentHex(dbTheme.accentHex || dbTheme.primaryHex);
-      setThemeName(dbTheme.name || "Custom Palette");
-      applyTheme(dbTheme, true);
+      if (dbTheme.primaryHex) {
+        const matchingPreset = THEME_PRESETS.find(
+          (p) =>
+            p.id === (dbTheme.id || "") ||
+            p.primaryHex.toLowerCase() === (dbTheme.primaryHex || "").toLowerCase()
+        );
+        setSelectedPresetId(matchingPreset ? matchingPreset.id : (dbTheme.id || "custom"));
+        setPrimaryHex(dbTheme.primaryHex);
+        setRingHex(dbTheme.ringHex || dbTheme.primaryHex);
+        setAccentHex(dbTheme.accentHex || dbTheme.primaryHex);
+        setThemeName(matchingPreset ? matchingPreset.name : (dbTheme.name || "Custom Palette"));
+      }
+      if (dbTheme.mode) {
+        setMode(dbTheme.mode as ColorMode);
+      }
+      applyTheme(dbTheme, true, false);
     } else if (!isInitializedRef.current) {
       const active = getActiveTheme();
-      setSelectedPresetId(active.id);
+      const matchingPreset = THEME_PRESETS.find(
+        (p) =>
+          p.id === (active.id || "") ||
+          p.primaryHex.toLowerCase() === (active.primaryHex || "").toLowerCase()
+      );
+      setSelectedPresetId(matchingPreset ? matchingPreset.id : (active.id || "custom"));
       setPrimaryHex(active.primaryHex);
       setRingHex(active.ringHex || active.primaryHex);
       setAccentHex(active.accentHex || active.primaryHex);
-      setThemeName(active.name);
-      applyTheme(active, false);
+      setThemeName(matchingPreset ? matchingPreset.name : active.name);
+      applyTheme(active, false, false);
     }
   }, [profile?.theme_settings, profile?.bank_details?.theme_settings]);
 
-  // Handle preset selection
+  // Handle preset selection with animated GPU crossfade
   const handleSelectPreset = (preset: ThemeConfig) => {
     isInitializedRef.current = true;
     setSelectedPresetId(preset.id);
@@ -65,11 +83,11 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
     setAccentHex(preset.accentHex || preset.primaryHex);
     setThemeName(preset.name);
 
-    // Apply live immediately for instant feedback
-    applyTheme(preset, true);
+    // Apply live immediately with smooth GPU crossfade
+    applyTheme(preset, true, true);
   };
 
-  // Handle custom primary color modification
+  // Handle custom primary color modification (instant 60fps live update without animation overhead)
   const handlePrimaryChange = (newHex: string) => {
     isInitializedRef.current = true;
     setSelectedPresetId("custom");
@@ -85,13 +103,14 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
         primaryForegroundHex: fg.hex,
         ringHex,
         accentHex,
+        mode,
         description: "User customized garage color theme",
       };
-      applyTheme(customConfig, true);
+      applyTheme(customConfig, false, false);
     }
   };
 
-  // Handle focus ring & accent color change
+  // Handle focus ring & accent color change (instant 60fps live update without animation overhead)
   const handleRingChange = (newHex: string) => {
     isInitializedRef.current = true;
     setSelectedPresetId("custom");
@@ -107,9 +126,10 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
         primaryForegroundHex: fg.hex,
         ringHex: newHex,
         accentHex: newHex,
+        mode,
         description: "User customized garage color theme",
       };
-      applyTheme(customConfig, true);
+      applyTheme(customConfig, false, false);
     }
   };
 
@@ -126,11 +146,12 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
         primaryForegroundHex: fg.hex,
         ringHex,
         accentHex,
+        mode,
         description: activePreset ? activePreset.description : "Custom workshop UI theme",
       };
 
-      // Save to localStorage immediately
-      applyTheme(themePayload, true);
+      // Save to localStorage immediately (no animation overhead during saving)
+      applyTheme(themePayload, true, false);
 
       // Save to company_profiles
       const profileId = profile?.id;
@@ -185,8 +206,8 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
       setTimeout(() => setSavedSuccess(false), 3000);
 
       toast({
-        title: "Theme Colors Saved",
-        description: "Your custom workshop appearance has been saved across all devices.",
+        title: "Appearance & Theme Saved",
+        description: "Your custom workshop appearance and colors have been saved across all devices.",
       });
     } catch (err: any) {
       toast({
@@ -199,13 +220,14 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
     }
   };
 
-  // Reset to default HavDox Onyx
+  // Reset to default HavDox Onyx & Light Mode
   const handleResetToDefault = () => {
     const defaultPreset = THEME_PRESETS[0];
     handleSelectPreset(defaultPreset);
+    setMode("light");
     toast({
       title: "Reset to Default",
-      description: "Reset to official HavDox Obsidian Onyx theme.",
+      description: "Reset to official HavDox Obsidian Onyx theme and Light Mode.",
     });
   };
 
@@ -218,10 +240,10 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
             <div className="space-y-1">
               <CardTitle className="flex items-center gap-2 text-xl font-display font-bold">
                 <Palette className="h-5 w-5 text-primary" />
-                UI & Brand Colors Selection
+                Appearance & Brand Colors
               </CardTitle>
               <CardDescription>
-                Customize Drive Flow’s primary buttons, navigation indicators, active badges, and focus rings to match your garage branding.
+                Customize Drive Flow’s interface mode (Dark / Light) and brand palette (buttons, badges, indicators, and focus rings).
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -250,7 +272,7 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
                 ) : (
                   <>
                     <Check className="h-4 w-4 mr-1.5" />
-                    Save Workshop Colors
+                    Save Appearance
                   </>
                 )}
               </Button>
@@ -259,6 +281,99 @@ export const AppearanceSettingsTab: React.FC<AppearanceSettingsTabProps> = ({
         </CardHeader>
 
         <CardContent className="space-y-8">
+          {/* Section 0: Interface Appearance Mode (Light / Dark / System) */}
+          <div className="space-y-3 pb-6 border-b border-border">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Sun className="h-4 w-4 text-primary" />
+                Interface Appearance Mode
+              </Label>
+              <Badge variant="outline" className="text-xs font-semibold">
+                Current: {mode === "system" ? `System (${isDark ? "Dark" : "Light"})` : mode === "dark" ? "Dark Mode" : "Light Mode"}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Light Mode Option */}
+              <div
+                onClick={() => setMode("light")}
+                className={`p-4 rounded-xl border text-left cursor-pointer transition-all ${
+                  mode === "light"
+                    ? "border-primary ring-2 ring-primary/20 bg-primary/5 shadow-xs"
+                    : "border-border/80 bg-card hover:bg-muted/40"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20">
+                    <Sun className="h-5 w-5" />
+                  </div>
+                  {mode === "light" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                      <Check className="h-3 w-3" />
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="font-display font-bold text-sm text-foreground">Light Mode</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Crisp, clean daylight surface with bright cards and high visual contrast.
+                </p>
+              </div>
+
+              {/* Dark Mode Option */}
+              <div
+                onClick={() => setMode("dark")}
+                className={`p-4 rounded-xl border text-left cursor-pointer transition-all ${
+                  mode === "dark"
+                    ? "border-primary ring-2 ring-primary/20 bg-primary/5 shadow-xs"
+                    : "border-border/80 bg-card hover:bg-muted/40"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
+                    <Moon className="h-5 w-5" />
+                  </div>
+                  {mode === "dark" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                      <Check className="h-3 w-3" />
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="font-display font-bold text-sm text-foreground">Dark Mode</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  HavDox Obsidian midnight palette designed for reduced eye strain and sleek aesthetics.
+                </p>
+              </div>
+
+              {/* System Preference Option */}
+              <div
+                onClick={() => setMode("system")}
+                className={`p-4 rounded-xl border text-left cursor-pointer transition-all ${
+                  mode === "system"
+                    ? "border-primary ring-2 ring-primary/20 bg-primary/5 shadow-xs"
+                    : "border-border/80 bg-card hover:bg-muted/40"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-muted text-muted-foreground flex items-center justify-center border border-border">
+                    <Laptop className="h-5 w-5" />
+                  </div>
+                  {mode === "system" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                      <Check className="h-3 w-3" />
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="font-display font-bold text-sm text-foreground">System Default</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Synchronizes seamlessly with your device or operating system preference.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Section 1: Curated Palette Presets */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">

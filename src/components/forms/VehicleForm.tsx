@@ -33,6 +33,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 
+import { lookupVehicleInfo } from "@/utils/vehicleLookupService"
+
 interface Customer {
   id: string
   name: string
@@ -65,7 +67,17 @@ interface Vehicle {
 interface Manufacturer { id: string; name: string }
 interface Category { id: string; name: string }
 interface VehicleType { id: string; name: string; category_id: string }
-interface VehicleModel { id: string; name: string; manufacturer_id: string; vehicle_type_id: string }
+interface VehicleModel {
+  id: string
+  name: string
+  manufacturer_id: string
+  vehicle_type_id: string
+  image_url?: string | null
+  fuel_type?: string | null
+  engine_specs?: string | null
+  description?: string | null
+  year_introduced?: number | null
+}
 
 interface VehicleFormProps {
   onSuccess: () => void
@@ -155,6 +167,10 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
   const availableModels = useMemo(() => {
     return vehicleModels.filter(m => !formData.manufacturer_id || m.manufacturer_id === formData.manufacturer_id)
   }, [vehicleModels, formData.manufacturer_id])
+
+  const selectedModel = useMemo(() => {
+    return vehicleModels.find(m => m.id === formData.model_id);
+  }, [vehicleModels, formData.model_id])
 
   const fetchCustomers = async () => {
     try {
@@ -281,9 +297,32 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
 
   const handleCreateModelData = async (name: string, mfrId: string, typeId: string) => {
     try {
-      const { data, error } = await supabase.from('vehicle_models').insert({ name, manufacturer_id: mfrId, vehicle_type_id: typeId }).select().single()
+      const mfr = manufacturers.find(m => m.id === mfrId);
+      let autoDetails: any = null;
+      if (mfr?.name) {
+        try {
+          autoDetails = await lookupVehicleInfo(mfr.name, name);
+        } catch {
+          // ignore error and proceed
+        }
+      }
+
+      const { data, error } = await supabase.from('vehicle_models').insert({
+        name,
+        manufacturer_id: mfrId,
+        vehicle_type_id: typeId,
+        image_url: autoDetails?.imageUrl || null,
+        fuel_type: autoDetails?.fuelType || null,
+        engine_specs: autoDetails?.engineSpecs || null,
+        description: autoDetails?.description || null,
+        year_introduced: autoDetails?.yearIntroduced || null
+      }).select().single()
+
       if (error) throw error
       setVehicleModels(prev => [...prev, data as VehicleModel].sort((a, b) => a.name.localeCompare(b.name)))
+      if (autoDetails?.imageUrl) {
+        toast({ title: "Model Added with Specs & Photo", description: `Fetched photo and details for ${name}` });
+      }
       return data.id
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" })
@@ -575,7 +614,12 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
                 </Button>
               </div>
               <Combobox
-                items={availableModels.map(m => ({ value: m.id, label: m.name }))}
+                items={availableModels.map(m => ({
+                  value: m.id,
+                  label: m.name,
+                  description: [m.fuel_type, m.engine_specs, m.year_introduced ? `(${m.year_introduced})` : null].filter(Boolean).join(' • '),
+                  image: m.image_url
+                }))}
                 value={formData.model_id}
                 onSelect={(val) => {
                   const model = vehicleModels.find(m => m.id === val);
@@ -595,6 +639,48 @@ export function VehicleForm({ onSuccess, onCancel, initialData }: VehicleFormPro
                 placeholder="e.g. Signa 4825.TK"
                 disabled={!formData.manufacturer_id}
               />
+
+              {/* Selected Model Preview Card */}
+              {selectedModel && (
+                <div className="mt-2 p-2.5 rounded-lg border border-border/80 bg-muted/30 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-md bg-background border border-border/60 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    {selectedModel.image_url ? (
+                      <img
+                        src={selectedModel.image_url}
+                        alt={selectedModel.name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <Truck className="h-5 w-5 text-muted-foreground/40" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-foreground truncate">{selectedModel.name}</span>
+                      {selectedModel.fuel_type && (
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 font-normal uppercase">
+                          {selectedModel.fuel_type}
+                        </Badge>
+                      )}
+                      {selectedModel.year_introduced && (
+                        <span className="text-[10px] text-muted-foreground">({selectedModel.year_introduced})</span>
+                      )}
+                    </div>
+                    {selectedModel.engine_specs && (
+                      <p className="text-[11px] text-muted-foreground truncate">{selectedModel.engine_specs}</p>
+                    )}
+                    {formData.photos.length === 0 && selectedModel.image_url && (
+                      <p className="text-[10px] text-primary/80 flex items-center gap-1 mt-0.5">
+                        <CheckCircle2 className="h-2.5 w-2.5" /> Using catalog photo as fleet default
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Model Year */}

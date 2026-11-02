@@ -18,8 +18,15 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover"
 
+export interface ComboboxItem {
+    value: string
+    label: string
+    description?: string
+    image?: string | null
+}
+
 interface ComboboxProps {
-    items: { value: string; label: string }[]
+    items: ComboboxItem[]
     value?: string
     onSelect: (value: string) => void
     placeholder?: string
@@ -44,6 +51,8 @@ export function Combobox({
     const [open, setOpen] = React.useState(false)
     const [searchValue, setSearchValue] = React.useState("")
 
+    const selectedItem = items.find((item) => item.value === value)
+
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -51,23 +60,31 @@ export function Combobox({
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
-                    className={cn("w-full justify-between", className)}
+                    className={cn("w-full justify-between h-auto py-2", className)}
                     disabled={disabled}
                 >
-                    {value
-                        ? items.find((item) => item.value === value)?.label || placeholder
-                        : placeholder}
+                    <div className="flex items-center gap-2 truncate">
+                        {selectedItem?.image && (
+                            <img
+                                src={selectedItem.image}
+                                alt=""
+                                referrerPolicy="no-referrer"
+                                className="w-5 h-5 rounded object-cover shrink-0 border border-border/50"
+                            />
+                        )}
+                        <span className="truncate">{selectedItem?.label || placeholder}</span>
+                    </div>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[220px] p-0 shadow-lg border border-border/80 rounded-xl overflow-hidden" align="start">
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[240px] p-0 shadow-lg border border-border/80 rounded-xl overflow-hidden" align="start">
                 <Command>
                     <CommandInput
                         placeholder={searchPlaceholder}
                         value={searchValue}
                         onValueChange={setSearchValue}
                     />
-                    <CommandList>
+                    <CommandList className="max-h-[260px] overflow-y-auto">
                         <CommandEmpty>
                             <div className="flex flex-col items-center justify-center py-2 gap-2">
                                 <p className="text-sm text-muted-foreground">{emptyText}</p>
@@ -92,23 +109,33 @@ export function Combobox({
                             {items.map((item) => (
                                 <CommandItem
                                     key={item.value}
-                                    value={item.label} // Search by label
-                                    onSelect={(currentValue) => {
-                                        // We match by label for display, but return the value (ID)
-                                        const matched = items.find(i => i.label.toLowerCase() === currentValue.toLowerCase())
-                                        if (matched) {
-                                            onSelect(matched.value)
-                                        }
+                                    value={`${item.label} ${item.description || ''}`}
+                                    onSelect={() => {
+                                        onSelect(item.value)
                                         setOpen(false)
                                     }}
+                                    className="flex items-center gap-2.5 py-2 cursor-pointer"
                                 >
                                     <Check
                                         className={cn(
-                                            "mr-2 h-4 w-4",
+                                            "h-4 w-4 shrink-0",
                                             value === item.value ? "opacity-100" : "opacity-0"
                                         )}
                                     />
-                                    {item.label}
+                                    {item.image ? (
+                                        <img
+                                            src={item.image}
+                                            alt=""
+                                            referrerPolicy="no-referrer"
+                                            className="h-7 w-7 rounded-md object-cover shrink-0 border border-border/50 bg-muted"
+                                        />
+                                    ) : null}
+                                    <div className="flex flex-col min-w-0 flex-1">
+                                        <span className="text-xs font-semibold text-foreground truncate">{item.label}</span>
+                                        {item.description && (
+                                            <span className="text-[10px] text-muted-foreground truncate">{item.description}</span>
+                                        )}
+                                    </div>
                                 </CommandItem>
                             ))}
                         </CommandGroup>

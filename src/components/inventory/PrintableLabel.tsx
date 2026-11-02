@@ -8,6 +8,8 @@ export interface LabelPrintItem {
   price: number;
   qrCode: string;
   location?: string | null;
+  oemPartNumber?: string | null;
+  fitment?: string | null;
 }
 
 interface PrintableLabelProps {
@@ -88,6 +90,16 @@ export const PrintableLabel = React.forwardRef<HTMLDivElement, PrintableLabelPro
                 <div style={{ fontSize: "6.5px", whiteSpace: "nowrap" }}>
                   SKU: {item.sku}
                 </div>
+                {item.oemPartNumber && (
+                  <div style={{ fontSize: "6.5px", fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    OEM: {item.oemPartNumber}
+                  </div>
+                )}
+                {item.fitment && (
+                  <div style={{ fontSize: "6px", opacity: 0.85, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.fitment}
+                  </div>
+                )}
                 {item.location && (
                   <div style={{ fontSize: "6.5px", fontStyle: "italic", whiteSpace: "nowrap" }}>
                     Loc: {item.location}

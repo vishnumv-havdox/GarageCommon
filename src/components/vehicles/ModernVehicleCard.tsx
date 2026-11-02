@@ -17,14 +17,20 @@ import {
   Trash2,
   ShieldCheck,
   Plus,
+  Check,
+  History,
 } from "lucide-react";
 import { format, isPast, differenceInDays } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface ModernVehicleCardProps {
   vehicle: any;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+  isSelectionMode?: boolean;
 }
 
 export const ModernVehicleCard: React.FC<ModernVehicleCardProps> = ({
@@ -32,6 +38,9 @@ export const ModernVehicleCard: React.FC<ModernVehicleCardProps> = ({
   onView,
   onEdit,
   onDelete,
+  isSelected = false,
+  onToggleSelect,
+  isSelectionMode = false,
 }) => {
   const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -41,6 +50,8 @@ export const ModernVehicleCard: React.FC<ModernVehicleCardProps> = ({
       ? vehicle.photos
       : vehicle.photo_url
       ? [vehicle.photo_url]
+      : vehicle.vehicle_models?.image_url
+      ? [vehicle.vehicle_models.image_url]
       : [];
 
   const hasMultipleImages = images.length > 1;
@@ -77,14 +88,25 @@ export const ModernVehicleCard: React.FC<ModernVehicleCardProps> = ({
   const fcInfo = getFcStatus();
 
   return (
-    <div className="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden">
+    <div
+      className={cn(
+        "group rounded-2xl border bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden relative",
+        isSelected
+          ? "ring-2 ring-primary border-primary bg-primary/[0.03] shadow-md"
+          : "border-slate-200 dark:border-slate-800"
+      )}
+    >
       {/* 16:9 Aspect Ratio Hero Photo */}
       <div className="relative h-44 bg-slate-100 dark:bg-slate-800/60 overflow-hidden border-b border-slate-100 dark:border-slate-800">
         {images.length > 0 ? (
           <img
             src={images[currentImageIndex]}
             alt={vehicle.vehicle_number}
+            referrerPolicy="no-referrer"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800">
@@ -96,20 +118,50 @@ export const ModernVehicleCard: React.FC<ModernVehicleCardProps> = ({
         )}
 
         {/* Top Badges Overlay */}
-        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2">
-          {/* Status pill */}
-          <Badge
-            variant="outline"
-            className={`text-[10px] font-bold uppercase backdrop-blur-md shadow-sm border ${
-              isInService
-                ? "bg-blue-900/80 text-white border-blue-400/30"
-                : isAvailable
-                ? "bg-emerald-900/80 text-white border-emerald-400/30"
-                : "bg-slate-900/80 text-white border-slate-700"
-            }`}
-          >
-            {vehicle.status || "Active"}
-          </Badge>
+        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2 z-10">
+          <div className="flex items-center gap-2">
+            {/* Multi-Select Checkbox */}
+            {onToggleSelect && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect();
+                }}
+                className={cn(
+                  "h-6 w-6 rounded-md flex items-center justify-center transition-all shadow-md border cursor-pointer",
+                  isSelected
+                    ? "bg-primary text-primary-foreground border-primary ring-2 ring-white/60 dark:ring-black/60 scale-105"
+                    : isSelectionMode
+                    ? "bg-black/60 hover:bg-black/80 border-white/60 text-transparent"
+                    : "bg-black/40 hover:bg-black/70 border-white/40 text-transparent opacity-75 group-hover:opacity-100"
+                )}
+                title={isSelected ? "Deselect vehicle" : "Select vehicle"}
+                aria-label={isSelected ? "Deselect vehicle" : "Select vehicle"}
+              >
+                <Check
+                  className={cn(
+                    "h-3.5 w-3.5 stroke-[3]",
+                    isSelected ? "text-primary-foreground opacity-100" : "opacity-0 hover:opacity-50 text-white"
+                  )}
+                />
+              </button>
+            )}
+
+            {/* Status pill */}
+            <Badge
+              variant="outline"
+              className={`text-[10px] font-bold uppercase backdrop-blur-md shadow-sm border ${
+                isInService
+                  ? "bg-blue-900/80 text-white border-blue-400/30"
+                  : isAvailable
+                  ? "bg-emerald-900/80 text-white border-emerald-400/30"
+                  : "bg-slate-900/80 text-white border-slate-700"
+              }`}
+            >
+              {vehicle.status || "Active"}
+            </Badge>
+          </div>
 
           {/* Photo Count */}
           {hasMultipleImages && (
@@ -224,7 +276,17 @@ export const ModernVehicleCard: React.FC<ModernVehicleCardProps> = ({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 px-2.5 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950/40 font-semibold"
+            className="h-8 px-2 text-xs text-amber-700 border-amber-300/80 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-900/60 dark:hover:bg-amber-950/40 font-semibold"
+            onClick={() => navigate(`/admin/vehicles/${vehicle.id}#service-history`)}
+            title="Complete Vehicle History & Bills"
+          >
+            <History className="h-3.5 w-3.5 mr-1 text-amber-600" /> History
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950/40 font-semibold"
             onClick={() => navigate(`/admin/work-orders?create=true&vehicleId=${vehicle.id}&customerId=${vehicle.customer_id || vehicle.customer?.id || ''}`)}
             title="1-Click Create Work Order"
           >

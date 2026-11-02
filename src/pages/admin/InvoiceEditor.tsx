@@ -960,7 +960,7 @@ export default function InvoiceEditor() {
         if (ttError) console.error("Error fetching task templates:", ttError);
         setTaskTemplates(tt || []);
 
-        const { data: inv, error: invError } = await supabase.from('inventory').select('id, item_name, brand_name, unit_price, sku, hsn_code').gt('quantity', 0);
+        const { data: inv, error: invError } = await supabase.from('inventory').select('id, item_name, brand_name, unit_price, sku, hsn_code, oem_part_number, compatible_models, is_universal').gt('quantity', 0);
         if (invError) console.error("Error fetching inventory:", invError);
         setInventoryItems(inv || []);
     };
@@ -2096,7 +2096,7 @@ export default function InvoiceEditor() {
                                                                     {inventoryItems.map((item) => (
                                                                         <CommandItem
                                                                             key={item.id}
-                                                                            value={`${item.brand_name || ''} ${item.item_name}`}
+                                                                            value={`${item.brand_name || ''} ${item.item_name} ${item.oem_part_number || ''} ${(item.compatible_models || []).join(' ')}`}
                                                                             onSelect={() => {
                                                                                 handleQuickAddPart({
                                                                                     name: item.item_name,
@@ -2110,8 +2110,20 @@ export default function InvoiceEditor() {
                                                                             className="flex justify-between items-center py-1.5"
                                                                         >
                                                                             <div className="flex flex-col min-w-0">
-                                                                                <span className="font-semibold text-slate-800 text-xs truncate">{item.item_name}</span>
-                                                                                {item.brand_name && <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">{item.brand_name}</span>}
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="font-semibold text-slate-800 text-xs truncate">{item.item_name}</span>
+                                                                                    {item.oem_part_number && (
+                                                                                        <span className="text-[10px] font-mono text-primary font-bold">OEM: {item.oem_part_number}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                                                                                    {item.brand_name && <span className="uppercase font-bold tracking-wider">{item.brand_name}</span>}
+                                                                                    {item.compatible_models && item.compatible_models.length > 0 ? (
+                                                                                        <span className="text-blue-600 font-medium truncate max-w-[150px]">Fits: {item.compatible_models.slice(0, 2).join(", ")}</span>
+                                                                                    ) : (
+                                                                                        <span className="text-emerald-600 font-medium">Universal</span>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                             <span className="font-mono text-xs font-bold text-slate-700 ml-2 shrink-0">₹{item.unit_price}</span>
                                                                         </CommandItem>

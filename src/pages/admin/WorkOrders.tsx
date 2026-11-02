@@ -13,7 +13,7 @@ import {
   Trash2, Eye, ArrowLeft, Calendar, FileText, Wrench, IndianRupee,
   CheckCircle2, XCircle, Clock, User, Truck, RefreshCw, AlertTriangle,
   BarChart3, Activity, MoreVertical, Play, CheckCircle,
-  ClipboardCheck, Clock5, Plus, Receipt
+  ClipboardCheck, Clock5, Plus, Receipt, ShieldAlert
 } from "lucide-react";
 import { WorkOrderForm } from "@/components/forms/WorkOrderForm";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -63,10 +63,18 @@ interface WorkOrder {
   description: string;
   status: string;
   priority: string;
-  vehicle?: { vehicle_number: string; model: string; customer_id: string };
+  vehicle?: {
+    vehicle_number: string;
+    model: string;
+    customer_id: string;
+    fc_number?: string;
+    fc_expiry_date?: string;
+    last_fc_date?: string;
+  };
   customer?: { name: string; phone?: string; company_name?: string };
   created_at: string;
   notes?: string;
+  is_fc_renewal?: boolean;
   estimated_cost?: number;
   accepted_at?: string | null;
   completed_at?: string | null;
@@ -183,7 +191,7 @@ export default function AdminWorkOrders() {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'overdue' | 'today' | 'week' | 'none' | 'completed'>('all');
+  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'overdue' | 'today' | 'week' | 'none' | 'completed' | 'fc'>('all');
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [searchParams, setSearchParams] = useSearchParams();
   const editId = searchParams.get('editId');
@@ -247,6 +255,9 @@ export default function AdminWorkOrders() {
             vehicle_number, 
             model, 
             customer_id,
+            fc_number,
+            fc_expiry_date,
+            last_fc_date,
             customers(name, phone, company_name)
           ),
           driver:drivers(
@@ -376,6 +387,7 @@ export default function AdminWorkOrders() {
     let filtered = workOrders.filter((o) =>
       o.service_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.vehicle?.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.vehicle?.fc_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.customer?.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.id.includes(searchTerm)
@@ -416,7 +428,7 @@ export default function AdminWorkOrders() {
     }
     // 'all' includes all statuses
 
-    // Then filter by delivery date
+    // Then filter by delivery date or FC renewals
     if (deliveryFilter !== 'all') {
       const now = currentTime;
       const todayStart = new Date(now).setHours(0, 0, 0, 0);
@@ -424,6 +436,10 @@ export default function AdminWorkOrders() {
       const weekEnd = new Date(now).setDate(new Date(now).getDate() + 7);
 
       filtered = filtered.filter((o) => {
+        if (deliveryFilter === 'fc') {
+          return Boolean(o.is_fc_renewal || o.vehicle?.fc_expiry_date);
+        }
+
         if (deliveryFilter === 'none') {
           return !o.estimated_delivery_date;
         }
@@ -841,6 +857,15 @@ export default function AdminWorkOrders() {
                 >
                   <Clock5 className="h-3 w-3 mr-1" />
                   Due Today
+                </Button>
+                <Button
+                  variant={deliveryFilter === 'fc' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setDeliveryFilter(deliveryFilter === 'fc' ? 'all' : 'fc')}
+                  className={deliveryFilter === 'fc' ? 'bg-amber-600 hover:bg-amber-700 text-white text-xs h-8 px-2.5 rounded-lg shrink-0 whitespace-nowrap' : 'border-amber-300 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-xs h-8 px-2.5 rounded-lg shrink-0 whitespace-nowrap'}
+                >
+                  <ShieldAlert className="h-3 w-3 mr-1 text-amber-600" />
+                  FC Renewals
                 </Button>
               </div>
             </div>

@@ -144,12 +144,12 @@ export function NotificationBell() {
         const { data: dueVehicles } = await supabase
           .from("vehicles")
           .select(`
-            id, vehicle_number, model, kilometers_driven, next_service_km, next_service_date,
+            id, vehicle_number, model, kilometers_driven, next_service_km, next_service_date, fc_number, fc_expiry_date,
             customer:customers(id, name, company_name, phone),
             primary_contact:customer_contacts(id, name, designation, phone)
           `)
-          .or(`next_service_date.lte.${targetDateStr},next_service_km.not.is.null`)
-          .limit(10);
+          .or(`next_service_date.lte.${targetDateStr},next_service_km.not.is.null,fc_expiry_date.not.is.null`)
+          .limit(15);
 
         // Fetch existing 'informed' reminders to exclude acknowledged ones
         const { data: informedReminders } = await supabase
@@ -191,6 +191,31 @@ export function NotificationBell() {
                 dueKm: v.next_service_km,
                 contactName,
                 contactPhone,
+              });
+            }
+          }
+
+          // Check FC Due / Expired (within 30 days or already expired)
+          if (v.fc_expiry_date) {
+            const fcExp = new Date(v.fc_expiry_date);
+            const now = new Date();
+            const daysToFc = Math.ceil((fcExp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysToFc <= 30) {
+              const compName = v.customer?.company_name || v.customer?.name || "Customer";
+              const contactName = v.primary_contact?.name || v.customer?.name || "Customer Contact";
+              const contactPhone = v.primary_contact?.phone || v.customer?.phone || null;
+              items.push({
+                id: `fc-due-${v.id}`,
+                type: "service_due",
+                title: daysToFc < 0 ? `FC Expired: ${v.vehicle_number}` : `FC Due Soon: ${v.vehicle_number}`,
+                description: `${compName} • ${daysToFc < 0 ? `Expired ${Math.abs(daysToFc)}d ago` : `Due in ${daysToFc} days`} (${v.fc_expiry_date})${v.fc_number ? ` • #${v.fc_number}` : ''}`,
+                time: new Date().toISOString(),
+                link: `/admin/service-due?search=${encodeURIComponent(v.vehicle_number)}`,
+                vehicleId: v.id,
+                vehicleNumber: v.vehicle_number,
+                dueDate: v.fc_expiry_date,
+                contactName,
+                contactPhone
               });
             }
           }

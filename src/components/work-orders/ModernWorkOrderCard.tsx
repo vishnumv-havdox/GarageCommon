@@ -190,6 +190,14 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
             {/* Status Badge */}
             {getStatusBadge()}
 
+            {/* FC Renewal Badge */}
+            {order.is_fc_renewal && (
+              <Badge variant="outline" className="border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/40 text-[11px] font-bold">
+                <ShieldAlert className="h-3 w-3 mr-1 text-amber-600" />
+                FC Renewal
+              </Badge>
+            )}
+
             {/* Reopened state indicator */}
             {order.is_reopened && (
               <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950/40 text-[10px] font-bold">
@@ -315,8 +323,8 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
             )}
           </div>
 
-          {/* Delivery Due Date Pill */}
-          <div className="md:col-span-4 flex md:justify-end items-start">
+          {/* Delivery Due Date & FC Status Pill */}
+          <div className="md:col-span-4 flex flex-col md:items-end items-start gap-1.5">
             {order.estimated_delivery_date && !isFinalized ? (
               <div
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
@@ -336,6 +344,36 @@ export const ModernWorkOrderCard: React.FC<ModernWorkOrderCardProps> = ({
                 <span>Work Completed</span>
               </div>
             ) : null}
+
+            {/* FC Expiry Date Pill */}
+            {order.vehicle?.fc_expiry_date && (() => {
+              const exp = new Date(order.vehicle.fc_expiry_date);
+              const now = new Date();
+              const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              const isExp = diffDays < 0;
+              const isDue = diffDays >= 0 && diffDays <= 30;
+
+              return (
+                <div
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium ${
+                    isExp
+                      ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:border-red-900"
+                      : isDue
+                      ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900"
+                      : "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/80 dark:border-slate-700"
+                  }`}
+                  title={order.vehicle.fc_number ? `FC #${order.vehicle.fc_number}` : undefined}
+                >
+                  <ShieldAlert className={`h-3 w-3 shrink-0 ${isExp ? "text-red-600" : isDue ? "text-amber-600" : "text-emerald-600"}`} />
+                  <span>
+                    FC: {new Date(order.vehicle.fc_expiry_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                  </span>
+                  <span className={`text-[10px] font-bold ${isExp ? "text-red-600" : isDue ? "text-amber-700" : "text-emerald-700 dark:text-emerald-400"}`}>
+                    {isExp ? `(${Math.abs(diffDays)}d exp)` : isDue ? `(due ${diffDays}d)` : `(${diffDays}d)`}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

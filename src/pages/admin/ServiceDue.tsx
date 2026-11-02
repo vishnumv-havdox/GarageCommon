@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -40,6 +41,9 @@ export interface ServiceDueVehicle {
   kilometers_driven: number;
   next_service_km: number | null;
   next_service_date: string | null;
+  fc_number?: string | null;
+  fc_expiry_date?: string | null;
+  last_fc_date?: string | null;
   status: string;
   customer_id: string;
   customer: {
@@ -83,7 +87,7 @@ export default function ServiceDue() {
   const [vehicles, setVehicles] = useState<ServiceDueVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusTab, setStatusTab] = useState<"all" | "overdue" | "due_soon" | "upcoming" | "completed">("all");
+  const [statusTab, setStatusTab] = useState<"all" | "overdue" | "due_soon" | "upcoming" | "fc_due" | "completed">("all");
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string>("all");
 
   // Acknowledgment dialog state
@@ -109,6 +113,10 @@ export default function ServiceDue() {
   const [serviceNotes, setServiceNotes] = useState("");
   const [serviceCustomerContacts, setServiceCustomerContacts] = useState<any[]>([]);
   const [isSubmittingService, setIsSubmittingService] = useState(false);
+  const [serviceFcNumber, setServiceFcNumber] = useState("");
+  const [serviceFcIssueDate, setServiceFcIssueDate] = useState("");
+  const [serviceFcExpiryDate, setServiceFcExpiryDate] = useState("");
+  const [serviceIsFcUpdate, setServiceIsFcUpdate] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -118,7 +126,8 @@ export default function ServiceDue() {
         .from("vehicles")
         .select(`
           id, vehicle_number, model, vehicle_type, year, kilometers_driven,
-          next_service_km, next_service_date, status, customer_id, primary_contact_id,
+          next_service_km, next_service_date, fc_number, fc_expiry_date, last_fc_date,
+          status, customer_id, primary_contact_id,
           photo_url, photos,
           customer:customers(id, name, company_name, phone, email),
           primary_contact:customer_contacts(id, name, designation, phone, alternate_phone, email, preferred_contact_method)
@@ -255,12 +264,65 @@ export default function ServiceDue() {
     };
   };
 
+  // Compute FC validity and countdown
+  const getVehicleFcStatus = (v: ServiceDueVehicle) => {
+    if (!v.fc_expiry_date) {
+      return {
+        hasFc: false,
+        category: "none" as const,
+        label: "Not Set",
+        color: "text-muted-foreground",
+        badgeVariant: "outline" as const,
+        daysRemaining: null,
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiryDate = new Date(v.fc_expiry_date);
+    expiryDate.setHours(0, 0, 0, 0);
+
+    const daysRemaining = differenceInDays(expiryDate, today);
+
+    if (daysRemaining < 0) {
+      return {
+        hasFc: true,
+        category: "expired" as const,
+        label: "FC Expired",
+        color: "bg-rose-500/10 text-rose-600 border-rose-300 dark:border-rose-800",
+        badgeVariant: "destructive" as const,
+        daysRemaining,
+      };
+    }
+
+    if (daysRemaining <= 30) {
+      return {
+        hasFc: true,
+        category: "due_soon" as const,
+        label: daysRemaining === 0 ? "Expires Today" : `Expires in ${daysRemaining}d`,
+        color: "bg-amber-500/10 text-amber-600 border-amber-300 dark:border-amber-800",
+        badgeVariant: "outline" as const,
+        daysRemaining,
+      };
+    }
+
+    return {
+      hasFc: true,
+      category: "valid" as const,
+      label: "FC Valid",
+      color: "bg-emerald-500/10 text-emerald-600 border-emerald-300 dark:border-emerald-800",
+      badgeVariant: "outline" as const,
+      daysRemaining,
+    };
+  };
+
   // Metrics count
   const metrics = useMemo(() => {
     let overdue = 0;
     let dueSoon = 0;
     let upcoming = 0;
     let completed = 0;
+    let fcDue = 0;
 
     vehicles.forEach((v) => {
       const s = getVehicleServiceStatus(v);
@@ -268,9 +330,14 @@ export default function ServiceDue() {
       else if (s.category === "due_soon") dueSoon++;
       else if (s.category === "upcoming") upcoming++;
       else completed++;
+
+      const fc = getVehicleFcStatus(v);
+      if (fc.category === "expired" || fc.category === "due_soon") {
+        fcDue++;
+      }
     });
 
-    return { overdue, dueSoon, upcoming, completed, total: vehicles.length };
+    return { overdue, dueSoon, upcoming, completed, fcDue, total: vehicles.length };
   }, [vehicles]);
 
   // Unique companies list for filtering
@@ -289,9 +356,14 @@ export default function ServiceDue() {
   const filteredVehicles = useMemo(() => {
     return vehicles.filter((v) => {
       const serviceStatus = getVehicleServiceStatus(v);
+      const fcStatus = getVehicleFcStatus(v);
 
       // Status tab filter
-      if (statusTab !== "all" && serviceStatus.category !== statusTab) {
+      if (statusTab === "fc_due") {
+        if (fcStatus.category !== "expired" && fcStatus.category !== "due_soon") {
+          return false;
+        }
+      } else if (statusTab !== "all" && serviceStatus.category !== statusTab) {
         return false;
       }
 
@@ -304,6 +376,7 @@ export default function ServiceDue() {
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
         const vNum = v.vehicle_number?.toLowerCase() || "";
+        const fcNum = v.fc_number?.toLowerCase() || "";
         const model = v.model?.toLowerCase() || "";
         const company = (v.customer?.company_name || v.customer?.name || "").toLowerCase();
         const contact = (v.primary_contact?.name || v.customer?.name || "").toLowerCase();
@@ -311,6 +384,7 @@ export default function ServiceDue() {
 
         return (
           vNum.includes(term) ||
+          fcNum.includes(term) ||
           model.includes(term) ||
           company.includes(term) ||
           contact.includes(term) ||
@@ -427,6 +501,12 @@ export default function ServiceDue() {
     setServiceContactId(targetVehicle.primary_contact_id || "");
     setServiceNotes("");
 
+    // Initialize FC fields
+    setServiceFcNumber(targetVehicle.fc_number || "");
+    setServiceFcIssueDate(new Date().toISOString().split("T")[0]);
+    setServiceFcExpiryDate(targetVehicle.fc_expiry_date || format(addYears(new Date(), 1), "yyyy-MM-dd"));
+    setServiceIsFcUpdate(false);
+
     if (targetVehicle.customer_id) {
       const { data: contacts } = await supabase
         .from("customer_contacts")
@@ -450,6 +530,11 @@ export default function ServiceDue() {
       setServiceNextKm(targetVehicle.next_service_km || currKm + 10000);
       setServiceNextDate(targetVehicle.next_service_date || format(addMonths(new Date(), 6), "yyyy-MM-dd"));
       setServiceContactId(targetVehicle.primary_contact_id || "");
+
+      // Sync FC fields
+      setServiceFcNumber(targetVehicle.fc_number || "");
+      setServiceFcIssueDate(new Date().toISOString().split("T")[0]);
+      setServiceFcExpiryDate(targetVehicle.fc_expiry_date || format(addYears(new Date(), 1), "yyyy-MM-dd"));
 
       if (targetVehicle.customer_id) {
         const { data: contacts } = await supabase
@@ -482,19 +567,41 @@ export default function ServiceDue() {
       const targetNextKm = serviceNextKm !== "" ? Number(serviceNextKm) : null;
       const targetNextDate = serviceNextDate || null;
 
-      // 1. Update vehicle odometer & next service targets
+      // 1. Update vehicle odometer & next service targets (+ FC if selected)
+      const vehicleUpdates: any = {
+        kilometers_driven: currentOdo,
+        next_service_km: targetNextKm,
+        next_service_date: targetNextDate,
+        primary_contact_id: serviceContactId || v.primary_contact_id || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (serviceIsFcUpdate) {
+        if (serviceFcNumber.trim()) vehicleUpdates.fc_number = serviceFcNumber.trim();
+        if (serviceFcExpiryDate) vehicleUpdates.fc_expiry_date = serviceFcExpiryDate;
+        if (serviceFcIssueDate) vehicleUpdates.last_fc_date = serviceFcIssueDate;
+      }
+
       const { error: vError } = await supabase
         .from("vehicles")
-        .update({
-          kilometers_driven: currentOdo,
-          next_service_km: targetNextKm,
-          next_service_date: targetNextDate,
-          primary_contact_id: serviceContactId || v.primary_contact_id || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(vehicleUpdates)
         .eq("id", v.id);
 
       if (vError) throw vError;
+
+      // 1b. If FC was updated, insert into vehicle_fc_history
+      if (serviceIsFcUpdate && (serviceFcExpiryDate || serviceFcNumber.trim())) {
+        await supabase
+          .from("vehicle_fc_history")
+          .insert({
+            vehicle_id: v.id,
+            fc_number: serviceFcNumber.trim() || null,
+            issue_date: serviceFcIssueDate || serviceDate || new Date().toISOString().split("T")[0],
+            expiry_date: serviceFcExpiryDate || null,
+            notes: serviceNotes.trim() || `FC recorded via service entry`,
+            created_by: user?.id || null,
+          });
+      }
 
       // 2. Insert into service_history
       const { error: hError } = await supabase
@@ -529,7 +636,7 @@ export default function ServiceDue() {
 
       toast({
         title: "Service Recorded Successfully",
-        description: `Next service target for ${v.vehicle_number} scheduled for ${targetNextKm ? `${targetNextKm.toLocaleString()} KM` : ""}${targetNextDate ? ` on ${targetNextDate}` : ""}`,
+        description: `Next service target for ${v.vehicle_number} scheduled for ${targetNextKm ? `${targetNextKm.toLocaleString()} KM` : ""}${targetNextDate ? ` on ${targetNextDate}` : ""}${serviceIsFcUpdate && serviceFcExpiryDate ? ` • FC Expiry set to ${serviceFcExpiryDate}` : ""}`,
       });
 
       setIsAddServiceModalOpen(false);
@@ -593,8 +700,8 @@ export default function ServiceDue() {
           </div>
         </div>
 
-        {/* 4 Metric Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 5 Metric Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
           <Card
             className={`border rounded-2xl shadow-xs transition-all cursor-pointer ${
               statusTab === "overdue" ? "ring-2 ring-rose-500 bg-rose-50/20" : "hover:border-rose-300"
@@ -657,6 +764,26 @@ export default function ServiceDue() {
 
           <Card
             className={`border rounded-2xl shadow-xs transition-all cursor-pointer ${
+              statusTab === "fc_due" ? "ring-2 ring-purple-500 bg-purple-50/20" : "hover:border-purple-300"
+            }`}
+            onClick={() => setStatusTab("fc_due")}
+          >
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  FC Due / Exp
+                </span>
+                <p className="text-2xl font-black text-purple-600 leading-none">{metrics.fcDue}</p>
+                <p className="text-[10px] text-muted-foreground">FC expired or &lt;30d</p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className={`border rounded-2xl shadow-xs transition-all cursor-pointer ${
               statusTab === "completed" ? "ring-2 ring-emerald-500 bg-emerald-50/20" : "hover:border-emerald-300"
             }`}
             onClick={() => setStatusTab("completed")}
@@ -681,7 +808,7 @@ export default function ServiceDue() {
           <div className="flex-1 relative min-w-[240px]">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search vehicle number, model, company, or contact..."
+              placeholder="Search vehicle number, FC number, model, company, or contact..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 rounded-xl h-9 text-xs border-muted"
@@ -719,7 +846,7 @@ export default function ServiceDue() {
 
         {/* Category Tabs */}
         <Tabs value={statusTab} onValueChange={(v: any) => setStatusTab(v)}>
-          <TabsList className="grid grid-cols-5 w-full max-w-2xl bg-muted/70 p-1 rounded-xl">
+          <TabsList className="grid grid-cols-3 sm:grid-cols-6 w-full max-w-3xl bg-muted/70 p-1 rounded-xl">
             <TabsTrigger value="all" className="rounded-lg text-xs font-semibold">
               All ({metrics.total})
             </TabsTrigger>
@@ -731,6 +858,9 @@ export default function ServiceDue() {
             </TabsTrigger>
             <TabsTrigger value="upcoming" className="rounded-lg text-xs font-semibold text-blue-600">
               Upcoming ({metrics.upcoming})
+            </TabsTrigger>
+            <TabsTrigger value="fc_due" className="rounded-lg text-xs font-semibold text-purple-600">
+              FC Due ({metrics.fcDue})
             </TabsTrigger>
             <TabsTrigger value="completed" className="rounded-lg text-xs font-semibold text-emerald-600">
               Serviced ({metrics.completed})
@@ -769,6 +899,7 @@ export default function ServiceDue() {
           ) : (
             filteredVehicles.map((v) => {
               const status = getVehicleServiceStatus(v);
+              const fcStatus = getVehicleFcStatus(v);
               const companyName = v.customer?.company_name || v.customer?.name || "Private Vehicle";
               const contactPerson = v.primary_contact || (v.customer ? {
                 id: v.customer.id,
@@ -821,6 +952,16 @@ export default function ServiceDue() {
                           <Badge variant="outline" className={`text-[10px] font-bold px-2 py-0.5 border ${status.color}`}>
                             {status.label}
                           </Badge>
+                          {fcStatus.category === "expired" && (
+                            <Badge variant="destructive" className="text-[10px] font-bold px-2 py-0.5 animate-pulse">
+                              FC Expired
+                            </Badge>
+                          )}
+                          {fcStatus.category === "due_soon" && (
+                            <Badge className="bg-amber-500/10 text-amber-600 border border-amber-300 text-[10px] font-bold px-2 py-0.5">
+                              FC Due ({fcStatus.daysRemaining}d)
+                            </Badge>
+                          )}
                         </div>
 
                         <div>
@@ -900,7 +1041,7 @@ export default function ServiceDue() {
                   {/* Bottom Tier: Mileage & Timeline Telemetry Micro-Cards + Action Buttons */}
                   <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3.5 sm:gap-4">
                     {/* Mileage & Timeline Telemetry Micro-Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 flex-1">
                       {/* Current Mileage */}
                       <div className="p-2.5 sm:p-3 rounded-xl bg-muted/20 border border-border/40 space-y-1">
                         <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
@@ -972,6 +1113,43 @@ export default function ServiceDue() {
                           <p className="text-[11px] text-muted-foreground">—</p>
                         )}
                       </div>
+
+                      {/* FC Validity & Countdown */}
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+                          <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
+                            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                            <span>FC Expiry</span>
+                          </div>
+                          {v.fc_number && (
+                            <span className="font-mono text-[9px] text-muted-foreground truncate max-w-[80px]" title={v.fc_number}>
+                              #{v.fc_number}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm sm:text-base font-bold text-foreground font-mono">
+                          {v.fc_expiry_date ? format(new Date(v.fc_expiry_date), "dd MMM yyyy") : "Not Set"}
+                        </p>
+                        {fcStatus.daysRemaining !== null ? (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold leading-none ${
+                              fcStatus.daysRemaining < 0
+                                ? "text-rose-700 bg-rose-50 dark:bg-rose-950/60 dark:text-rose-300"
+                                : fcStatus.daysRemaining <= 30
+                                ? "text-amber-700 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300"
+                                : "text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            }`}
+                          >
+                            {fcStatus.daysRemaining < 0
+                              ? `${Math.abs(fcStatus.daysRemaining)}d expired`
+                              : fcStatus.daysRemaining === 0
+                              ? "Expires Today"
+                              : `${fcStatus.daysRemaining}d valid`}
+                          </span>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">—</p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Action Buttons */}
@@ -1014,7 +1192,9 @@ export default function ServiceDue() {
                         size="sm"
                         onClick={() =>
                           navigate(
-                            `/admin/work-orders?create=true&vehicleId=${v.id}&customerId=${v.customer?.id || ""}`
+                            `/admin/work-orders?create=true&vehicleId=${v.id}&customerId=${v.customer?.id || ""}${
+                              fcStatus.category === "expired" || fcStatus.category === "due_soon" ? "&isFC=true" : ""
+                            }`
                           )
                         }
                         className="rounded-xl h-9 text-xs font-semibold shadow-xs"
@@ -1444,6 +1624,89 @@ export default function ServiceDue() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* FC Renewal & Certificate Section */}
+              <div className="sm:col-span-2 p-3.5 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-purple-500/5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="service_fc_update"
+                      checked={serviceIsFcUpdate}
+                      onCheckedChange={(checked) => setServiceIsFcUpdate(Boolean(checked))}
+                    />
+                    <Label htmlFor="service_fc_update" className="text-xs font-bold cursor-pointer flex items-center gap-1.5 text-foreground">
+                      <ShieldAlert className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                      Record / Renew Vehicle Fitness Certificate (FC)
+                    </Label>
+                  </div>
+                  {selectedServiceVehicle?.fc_expiry_date && (
+                    <span className="text-[11px] text-muted-foreground bg-background px-2 py-0.5 rounded-md border">
+                      Current FC Expiry: <strong className="text-foreground">{format(new Date(selectedServiceVehicle.fc_expiry_date), "dd MMM yyyy")}</strong>
+                    </span>
+                  )}
+                </div>
+
+                {serviceIsFcUpdate && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2.5 border-t border-purple-200 dark:border-purple-900/40">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">FC Number</Label>
+                      <Input
+                        type="text"
+                        placeholder="e.g. TN-55-FC-2026-09"
+                        className="h-9 text-xs bg-background font-mono"
+                        value={serviceFcNumber}
+                        onChange={(e) => setServiceFcNumber(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">FC Issue / Renewal Date</Label>
+                      <Input
+                        type="date"
+                        className="h-9 text-xs bg-background font-mono"
+                        value={serviceFcIssueDate}
+                        onChange={(e) => setServiceFcIssueDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">New FC Expiry Date</Label>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-5 text-[10px] px-1.5 bg-muted hover:bg-muted/80 text-foreground"
+                            onClick={() => {
+                              const base = serviceFcIssueDate ? new Date(serviceFcIssueDate) : new Date();
+                              setServiceFcExpiryDate(format(addYears(base, 1), "yyyy-MM-dd"));
+                            }}
+                          >
+                            +1 Yr
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-5 text-[10px] px-1.5 bg-muted hover:bg-muted/80 text-foreground"
+                            onClick={() => {
+                              const base = serviceFcIssueDate ? new Date(serviceFcIssueDate) : new Date();
+                              setServiceFcExpiryDate(format(addYears(base, 2), "yyyy-MM-dd"));
+                            }}
+                          >
+                            +2 Yrs
+                          </Button>
+                        </div>
+                      </div>
+                      <Input
+                        type="date"
+                        className="h-9 text-xs bg-background font-mono"
+                        value={serviceFcExpiryDate}
+                        onChange={(e) => setServiceFcExpiryDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Service Notes */}

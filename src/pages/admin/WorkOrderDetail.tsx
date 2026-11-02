@@ -23,7 +23,7 @@ import {
     Bell, ShieldCheck, FileText, Calendar as CalendarIcon,
     ListOrdered, Search, TrendingUp, Info, Loader2, RotateCcw,
     Wrench, ArrowLeft, ArrowRight, Users, ClipboardList, IndianRupee, Package, Camera,
-    Receipt, Gauge, Phone, MessageSquare, Star, Eye, ExternalLink
+    Receipt, Gauge, Phone, MessageSquare, Star, Eye, ExternalLink, ShieldAlert
 } from "lucide-react";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell, TableFooter } from "@/components/ui/table";
 import { VehiclePlateBadge } from "@/components/shared/VehiclePlateBadge";
@@ -230,12 +230,29 @@ export default function WorkOrderDetail() {
     const [targetOdometer, setTargetOdometer] = useState<number>(0);
     const [targetNextKm, setTargetNextKm] = useState<number>(0);
     const [targetNextDate, setTargetNextDate] = useState<string>("");
+    const [targetFcNumber, setTargetFcNumber] = useState<string>("");
+    const [targetLastFcDate, setTargetLastFcDate] = useState<string>("");
+    const [targetFcExpiryDate, setTargetFcExpiryDate] = useState<string>("");
     const [savingTargets, setSavingTargets] = useState(false);
 
     const handleOpenServiceTargetDialog = () => {
         setTargetOdometer(workOrder?.odometer_reading || 0);
         setTargetNextKm(workOrder?.next_service_due_km || 0);
         setTargetNextDate(workOrder?.next_service_due_date || "");
+
+        let notesFc: any = null;
+        try {
+            if (typeof workOrder?.notes === "string" && workOrder.notes.trim().startsWith("{")) {
+                const parsed = JSON.parse(workOrder.notes);
+                notesFc = parsed.fc_details;
+            } else if (typeof workOrder?.notes === "object" && workOrder?.notes !== null) {
+                notesFc = (workOrder.notes as any).fc_details;
+            }
+        } catch {}
+
+        setTargetFcNumber(workOrder?.vehicle?.fc_number || notesFc?.fc_number || "");
+        setTargetLastFcDate(workOrder?.vehicle?.last_fc_date || notesFc?.issue_date || "");
+        setTargetFcExpiryDate(workOrder?.vehicle?.fc_expiry_date || notesFc?.expiry_date || "");
         setShowServiceTargetDialog(true);
     };
 
@@ -243,29 +260,73 @@ export default function WorkOrderDetail() {
         if (!id) return;
         setSavingTargets(true);
         try {
+            const woUpdate: any = {
+                odometer_reading: targetOdometer || null,
+                next_service_due_km: targetNextKm || null,
+                next_service_due_date: targetNextDate || null
+            };
+
+            if (targetFcExpiryDate || targetFcNumber) {
+                woUpdate.is_fc_renewal = true;
+                let existingNotes: any = {};
+                try {
+                    existingNotes = typeof workOrder?.notes === "string" && workOrder.notes.trim().startsWith("{")
+                        ? JSON.parse(workOrder.notes)
+                        : (typeof workOrder?.notes === "object" && workOrder?.notes !== null ? workOrder.notes : { text: workOrder?.notes });
+                } catch {
+                    existingNotes = { text: workOrder?.notes };
+                }
+                woUpdate.notes = JSON.stringify({
+                    ...existingNotes,
+                    fc_details: {
+                        fc_number: targetFcNumber,
+                        issue_date: targetLastFcDate,
+                        expiry_date: targetFcExpiryDate,
+                        updated_at: new Date().toISOString()
+                    }
+                });
+            }
+
             const { error } = await supabase
                 .from("work_orders")
-                .update({
-                    odometer_reading: targetOdometer || null,
-                    next_service_due_km: targetNextKm || null,
-                    next_service_due_date: targetNextDate || null
-                } as any)
+                .update(woUpdate)
                 .eq("id", id);
 
             if (error) throw error;
 
             if (workOrder?.vehicle_id) {
+                const vUpdate: any = {
+                    kilometers_driven: targetOdometer || undefined,
+                    next_service_km: targetNextKm || undefined,
+                    next_service_date: targetNextDate || undefined
+                };
+                if (targetFcExpiryDate) {
+                    vUpdate.fc_expiry_date = targetFcExpiryDate;
+                }
+                if (targetFcNumber) {
+                    vUpdate.fc_number = targetFcNumber;
+                }
+                if (targetLastFcDate) {
+                    vUpdate.last_fc_date = targetLastFcDate;
+                }
+
                 await supabase
                     .from("vehicles")
-                    .update({
-                        kilometers_driven: targetOdometer || undefined,
-                        next_service_km: targetNextKm || undefined,
-                        next_service_date: targetNextDate || undefined
-                    } as any)
+                    .update(vUpdate)
                     .eq("id", workOrder.vehicle_id);
+
+                if (targetFcExpiryDate) {
+                    await supabase.from("vehicle_fc_history").insert({
+                        vehicle_id: workOrder.vehicle_id,
+                        fc_number: targetFcNumber || null,
+                        issue_date: targetLastFcDate || null,
+                        expiry_date: targetFcExpiryDate,
+                        notes: `Updated from Work Order #${workOrder.id?.slice(0, 8)} Service Targets`
+                    });
+                }
             }
 
-            toast({ title: "Service Targets Updated", description: "Odometer & next service schedule saved." });
+            toast({ title: "Service Targets Updated", description: "Odometer, next service, and FC details saved." });
             setShowServiceTargetDialog(false);
             fetchDetails();
         } catch (err: any) {
@@ -488,6 +549,9 @@ export default function WorkOrderDetail() {
             vehicle_type, 
             customer_id, 
             model_id,
+            fc_number,
+            fc_expiry_date,
+            last_fc_date,
             customers(id, name, company_name, phone, email, address)
           ),
           driver:drivers(
@@ -1335,6 +1399,12 @@ export default function WorkOrderDetail() {
                                         <RefreshCw className="h-3 w-3 mr-1" /> Reopened
                                     </Badge>
                                 )}
+                                {workOrder.is_fc_renewal && (
+                                    <Badge variant="outline" className="border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/40 text-xs font-semibold gap-1">
+                                        <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+                                        FC Renewal
+                                    </Badge>
+                                )}
                             </h1>
                             <div className="flex items-center gap-3 mt-0.5">
                                 <p className="text-xs text-muted-foreground font-medium">
@@ -1905,6 +1975,49 @@ export default function WorkOrderDetail() {
                                                         {workOrder.next_service_due_km ? `${workOrder.next_service_due_km.toLocaleString()} KM` : '—'}
                                                     </p>
                                                 </div>
+                                            </div>
+
+                                            {/* Fitness Certificate (FC) Tracking */}
+                                            <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1.5 mt-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase flex items-center gap-1">
+                                                        <ShieldAlert className="h-3 w-3" /> Fitness Certificate (FC)
+                                                    </span>
+                                                    {workOrder.is_fc_renewal && (
+                                                        <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-400 text-amber-700 bg-amber-100/50 dark:bg-amber-950/60 font-semibold">
+                                                            Renewal Order
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center justify-between text-xs">
+                                                    <span className="text-muted-foreground">FC Number:</span>
+                                                    <span className="font-mono font-medium text-foreground">
+                                                        {workOrder.vehicle?.fc_number || '—'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-xs">
+                                                    <span className="text-muted-foreground">FC Expiry Date:</span>
+                                                    <span className="font-semibold text-foreground">
+                                                        {workOrder.vehicle?.fc_expiry_date
+                                                            ? format(new Date(workOrder.vehicle.fc_expiry_date), 'dd MMM yyyy')
+                                                            : '—'}
+                                                    </span>
+                                                </div>
+                                                {workOrder.vehicle?.fc_expiry_date && (() => {
+                                                    const exp = new Date(workOrder.vehicle.fc_expiry_date);
+                                                    const today = new Date();
+                                                    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                                                    const isExp = diffDays < 0;
+                                                    const isDue = diffDays >= 0 && diffDays <= 30;
+                                                    return (
+                                                        <div className="pt-0.5 flex items-center justify-between text-[11px] border-t border-amber-500/10">
+                                                            <span className="text-muted-foreground">Validity:</span>
+                                                            <span className={isExp ? "text-red-600 font-bold" : isDue ? "text-amber-600 font-bold" : "text-emerald-600 font-bold"}>
+                                                                {isExp ? `Expired ${Math.abs(diffDays)}d ago` : isDue ? `Due in ${diffDays} days` : `Valid (${diffDays}d left)`}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
                                     </CardContent>
@@ -3851,6 +3964,68 @@ export default function WorkOrderDetail() {
                                 value={targetNextDate}
                                 onChange={(e) => setTargetNextDate(e.target.value)}
                             />
+                        </div>
+
+                        {/* Fitness Certificate (FC) Targets */}
+                        <div className="pt-3 border-t space-y-3">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                                <ShieldAlert className="h-4 w-4" />
+                                <span>Fitness Certificate (FC) Targets</span>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold">FC Certificate Number</Label>
+                                <Input
+                                    value={targetFcNumber}
+                                    onChange={(e) => setTargetFcNumber(e.target.value)}
+                                    placeholder="e.g. FC/TN38/2026/894"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold">Last FC Issue Date</Label>
+                                    <Input
+                                        type="date"
+                                        value={targetLastFcDate}
+                                        onChange={(e) => setTargetLastFcDate(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-semibold">New FC Expiry</Label>
+                                        <div className="flex gap-1.5 text-[10px] text-amber-600 font-medium">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const d = new Date();
+                                                    d.setFullYear(d.getFullYear() + 1);
+                                                    setTargetFcExpiryDate(d.toISOString().split('T')[0]);
+                                                }}
+                                                className="hover:underline"
+                                            >
+                                                +1 Yr
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const d = new Date();
+                                                    d.setFullYear(d.getFullYear() + 2);
+                                                    setTargetFcExpiryDate(d.toISOString().split('T')[0]);
+                                                }}
+                                                className="hover:underline"
+                                            >
+                                                +2 Yrs
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <Input
+                                        type="date"
+                                        value={targetFcExpiryDate}
+                                        onChange={(e) => setTargetFcExpiryDate(e.target.value)}
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>

@@ -20,10 +20,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { useSearchParams } from "react-router-dom"
-import { Loader2, Wrench, Search, ChevronDown, ChevronRight, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, UserPlus, Camera, Upload as UploadIcon, X, Package, CheckCircle2, Truck, ListOrdered, ArrowLeft, RotateCcw, Gauge, Fuel, FileText, Phone, Eye, ExternalLink, AlertTriangle } from "lucide-react"
+import { Loader2, Wrench, Search, ChevronDown, ChevronRight, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, UserPlus, Camera, Upload as UploadIcon, X, Package, CheckCircle2, Truck, ListOrdered, ArrowLeft, RotateCcw, Gauge, Fuel, FileText, Phone, Eye, ExternalLink, AlertTriangle, ShieldAlert } from "lucide-react"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
-import { format } from "date-fns"
+import { format, addYears } from "date-fns"
 import { Calendar as CalendarIcon, Clock } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
@@ -48,6 +48,9 @@ interface Vehicle {
   kilometers_driven?: number
   next_service_km?: number
   next_service_date?: string
+  fc_number?: string
+  fc_expiry_date?: string
+  last_fc_date?: string
   primary_contact_id?: string
   vehicle_type_name?: string
   vehicle_category_name?: string
@@ -223,7 +226,10 @@ export function WorkOrderForm({
     next_service_due_km: 0,
     next_service_due_date: "",
     service_notes: "",
-    is_fc_renewal: false
+    is_fc_renewal: false,
+    fc_number: "",
+    fc_issue_date: "",
+    fc_expiry_date: ""
   })
 
   // Driver state
@@ -349,6 +355,16 @@ export function WorkOrderForm({
       }
       if (urlVehicleId) {
         setVehicleId(urlVehicleId);
+      }
+
+      const urlIsFC = searchParams.get('isFC') === 'true';
+      if (urlIsFC) {
+        setIsFCWork(true);
+        setLifecycleData(prev => ({
+          ...prev,
+          is_fc_renewal: true,
+          fc_issue_date: prev.fc_issue_date || new Date().toISOString().split('T')[0]
+        }));
       }
 
       const savedDraft = sessionStorage.getItem(draftKey);
@@ -714,13 +730,21 @@ export function WorkOrderForm({
           kilometers_driven,
           next_service_km,
           next_service_date,
+          fc_number,
+          fc_expiry_date,
+          last_fc_date,
           primary_contact_id,
+          photo_url,
+          photos,
           customers(id, name, company_name, phone),
           vehicle_models (
             id,
             name,
             manufacturer_id,
             vehicle_type_id,
+            image_url,
+            fuel_type,
+            engine_specs,
             vehicle_manufacturers (id, name),
             vehicle_types (
               id,
@@ -759,6 +783,7 @@ export function WorkOrderForm({
           const m = Array.isArray(rawModel) ? rawModel[0] : rawModel;
           const rawType = m?.vehicle_types;
           const t = Array.isArray(rawType) ? rawType[0] : rawType;
+          const photo = (v.photos && v.photos.length > 0) ? v.photos[0] : (v.photo_url || m?.image_url || null);
 
           return {
             id: v.id,
@@ -773,10 +798,16 @@ export function WorkOrderForm({
             kilometers_driven: v.kilometers_driven,
             next_service_km: v.next_service_km,
             next_service_date: v.next_service_date,
+            fc_number: v.fc_number,
+            fc_expiry_date: v.fc_expiry_date,
+            last_fc_date: v.last_fc_date,
             primary_contact_id: v.primary_contact_id,
             vehicle_type_name: t?.name,
             vehicle_category_name: t?.vehicle_categories?.name,
-            manufacturer_name: m?.vehicle_manufacturers?.name
+            manufacturer_name: m?.vehicle_manufacturers?.name,
+            image_url: photo,
+            fuel_type: m?.fuel_type,
+            engine_specs: m?.engine_specs
           }
         })
         setVehicles(formatted)
@@ -1018,13 +1049,21 @@ export function WorkOrderForm({
             kilometers_driven,
             next_service_km,
             next_service_date,
+            fc_number,
+            fc_expiry_date,
+            last_fc_date,
             primary_contact_id,
+            photo_url,
+            photos,
             customers(id, name, company_name),
             vehicle_models (
               id,
               name,
               manufacturer_id,
               vehicle_type_id,
+              image_url,
+              fuel_type,
+              engine_specs,
               vehicle_manufacturers (id, name),
               vehicle_types (
                 id,
@@ -1042,6 +1081,7 @@ export function WorkOrderForm({
           const m = Array.isArray(rawModel) ? rawModel[0] : rawModel;
           const rawType = m?.vehicle_types;
           const t = Array.isArray(rawType) ? rawType[0] : rawType;
+          const photo = (vRecord.photos && vRecord.photos.length > 0) ? vRecord.photos[0] : (vRecord.photo_url || m?.image_url || null);
 
           target = {
             id: vRecord.id,
@@ -1056,10 +1096,16 @@ export function WorkOrderForm({
             kilometers_driven: vRecord.kilometers_driven,
             next_service_km: vRecord.next_service_km,
             next_service_date: vRecord.next_service_date,
+            fc_number: vRecord.fc_number,
+            fc_expiry_date: vRecord.fc_expiry_date,
+            last_fc_date: vRecord.last_fc_date,
             primary_contact_id: vRecord.primary_contact_id,
             vehicle_type_name: t?.name,
             vehicle_category_name: t?.vehicle_categories?.name,
-            manufacturer_name: m?.vehicle_manufacturers?.name
+            manufacturer_name: m?.vehicle_manufacturers?.name,
+            image_url: photo,
+            fuel_type: m?.fuel_type,
+            engine_specs: m?.engine_specs
           };
 
           setVehicles(prev => {
@@ -1078,12 +1124,15 @@ export function WorkOrderForm({
         setCustomerId(target.customer_id);
       }
 
-      // 2. Sync Odometer and Service Lifecycle
+      // 2. Sync Odometer, Service Lifecycle, and FC Details
       setLifecycleData(prev => ({
         ...prev,
         odometer_reading: target.kilometers_driven || 0,
         next_service_due_km: target.next_service_km || (target.kilometers_driven ? target.kilometers_driven + 10000 : 0),
-        next_service_due_date: target.next_service_date || ""
+        next_service_due_date: target.next_service_date || "",
+        fc_number: target.fc_number || prev.fc_number || "",
+        fc_expiry_date: target.fc_expiry_date || prev.fc_expiry_date || "",
+        fc_issue_date: prev.fc_issue_date || new Date().toISOString().split('T')[0]
       }));
 
       // 3. Sync Assigned Contact
@@ -1205,12 +1254,24 @@ export function WorkOrderForm({
         setEstimatedDeliveryTime(format(date, "h:mm a"));
       }
 
+      let parsedFcDetails: any = null;
+      try {
+        if (wo.notes) {
+          const parsed = JSON.parse(wo.notes);
+          if (parsed?.fc_details) parsedFcDetails = parsed.fc_details;
+        }
+      } catch (e) {}
+
+      setIsFCWork(Boolean(wo.is_fc_renewal));
       setLifecycleData({
         odometer_reading: wo.odometer_reading || 0,
         next_service_due_km: wo.next_service_due_km || 0,
         next_service_due_date: wo.next_service_due_date || "",
         service_notes: "",
-        is_fc_renewal: wo.is_fc_renewal || false
+        is_fc_renewal: wo.is_fc_renewal || false,
+        fc_number: parsedFcDetails?.fc_number || wo.vehicles?.fc_number || "",
+        fc_issue_date: parsedFcDetails?.fc_issue_date || wo.vehicles?.last_fc_date || "",
+        fc_expiry_date: parsedFcDetails?.fc_expiry_date || wo.vehicles?.fc_expiry_date || ""
       });
 
       if (wo.contact_id) {
@@ -2108,7 +2169,12 @@ export function WorkOrderForm({
           service_types: selectedServices,
           total_sections: selectedServices.length,
           reopened_at: isReopening ? new Date().toISOString() : undefined,
-          original_reopen_reason: isReopening ? internalReopenReason : undefined
+          original_reopen_reason: isReopening ? internalReopenReason : undefined,
+          fc_details: lifecycleData.is_fc_renewal ? {
+            fc_number: lifecycleData.fc_number,
+            fc_issue_date: lifecycleData.fc_issue_date,
+            fc_expiry_date: lifecycleData.fc_expiry_date,
+          } : undefined
         }),
         odometer_reading: lifecycleData.odometer_reading || null,
         next_service_due_km: lifecycleData.next_service_due_km || null,
@@ -2420,11 +2486,36 @@ export function WorkOrderForm({
       if (lifecycleData.next_service_due_date) {
         vehicleUpdatePayload.next_service_date = lifecycleData.next_service_due_date;
       }
+      if (lifecycleData.is_fc_renewal) {
+        if (lifecycleData.fc_number?.trim()) {
+          vehicleUpdatePayload.fc_number = lifecycleData.fc_number.trim();
+        }
+        if (lifecycleData.fc_expiry_date) {
+          vehicleUpdatePayload.fc_expiry_date = lifecycleData.fc_expiry_date;
+        }
+        if (lifecycleData.fc_issue_date) {
+          vehicleUpdatePayload.last_fc_date = lifecycleData.fc_issue_date;
+        }
+      }
 
       await supabase
         .from('vehicles')
         .update(vehicleUpdatePayload)
         .eq('id', vehicleId);
+
+      // Record to vehicle_fc_history if FC renewal details provided
+      if (lifecycleData.is_fc_renewal && (lifecycleData.fc_expiry_date || lifecycleData.fc_number?.trim())) {
+        await supabase
+          .from('vehicle_fc_history')
+          .insert({
+            vehicle_id: vehicleId,
+            fc_number: lifecycleData.fc_number?.trim() || null,
+            issue_date: lifecycleData.fc_issue_date || new Date().toISOString().split('T')[0],
+            expiry_date: lifecycleData.fc_expiry_date || null,
+            notes: `Recorded via Work Order #${workOrderId || initialWorkOrderId || 'New'}`,
+            created_by: user?.id || null
+          });
+      }
 
       // Clear draft on success
       sessionStorage.removeItem(`wo_form_draft_${initialWorkOrderId || 'new'}`);
@@ -2603,6 +2694,13 @@ export function WorkOrderForm({
         {selectedVehicle && (
           <div className="sticky top-0 z-20 px-6 py-3 bg-card/95 backdrop-blur-md border-b border-border shadow-sm flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
+              {selectedVehicle.image_url && (
+                <img
+                  src={selectedVehicle.image_url}
+                  alt={selectedVehicle.model}
+                  className="w-9 h-9 rounded-md object-cover border border-border/60 shrink-0 bg-muted"
+                />
+              )}
               <VehiclePlateBadge
                 plateNumber={selectedVehicle.vehicle_number}
                 size="sm"
@@ -2617,9 +2715,31 @@ export function WorkOrderForm({
                       • {selectedVehicle.manufacturer_name}
                     </span>
                   )}
+                  {selectedVehicle.fuel_type && (
+                    <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 font-normal uppercase">
+                      {selectedVehicle.fuel_type}
+                    </Badge>
+                  )}
+                  {selectedVehicle.fc_expiry_date ? (
+                    <Badge
+                      variant="outline"
+                      className={`text-[9px] py-0 px-1.5 h-4 font-semibold ${
+                        new Date(selectedVehicle.fc_expiry_date) < new Date()
+                          ? 'text-destructive border-destructive/50 bg-destructive/10'
+                          : 'text-purple-700 dark:text-purple-300 border-purple-300 bg-purple-50 dark:bg-purple-950/50'
+                      }`}
+                    >
+                      FC: {format(new Date(selectedVehicle.fc_expiry_date), 'dd MMM yy')}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 font-normal text-muted-foreground">
+                      No FC Date
+                    </Badge>
+                  )}
                 </div>
-                <p className="text-[11px] text-muted-foreground truncate max-w-[240px]">
+                <p className="text-[11px] text-muted-foreground truncate max-w-[280px]">
                   {customers.find(c => c.id === customerId)?.company_name || customers.find(c => c.id === customerId)?.name || 'Owner'}
+                  {selectedVehicle.engine_specs && ` • ${selectedVehicle.engine_specs}`}
                 </p>
               </div>
             </div>
@@ -3003,14 +3123,29 @@ export function WorkOrderForm({
                   <div className="space-y-3 text-sm">
                     {/* Vehicle */}
                     <div className="p-3 rounded-xl bg-muted/30 border flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Vehicle</p>
-                        <p className="font-bold text-foreground">
-                          {[selectedVehicle?.manufacturer_name, selectedVehicle?.model, selectedVehicle?.year].filter(Boolean).join(' ') || "Specs Not Configured"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {selectedVehicle?.vehicle_category_name || selectedVehicle?.vehicle_type_name || "Standard Vehicle"}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        {selectedVehicle?.image_url && (
+                          <img
+                            src={selectedVehicle.image_url}
+                            alt=""
+                            className="w-12 h-12 rounded-lg object-cover border border-border/60 shrink-0 bg-muted"
+                          />
+                        )}
+                        <div>
+                          <p className="text-xs text-muted-foreground">Vehicle</p>
+                          <p className="font-bold text-foreground flex items-center gap-1.5 flex-wrap">
+                            {[selectedVehicle?.manufacturer_name, selectedVehicle?.model, selectedVehicle?.year].filter(Boolean).join(' ') || "Specs Not Configured"}
+                            {selectedVehicle?.fuel_type && (
+                              <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 font-normal uppercase">
+                                {selectedVehicle.fuel_type}
+                              </Badge>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedVehicle?.vehicle_category_name || selectedVehicle?.vehicle_type_name || "Standard Vehicle"}
+                            {selectedVehicle?.engine_specs && ` • ${selectedVehicle.engine_specs}`}
+                          </p>
+                        </div>
                       </div>
                       <div>
                         <VehiclePlateBadge plateNumber={selectedVehicle?.vehicle_number || "NEW VEHICLE"} />
@@ -4040,8 +4175,14 @@ export function WorkOrderForm({
                     id="fc_mode"
                     checked={isFCWork}
                     onCheckedChange={(checked) => {
-                      setIsFCWork(checked as boolean);
-                      setLifecycleData(prev => ({ ...prev, is_fc_renewal: checked as boolean }));
+                      const isChecked = checked as boolean;
+                      setIsFCWork(isChecked);
+                      setLifecycleData(prev => ({
+                        ...prev,
+                        is_fc_renewal: isChecked,
+                        fc_issue_date: prev.fc_issue_date || new Date().toISOString().split('T')[0],
+                        fc_expiry_date: prev.fc_expiry_date || (selectedVehicle?.fc_expiry_date ? format(addYears(new Date(selectedVehicle.fc_expiry_date), 1), 'yyyy-MM-dd') : format(addYears(new Date(), 1), 'yyyy-MM-dd'))
+                      }));
                     }}
                     className="data-[state=checked]:bg-yellow-600 data-[state=checked]:border-yellow-600"
                   />
@@ -4251,6 +4392,85 @@ export function WorkOrderForm({
                   />
                 </div>
               </div>
+
+              {/* FC Renewal & Fitness Certificate Section (When FC Mode is Active) */}
+              {isFCWork && (
+                <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">
+                        FC Renewal & Certificate Details
+                      </span>
+                    </div>
+                    {selectedVehicle?.fc_expiry_date && (
+                      <span className="text-[11px] text-amber-900 dark:text-amber-300 bg-background/80 px-2.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 shadow-2xs">
+                        Current FC Expiry: <strong className="font-bold">{format(new Date(selectedVehicle.fc_expiry_date), "dd MMM yyyy")}</strong>
+                        {new Date(selectedVehicle.fc_expiry_date) < new Date() && (
+                          <span className="ml-1 text-destructive font-black">(Expired)</span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fc_number" className="text-xs font-medium">FC Certificate / Application No.</Label>
+                      <Input
+                        id="fc_number"
+                        placeholder="e.g. TN-55-FC-2026-001"
+                        className="h-9 text-xs bg-background font-mono"
+                        value={lifecycleData.fc_number || ''}
+                        onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_number: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fc_issue_date" className="text-xs font-medium">FC Inspection / Issue Date</Label>
+                      <Input
+                        id="fc_issue_date"
+                        type="date"
+                        className="h-9 text-xs bg-background font-mono"
+                        value={lifecycleData.fc_issue_date || ''}
+                        onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_issue_date: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="fc_expiry_date" className="text-xs font-medium">New FC Expiry Date</Label>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const base = lifecycleData.fc_issue_date ? new Date(lifecycleData.fc_issue_date) : new Date();
+                              setLifecycleData(p => ({ ...p, fc_expiry_date: format(addYears(base, 1), 'yyyy-MM-dd') }));
+                            }}
+                            className="text-[10px] text-primary hover:underline font-medium"
+                          >
+                            +1 Yr
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const base = lifecycleData.fc_issue_date ? new Date(lifecycleData.fc_issue_date) : new Date();
+                              setLifecycleData(p => ({ ...p, fc_expiry_date: format(addYears(base, 2), 'yyyy-MM-dd') }));
+                            }}
+                            className="text-[10px] text-primary hover:underline font-medium"
+                          >
+                            +2 Yrs
+                          </button>
+                        </div>
+                      </div>
+                      <Input
+                        id="fc_expiry_date"
+                        type="date"
+                        className="h-9 text-xs bg-background font-mono"
+                        value={lifecycleData.fc_expiry_date || ''}
+                        onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_expiry_date: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Relevant Contact Person for this service */}
               {companyContacts.length > 0 && (

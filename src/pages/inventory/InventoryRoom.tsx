@@ -154,7 +154,7 @@ export default function InventoryRoom() {
                 .from("part_requests")
                 .select(`
           *,
-          inventory:inventory(item_name, brand_name, sku, qr_code)
+          inventory:inventory(item_name, brand_name, sku, qr_code, oem_part_number, compatible_models, is_universal, compatibility_type)
         `)
                 .eq("work_order_id", woId)
                 .eq("status", "approved");
@@ -766,11 +766,19 @@ export default function InventoryRoom() {
                                                             <p className="font-bold text-sm text-foreground/90">{part.inventory?.item_name}</p>
                                                             {isDone && <Check className="h-4 w-4 text-emerald-500" />}
                                                         </div>
-                                                        <div className="text-xs text-muted-foreground font-mono flex items-center gap-2">
+                                                        <div className="text-xs text-muted-foreground font-mono flex flex-wrap items-center gap-2">
                                                             {part.inventory?.brand_name && (
                                                                 <span className="text-blue-500 font-semibold">{part.inventory.brand_name}</span>
                                                             )}
                                                             <span>SKU: {part.inventory?.sku || "N/A"}</span>
+                                                            {part.inventory?.oem_part_number && (
+                                                                <span className="text-primary font-semibold">OEM: {part.inventory.oem_part_number}</span>
+                                                            )}
+                                                            {part.inventory?.compatible_models && part.inventory.compatible_models.length > 0 && (
+                                                                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-foreground font-sans">
+                                                                    Fits: {part.inventory.compatible_models.slice(0, 2).join(", ")}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     

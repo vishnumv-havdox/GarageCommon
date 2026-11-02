@@ -389,6 +389,10 @@ export interface Database {
           location: string | null
           created_at: string
           updated_at: string
+          compatibility_type?: string | null
+          compatible_models?: string[] | null
+          oem_part_number?: string | null
+          is_universal?: boolean | null
         }
         Insert: {
           id?: string
@@ -402,6 +406,10 @@ export interface Database {
           location?: string | null
           created_at?: string
           updated_at?: string
+          compatibility_type?: string | null
+          compatible_models?: string[] | null
+          oem_part_number?: string | null
+          is_universal?: boolean | null
         }
         Update: {
           id?: string
@@ -415,6 +423,10 @@ export interface Database {
           location?: string | null
           created_at?: string
           updated_at?: string
+          compatibility_type?: string | null
+          compatible_models?: string[] | null
+          oem_part_number?: string | null
+          is_universal?: boolean | null
         }
       }
       invoices: {
@@ -942,6 +954,99 @@ export interface Database {
           service_name?: string
           cost_estimate?: number
           created_at?: string
+      vehicle_manufacturers: {
+        Row: {
+          id: string
+          name: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_at?: string
+        }
+      }
+      vehicle_categories: {
+        Row: {
+          id: string
+          name: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_at?: string
+        }
+      }
+      vehicle_types: {
+        Row: {
+          id: string
+          name: string
+          category_id: string
+          base_workload_multiplier?: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          category_id: string
+          base_workload_multiplier?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          category_id?: string
+          base_workload_multiplier?: number
+          created_at?: string
+        }
+      }
+      vehicle_models: {
+        Row: {
+          id: string
+          name: string
+          manufacturer_id: string
+          vehicle_type_id: string
+          created_at: string
+          image_url?: string | null
+          fuel_type?: string | null
+          engine_specs?: string | null
+          description?: string | null
+          year_introduced?: number | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          manufacturer_id: string
+          vehicle_type_id: string
+          created_at?: string
+          image_url?: string | null
+          fuel_type?: string | null
+          engine_specs?: string | null
+          description?: string | null
+          year_introduced?: number | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          manufacturer_id?: string
+          vehicle_type_id?: string
+          created_at?: string
+          image_url?: string | null
+          fuel_type?: string | null
+          engine_specs?: string | null
+          description?: string | null
+          year_introduced?: number | null
         }
       }
     }

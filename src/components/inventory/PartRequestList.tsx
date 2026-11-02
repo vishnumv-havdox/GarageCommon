@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,16 @@ import { Combobox } from "@/components/ui/combobox";
 interface PartRequest {
     id: string;
     item_id: string;
-    inventory: { item_name: string; brand_name: string | null; sku: string; unit_price: number } | null;
+    inventory: {
+        item_name: string;
+        brand_name: string | null;
+        sku: string;
+        unit_price: number;
+        oem_part_number?: string | null;
+        compatible_models?: string[] | null;
+        is_universal?: boolean | null;
+        compatibility_type?: string | null;
+    } | null;
     requested_qty: number;
     approved_qty: number;
     issued_qty: number;
@@ -70,6 +79,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
     const [currentEmployeeId, setCurrentEmployeeId] = useState<string>("");
     const [isLinking, setIsLinking] = useState(false);
     const [returns, setReturns] = useState<any[]>([]);
+    const [workOrderVehicleModel, setWorkOrderVehicleModel] = useState<string>("");
 
     // New request form state
     const [inventoryItems, setInventoryItems] = useState<any[]>([]);
@@ -202,7 +212,7 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                 .from("part_requests")
                 .select(`
           *,
-          inventory:inventory(item_name, brand_name, sku, unit_price),
+          inventory:inventory(item_name, brand_name, sku, unit_price, oem_part_number, compatible_models, is_universal, compatibility_type),
           employee:employees!requested_by(name)
         `)
                 .eq("work_order_id", workOrderId)
@@ -211,11 +221,28 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
             if (error) throw error;
             setRequests(data || []);
 
+            // Also fetch vehicle model for context
+            const { data: woData } = await supabase
+                .from("work_orders")
+                .select(`
+                    id,
+                    vehicle:vehicles!vehicle_id (
+                        vehicle_models (name)
+                    )
+                `)
+                .eq("id", workOrderId)
+                .maybeSingle();
+
+            const modelName = (woData as any)?.vehicle?.vehicle_models?.name;
+            if (modelName) {
+                setWorkOrderVehicleModel(modelName);
+            }
+
             const { data: returnData, error: returnError } = await supabase
                 .from("inventory_returns")
                 .select(`
                     *,
-                    inventory:inventory(item_name, brand_name, sku, unit_price),
+                    inventory:inventory(item_name, brand_name, sku, unit_price, oem_part_number, compatible_models, is_universal, compatibility_type),
                     employee:employees!requested_by(name)
                 `)
                 .eq("work_order_id", workOrderId)
@@ -232,7 +259,10 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
 
     const fetchInventoryAndEmployees = async () => {
         try {
-            const { data: inv } = await supabase.from("inventory").select("id, item_name, brand_name, sku, available_qty").gt("available_qty", 0);
+            const { data: inv } = await supabase
+                .from("inventory")
+                .select("id, item_name, brand_name, sku, available_qty, oem_part_number, compatible_models, is_universal, compatibility_type")
+                .gt("available_qty", 0);
             const { data: emp } = await supabase.from("employees").select("id, name").eq("status", "active");
             setInventoryItems(inv || []);
             setEmployees(emp || []);
@@ -498,16 +528,41 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                     </DialogHeader>
                                     <div className="space-y-4 py-4">
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium">Select Part</label>
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-sm font-medium">Select Part</label>
+                                                {workOrderVehicleModel && (
+                                                    <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded font-medium">
+                                                        Vehicle Model: <strong className="text-foreground">{workOrderVehicleModel}</strong>
+                                                    </span>
+                                                )}
+                                            </div>
                                             <Combobox
-                                                items={inventoryItems.map((item) => ({
-                                                    value: item.id,
-                                                    label: `${item.brand_name ? `[${item.brand_name}] ` : ''}${item.item_name} (${item.sku}) - ${item.available_qty} left`
-                                                }))}
+                                                items={[...inventoryItems]
+                                                    .sort((a, b) => {
+                                                        const aDirect = workOrderVehicleModel && a.compatible_models?.includes(workOrderVehicleModel);
+                                                        const bDirect = workOrderVehicleModel && b.compatible_models?.includes(workOrderVehicleModel);
+                                                        if (aDirect && !bDirect) return -1;
+                                                        if (!aDirect && bDirect) return 1;
+                                                        return a.item_name.localeCompare(b.item_name);
+                                                    })
+                                                    .map((item) => {
+                                                        const isDirectFit = workOrderVehicleModel && item.compatible_models?.includes(workOrderVehicleModel);
+                                                        const isUniversal = item.is_universal ?? (item.compatibility_type === 'universal' || !item.compatible_models?.length);
+                                                        const fitPrefix = isDirectFit
+                                                            ? "★ MATCHED: "
+                                                            : isUniversal
+                                                                ? "• [Universal] "
+                                                                : (item.compatible_models?.length ? `• [Fits: ${item.compatible_models[0]}] ` : "");
+                                                        const oemSuffix = item.oem_part_number ? ` (OEM: ${item.oem_part_number})` : "";
+                                                        return {
+                                                            value: item.id,
+                                                            label: `${fitPrefix}${item.brand_name ? `[${item.brand_name}] ` : ''}${item.item_name}${oemSuffix} (${item.sku}) - ${item.available_qty} left`
+                                                        };
+                                                    })}
                                                 value={selectedItemId}
                                                 onSelect={setSelectedItemId}
                                                 placeholder="Search and select a part..."
-                                                searchPlaceholder="Search parts..."
+                                                searchPlaceholder="Search parts or OEM..."
                                                 emptyText="No part found."
                                                 className="w-full"
                                             />
@@ -592,7 +647,29 @@ export function PartRequestList({ workOrderId, isAdmin, isReadOnly = false }: Pa
                                                 {req.inventory?.brand_name && <span className="text-blue-600 mr-2 text-xs font-bold uppercase">[{req.inventory.brand_name}]</span>}
                                                 {req.inventory?.item_name || 'Deleted Item'}
                                             </div>
-                                            <div className="text-xs text-muted-foreground">{req.inventory?.sku || 'N/A'}</div>
+                                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                                <span>{req.inventory?.sku || 'N/A'}</span>
+                                                {req.inventory?.oem_part_number && (
+                                                    <span className="font-mono text-[11px] text-primary/80">OEM: {req.inventory.oem_part_number}</span>
+                                                )}
+                                            </div>
+                                            {req.inventory && (
+                                                <div className="mt-1">
+                                                    {req.inventory.is_universal ?? (req.inventory.compatibility_type === 'universal' || !req.inventory.compatible_models?.length) ? (
+                                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-emerald-600 border-emerald-500/30 bg-emerald-500/5">
+                                                            Universal Fit
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="text-[9px] px-1.5 py-0 text-blue-600 border-blue-500/30 bg-blue-500/5"
+                                                            title={req.inventory.compatible_models?.join(", ")}
+                                                        >
+                                                            Fits: {req.inventory.compatible_models?.slice(0, 2).join(", ")}{req.inventory.compatible_models && req.inventory.compatible_models.length > 2 ? ` +${req.inventory.compatible_models.length - 2}` : ''}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-1.5 font-medium whitespace-nowrap">

@@ -13,7 +13,7 @@ import {
   Plus, Search, Package, Download, Edit, Trash2,
   AlertTriangle, Filter, ChevronRight, QrCode, ScanLine, Clock, ArrowLeftRight,
   ExternalLink, RefreshCw, Eye, MoreHorizontal, LayoutGrid, List,
-  Wrench, Zap, Car, Settings, Droplet, Printer
+  Wrench, Zap, Car, Settings, Droplet, Printer, Globe, Truck
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -74,6 +74,10 @@ interface InventoryItem {
   qr_code: string;
   location: string;
   created_at: string;
+  compatibility_type?: string | null;
+  compatible_models?: string[] | null;
+  oem_part_number?: string | null;
+  is_universal?: boolean | null;
   reservations?: any[];
 }
 
@@ -120,6 +124,7 @@ export default function AdminInventory() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [compatibilityFilter, setCompatibilityFilter] = useState("all");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<LifecycleHistoryItem[]>([]);
@@ -1060,10 +1065,22 @@ export default function AdminInventory() {
   };
 
   const filteredInventory = inventory.filter((item) => {
-    const matchesSearch = item.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = !term ||
+      item.item_name?.toLowerCase().includes(term) ||
+      item.sku?.toLowerCase().includes(term) ||
+      item.brand_name?.toLowerCase().includes(term) ||
+      item.oem_part_number?.toLowerCase().includes(term) ||
+      (item.compatible_models && item.compatible_models.some(m => m.toLowerCase().includes(term)));
+
     const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+
+    const isItemUniversal = item.is_universal ?? (item.compatibility_type === "universal" || !item.compatible_models?.length);
+    const matchesCompatibility = compatibilityFilter === "all" ||
+      (compatibilityFilter === "universal" && isItemUniversal) ||
+      (compatibilityFilter === "specific" && !isItemUniversal && (item.compatible_models?.length || 0) > 0);
+
+    return matchesSearch && matchesCategory && matchesCompatibility;
   });
 
   const inventorySuggestions = useMemo(() => {
@@ -1072,6 +1089,8 @@ export default function AdminInventory() {
       new Set(inventory.map(i => i.sku)),
       new Set(inventory.map(i => i.location)),
       new Set(inventory.map(i => i.category)),
+      new Set(inventory.filter(i => i.oem_part_number).map(i => i.oem_part_number!)),
+      new Set(inventory.flatMap(i => i.compatible_models || [])),
     ];
     return Array.from(new Set(sets.flatMap(s => Array.from(s)))).filter(Boolean);
   }, [inventory]);
@@ -1224,7 +1243,17 @@ export default function AdminInventory() {
                   suggestions={inventorySuggestions}
                 />
               </div>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
+                <Select value={compatibilityFilter} onValueChange={setCompatibilityFilter}>
+                  <SelectTrigger className="w-[145px] h-9 text-xs">
+                    <SelectValue placeholder="Fitment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Fitments</SelectItem>
+                    <SelectItem value="universal">Universal Only</SelectItem>
+                    <SelectItem value="specific">Model Specific</SelectItem>
+                  </SelectContent>
+                </Select>
                 {categories.map((cat) => (
                   <Button
                     key={cat}
@@ -1305,6 +1334,26 @@ export default function AdminInventory() {
                                 <div className="flex justify-between items-center text-xs text-muted-foreground">
                                   <span className="truncate max-w-[100px]">{item.brand_name || 'Generic'}</span>
                                   <span className="font-mono text-[10px]">SKU: {item.sku || 'N/A'}</span>
+                                </div>
+                                {/* Compatibility & OEM Badges */}
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                  {item.is_universal ?? (item.compatibility_type === 'universal' || !item.compatible_models?.length) ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-medium">
+                                      <Globe className="h-3 w-3" /> Universal
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 font-medium"
+                                      title={item.compatible_models?.join(", ")}
+                                    >
+                                      <Car className="h-3 w-3" /> Fits: {item.compatible_models?.slice(0, 2).join(", ")}{item.compatible_models && item.compatible_models.length > 2 ? ` +${item.compatible_models.length - 2}` : ''}
+                                    </span>
+                                  )}
+                                  {item.oem_part_number && (
+                                    <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                      OEM: {item.oem_part_number}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
@@ -1441,7 +1490,27 @@ export default function AdminInventory() {
                                   </div>
                                   <div>
                                     <p className="font-medium">{item.item_name}</p>
-                                    <p className="text-xs text-muted-foreground">SKU: {item.sku || 'N/A'}</p>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      <span>SKU: {item.sku || 'N/A'}</span>
+                                      {item.oem_part_number && (
+                                        <span className="font-mono text-[11px] text-primary/80">OEM: {item.oem_part_number}</span>
+                                      )}
+                                    </div>
+                                    <div className="mt-1">
+                                      {item.is_universal ?? (item.compatibility_type === 'universal' || !item.compatible_models?.length) ? (
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-600 border-emerald-500/30 bg-emerald-500/5">
+                                          Universal Fit
+                                        </Badge>
+                                      ) : (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[10px] px-1.5 py-0 text-blue-600 border-blue-500/30 bg-blue-500/5"
+                                          title={item.compatible_models?.join(", ")}
+                                        >
+                                          Fits: {item.compatible_models?.slice(0, 2).join(", ")}{item.compatible_models && item.compatible_models.length > 2 ? ` +${item.compatible_models.length - 2}` : ''}
+                                        </Badge>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               </TableCell>

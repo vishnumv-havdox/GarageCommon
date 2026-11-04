@@ -604,7 +604,7 @@ export default function AdminInvoices() {
                             <span className="text-xs text-muted-foreground text-center">With GST & Final Bill</span>
                           </div>
                           <div
-                            className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'quotation' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-muted'}`}
+                            className={`border rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 transition-all ${creationType === 'quotation' ? 'ring-2 ring-orange-500 bg-orange-50 dark:bg-orange-950/20' : 'hover:bg-muted'}`}
                             onClick={() => setCreationType('quotation')}
                           >
                             <FileText className="h-6 w-6 text-orange-500" />
@@ -661,7 +661,7 @@ export default function AdminInvoices() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-extrabold tracking-tight text-primary">
+                <div className="text-2xl font-extrabold tracking-tight text-foreground">
                   ₹{Math.round(invoices.filter(i => i.status !== 'Draft' && i.status !== 'Cancelled').reduce((sum, i) => sum + (i.total || 0), 0)).toLocaleString('en-IN')}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">Excludes drafts & cancelled</p>
@@ -676,7 +676,7 @@ export default function AdminInvoices() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className={`text-2xl font-extrabold tracking-tight ${pendingPayments.length > 0 ? 'text-amber-500 animate-pulse' : 'text-slate-700 dark:text-slate-300'}`}>
+                <div className={`text-2xl font-extrabold tracking-tight ${pendingPayments.length > 0 ? 'text-amber-500 animate-pulse' : 'text-foreground'}`}>
                   {pendingPayments.length}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">Payments awaiting approval</p>
@@ -691,7 +691,7 @@ export default function AdminInvoices() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-extrabold tracking-tight text-slate-700 dark:text-slate-300">
+                <div className="text-2xl font-extrabold tracking-tight text-foreground">
                   {invoices.filter(i => i.status === 'Draft').length}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">Unfinalized drafts/quotations</p>
@@ -841,7 +841,7 @@ export default function AdminInvoices() {
                                 }
                               </span>
                               {payment.payment_links && payment.payment_links.length > 1 && (
-                                <Badge variant="outline" className="w-fit text-[10px] mt-1 bg-blue-50 text-blue-700 border-blue-200">
+                                <Badge variant="outline" className="w-fit text-[10px] mt-1 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                                   {payment.payment_links.length} Bills
                                 </Badge>
                               )}
@@ -906,7 +906,7 @@ export default function AdminInvoices() {
                             <span className="font-bold text-amber-600 text-right">₹{verifyPayment.deduction_amount?.toLocaleString()}</span>
 
                             <span className="text-muted-foreground">Deduction Reason:</span>
-                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 justify-self-end">{verifyPayment.deduction_reason}</Badge>
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 justify-self-end">{verifyPayment.deduction_reason}</Badge>
 
                             <span className="text-muted-foreground">Settlement Status:</span>
                             <Badge variant="outline" className="text-[10px] justify-self-end">{verifyPayment.is_final_settlement ? 'Full & Final' : 'Partial Payment'}</Badge>
@@ -980,7 +980,7 @@ export default function AdminInvoices() {
                   {/* Right Column (Receipt Photo) */}
                   <div className="lg:col-span-2 flex flex-col space-y-2">
                     <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Proof of Transfer</h3>
-                    <div className="border border-slate-200/50 rounded-xl overflow-hidden bg-muted/30 flex items-center justify-center min-h-[320px] shadow-inner relative group">
+                    <div className="border border-border rounded-xl overflow-hidden bg-muted/30 flex items-center justify-center min-h-[320px] shadow-inner relative group">
                       {verifyPayment.proof_url ? (
                         <a href={verifyPayment.proof_url} target="_blank" rel="noreferrer" className="w-full h-full flex items-center justify-center p-2">
                           <img
@@ -991,7 +991,7 @@ export default function AdminInvoices() {
                         </a>
                       ) : (
                         <div className="text-muted-foreground text-sm flex flex-col items-center gap-2">
-                          <XCircle className="h-8 w-8 text-slate-400" />
+                          <XCircle className="h-8 w-8 text-muted-foreground" />
                           <span>No transaction proof uploaded</span>
                         </div>
                       )}
@@ -1142,7 +1142,7 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
         )}
       </div>
 
-      <div className="border border-slate-200/50 rounded-xl overflow-x-auto bg-card/65 shadow-sm">
+      <div className="border border-border rounded-xl overflow-x-auto bg-card shadow-xs">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow>
@@ -1152,13 +1152,13 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
-              <TableHead className="font-semibold text-slate-800">Bill No.</TableHead>
-              <TableHead className="font-semibold text-slate-800">Type</TableHead>
-              <TableHead className="font-semibold text-slate-800">Date</TableHead>
-              <TableHead className="font-semibold text-slate-800">Client & Vehicle</TableHead>
-              <TableHead className="font-semibold text-slate-800">Amount</TableHead>
-              <TableHead className="font-semibold text-slate-800">Status</TableHead>
-              <TableHead className="text-right font-semibold text-slate-800">Actions</TableHead>
+              <TableHead className="font-semibold text-foreground">Bill No.</TableHead>
+              <TableHead className="font-semibold text-foreground">Type</TableHead>
+              <TableHead className="font-semibold text-foreground">Date</TableHead>
+              <TableHead className="font-semibold text-foreground">Client & Vehicle</TableHead>
+              <TableHead className="font-semibold text-foreground">Amount</TableHead>
+              <TableHead className="font-semibold text-foreground">Status</TableHead>
+              <TableHead className="text-right font-semibold text-foreground">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1182,13 +1182,13 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                     onCheckedChange={(checked) => handleSelectOne(inv.id, !!checked)}
                   />
                 </TableCell>
-                <TableCell className="font-semibold text-slate-900">
+                <TableCell className="font-semibold text-foreground">
                   {inv.type === 'quotation'
                     ? (inv.quotation_number ? `QTN-${inv.quotation_number}` : 'Draft QTN')
                     : (inv.bill_number ? `INV-${inv.bill_number}` : `Draft #${inv.invoice_number}`)
                   }
                   {inv.work_order?.is_reopened && (
-                    <Badge variant="outline" className="ml-2 border-orange-500 text-orange-600 bg-orange-50 text-[10px] h-4 py-0">Reopened</Badge>
+                    <Badge variant="outline" className="ml-2 border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950/30 dark:text-orange-400 text-[10px] h-4 py-0">Reopened</Badge>
                   )}
                 </TableCell>
                 <TableCell>
@@ -1198,18 +1198,18 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                 </TableCell>
                 <TableCell className="text-muted-foreground">{format(new Date(inv.created_at), "MMM d, yyyy")}</TableCell>
                 <TableCell>
-                  <div className="font-semibold text-slate-800">{inv.customer?.name}</div>
+                  <div className="font-semibold text-foreground">{inv.customer?.name}</div>
                   {inv.customer?.company_name && (
                     <div className="text-xs text-muted-foreground">{inv.customer?.company_name}</div>
                   )}
                   <div className="flex gap-2 items-center mt-1 text-[11px]">
-                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-mono font-medium border-slate-200 bg-slate-50 text-slate-600">
+                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-mono font-medium border-border bg-muted/60 text-muted-foreground">
                       {inv.work_order?.vehicle?.vehicle_number}
                     </Badge>
                     <span className="text-muted-foreground font-medium">{inv.work_order?.vehicle?.model}</span>
                   </div>
                 </TableCell>
-                <TableCell className="font-extrabold text-slate-900">
+                <TableCell className="font-extrabold text-foreground">
                   ₹{inv.total?.toLocaleString()}
                 </TableCell>
                 <TableCell>
@@ -1220,7 +1220,7 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                         badgeClass = "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400";
                         break;
                       case "Draft":
-                        badgeClass = "bg-slate-500/10 text-slate-600 border-slate-500/20";
+                        badgeClass = "bg-muted text-muted-foreground border-border";
                         break;
                       case "Ready to Bill":
                         badgeClass = "bg-purple-500/10 text-purple-600 border-purple-500/20 dark:text-purple-400";
@@ -1244,7 +1244,7 @@ function InvoiceTable({ invoices, type, onRefresh, onGenerate }: { invoices: any
                   <div className="flex justify-end opacity-80 group-hover:opacity-100 transition-opacity">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>

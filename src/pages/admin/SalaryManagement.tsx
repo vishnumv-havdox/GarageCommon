@@ -304,24 +304,24 @@ export default function SalaryManagementPage() {
     );
 
     return (
-        <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40">
+        <div className="flex flex-col lg:flex-row min-h-screen w-full bg-background font-inter">
             <AdminSidebar />
             <main className="flex-1 p-4 md:p-8 pt-6">
                 <div className="flex flex-col gap-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
-                            <h1 className="text-3xl font-bold tracking-tight">Salary & Payout Management</h1>
+                            <h1 className="text-3xl font-bold tracking-tight text-foreground">Salary & Payout Management</h1>
                             <p className="text-muted-foreground">Configure salary structures and manage employee payouts.</p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                            <Button variant="outline" size="icon" onClick={fetchData} title="Refresh Data">
+                            <Button variant="outline" size="icon" onClick={fetchData} title="Refresh Data" className="border-border">
                                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                             </Button>
-                            <Button variant="outline" onClick={handleSyncDrafts} disabled={isGenerating}>
+                            <Button variant="outline" onClick={handleSyncDrafts} disabled={isGenerating} className="border-border">
                                 <RotateCcw className={`mr-2 h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} /> Sync All Drafts
                             </Button>
-                            <Button onClick={() => setIsPayoutDialogOpen(true)}>
+                            <Button onClick={() => setIsPayoutDialogOpen(true)} className="bg-primary text-primary-foreground font-semibold hover:bg-primary/90">
                                 <Plus className="mr-2 h-4 w-4" /> New Payout Period
                             </Button>
                         </div>
@@ -330,85 +330,85 @@ export default function SalaryManagementPage() {
                     <AttendanceTabsNav />
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card>
+                        <Card className="border border-border/60 shadow-sm bg-card text-card-foreground">
                             <CardContent className="pt-6">
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="text-sm font-medium text-muted-foreground">Pending Payouts</p>
-                                        <h2 className="text-2xl font-bold text-amber-600">₹{stats.pending.toLocaleString()}</h2>
+                                        <h2 className="text-2xl font-bold text-amber-600 dark:text-amber-400">₹{stats.pending.toLocaleString()}</h2>
                                     </div>
-                                    <Clock className="h-8 w-8 text-amber-500 opacity-50" />
+                                    <Clock className="h-8 w-8 text-amber-500 dark:text-amber-400 opacity-60" />
                                 </div>
                             </CardContent>
                         </Card>
-                        <Card>
+                        <Card className="border border-border/60 shadow-sm bg-card text-card-foreground">
                             <CardContent className="pt-6">
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="text-sm font-medium text-muted-foreground">Total Paid</p>
-                                        <h2 className="text-2xl font-bold text-emerald-600">₹{stats.paid.toLocaleString()}</h2>
+                                        <h2 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">₹{stats.paid.toLocaleString()}</h2>
                                     </div>
-                                    <CheckCircle2 className="h-8 w-8 text-emerald-500 opacity-50" />
+                                    <CheckCircle2 className="h-8 w-8 text-emerald-500 dark:text-emerald-400 opacity-60" />
                                 </div>
                             </CardContent>
                         </Card>
-                        <Card>
+                        <Card className="border border-border/60 shadow-sm bg-card text-card-foreground">
                             <CardContent className="pt-6">
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="text-sm font-medium text-muted-foreground">Active Salary Configs</p>
-                                        <h2 className="text-2xl font-bold text-blue-600">{stats.configCount}</h2>
+                                        <h2 className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.configCount}</h2>
                                     </div>
-                                    <Settings2 className="h-8 w-8 text-blue-500 opacity-50" />
+                                    <Settings2 className="h-8 w-8 text-blue-500 dark:text-blue-400 opacity-60" />
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
 
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                        <TabsList className="w-full sm:w-auto flex overflow-x-auto no-scrollbar p-1">
-                            <TabsTrigger value="payouts" className="shrink-0 whitespace-nowrap">Payout History</TabsTrigger>
-                            <TabsTrigger value="adjustments" className="shrink-0 whitespace-nowrap">Adjustment Log</TabsTrigger>
-                            <TabsTrigger value="configs" className="shrink-0 whitespace-nowrap">Salary structures</TabsTrigger>
+                        <TabsList className="w-full sm:w-auto flex overflow-x-auto no-scrollbar p-1 bg-muted/60 border border-border/50">
+                            <TabsTrigger value="payouts" className="shrink-0 whitespace-nowrap data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">Payout History</TabsTrigger>
+                            <TabsTrigger value="adjustments" className="shrink-0 whitespace-nowrap data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">Adjustment Log</TabsTrigger>
+                            <TabsTrigger value="configs" className="shrink-0 whitespace-nowrap data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">Salary structures</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="payouts" className="space-y-4">
-                            <Card>
+                            <Card className="border border-border/60 shadow-sm bg-card">
                                 <CardHeader>
-                                    <CardTitle>Recent Payouts</CardTitle>
+                                    <CardTitle className="text-foreground">Recent Payouts</CardTitle>
                                     <CardDescription>History of all processed and draft payouts.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     {payouts.length === 0 ? (
-                                        <div className="text-center py-20 text-muted-foreground border rounded-lg border-dashed">
+                                        <div className="text-center py-20 text-muted-foreground border rounded-lg border-dashed border-border">
                                             <History className="h-12 w-12 mx-auto mb-4 opacity-20" />
                                             <p>No payout history found. Start by generating a new payout period.</p>
                                         </div>
                                     ) : (
-                                        <div className="rounded-md border">
+                                        <div className="rounded-md border border-border overflow-hidden">
                                             <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Employee</TableHead>
-                                                        <TableHead>Period</TableHead>
-                                                        <TableHead className="text-right">Total Amount</TableHead>
-                                                        <TableHead className="text-center">Status</TableHead>
-                                                        <TableHead className="text-right">Actions</TableHead>
+                                                <TableHeader className="bg-muted/40 border-b border-border">
+                                                    <TableRow className="border-border">
+                                                        <TableHead className="font-semibold text-foreground">Employee</TableHead>
+                                                        <TableHead className="font-semibold text-foreground">Period</TableHead>
+                                                        <TableHead className="text-right font-semibold text-foreground">Total Amount</TableHead>
+                                                        <TableHead className="text-center font-semibold text-foreground">Status</TableHead>
+                                                        <TableHead className="text-right font-semibold text-foreground">Actions</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {payouts.map((p) => (
-                                                        <TableRow key={p.id}>
-                                                            <TableCell className="font-medium">{p.employees?.name}</TableCell>
+                                                        <TableRow key={p.id} className="border-border hover:bg-muted/30">
+                                                            <TableCell className="font-medium text-foreground">{p.employees?.name}</TableCell>
                                                             <TableCell className="text-xs text-muted-foreground">
                                                                 {p.period_start} to {p.period_end}
                                                             </TableCell>
-                                                            <TableCell className="font-bold text-right">₹{p.total_amount.toLocaleString()}</TableCell>
+                                                            <TableCell className="font-bold text-right text-foreground">₹{p.total_amount.toLocaleString()}</TableCell>
                                                             <TableCell className="text-center">
                                                                 <Badge className={
-                                                                    p.status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 border-transparent hover:bg-emerald-100/80 font-bold' :
-                                                                    p.status === 'approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-400 border-transparent hover:bg-blue-100/80 font-bold' :
-                                                                    'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400 border-transparent hover:bg-amber-100/80 font-bold'
+                                                                    p.status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-400 border-transparent hover:bg-emerald-100/80 dark:hover:bg-emerald-900/60 font-bold' :
+                                                                    p.status === 'approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-400 border-transparent hover:bg-blue-100/80 dark:hover:bg-blue-900/60 font-bold' :
+                                                                    'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-400 border-transparent hover:bg-amber-100/80 dark:hover:bg-amber-900/60 font-bold'
                                                                 }>
                                                                     {p.status.toUpperCase()}
                                                                 </Badge>
@@ -419,6 +419,7 @@ export default function SalaryManagementPage() {
                                                                         <Button
                                                                             variant="ghost"
                                                                             size="sm"
+                                                                            className="hover:bg-muted text-muted-foreground hover:text-foreground"
                                                                             onClick={() => {
                                                                                 setSelectedPayout(p);
                                                                                 // Allow state to update then print
@@ -433,6 +434,7 @@ export default function SalaryManagementPage() {
                                                                     <Button
                                                                         variant="ghost"
                                                                         size="sm"
+                                                                        className="hover:bg-muted text-muted-foreground hover:text-foreground"
                                                                         onClick={() => {
                                                                             setSelectedPayout(p);
                                                                             setIsDetailDialogOpen(true);
@@ -462,43 +464,43 @@ export default function SalaryManagementPage() {
                         </TabsContent>
 
                         <TabsContent value="adjustments" className="space-y-4">
-                            <Card>
+                            <Card className="border border-border/60 shadow-sm bg-card">
                                 <CardHeader>
-                                    <CardTitle>Attendance Adjustment History</CardTitle>
+                                    <CardTitle className="text-foreground">Attendance Adjustment History</CardTitle>
                                     <CardDescription>History of all arrears and corrections captured from paid periods.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     {adjustments.length === 0 ? (
-                                        <div className="text-center py-20 text-muted-foreground border rounded-lg border-dashed">
+                                        <div className="text-center py-20 text-muted-foreground border rounded-lg border-dashed border-border">
                                             <History className="h-12 w-12 mx-auto mb-4 opacity-20" />
                                             <p>No adjustment history found.</p>
                                         </div>
                                     ) : (
-                                        <div className="rounded-md border">
+                                        <div className="rounded-md border border-border overflow-hidden">
                                             <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Employee</TableHead>
-                                                        <TableHead>Description</TableHead>
-                                                        <TableHead className="text-right">Amount</TableHead>
-                                                        <TableHead className="text-center">Status</TableHead>
-                                                        <TableHead>Date</TableHead>
-                                                        <TableHead className="text-right">Actions</TableHead>
+                                                <TableHeader className="bg-muted/40 border-b border-border">
+                                                    <TableRow className="border-border">
+                                                        <TableHead className="font-semibold text-foreground">Employee</TableHead>
+                                                        <TableHead className="font-semibold text-foreground">Description</TableHead>
+                                                        <TableHead className="text-right font-semibold text-foreground">Amount</TableHead>
+                                                        <TableHead className="text-center font-semibold text-foreground">Status</TableHead>
+                                                        <TableHead className="font-semibold text-foreground">Date</TableHead>
+                                                        <TableHead className="text-right font-semibold text-foreground">Actions</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {adjustments.map((a) => (
-                                                        <TableRow key={a.id}>
-                                                            <TableCell className="font-medium">{a.employees?.name}</TableCell>
-                                                            <TableCell className="text-xs">{a.description}</TableCell>
-                                                            <TableCell className={`font-bold text-right ${a.amount < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                                                        <TableRow key={a.id} className="border-border hover:bg-muted/30">
+                                                            <TableCell className="font-medium text-foreground">{a.employees?.name}</TableCell>
+                                                            <TableCell className="text-xs text-muted-foreground">{a.description}</TableCell>
+                                                            <TableCell className={`font-bold text-right ${a.amount < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                                 {a.amount > 0 ? '+' : ''}₹{a.amount.toLocaleString()}
                                                             </TableCell>
                                                             <TableCell className="text-center">
                                                                 <Badge className={
                                                                     a.is_processed ?
-                                                                    'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 border-transparent hover:bg-emerald-100/80 font-bold' :
-                                                                    'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400 border-transparent hover:bg-amber-100/80 font-bold'
+                                                                    'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-400 border-transparent hover:bg-emerald-100/80 dark:hover:bg-emerald-900/60 font-bold' :
+                                                                    'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-400 border-transparent hover:bg-amber-100/80 dark:hover:bg-amber-900/60 font-bold'
                                                                 }>
                                                                     {a.is_processed ? 'Processed' : 'Pending'}
                                                                 </Badge>
@@ -532,15 +534,15 @@ export default function SalaryManagementPage() {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     <Input
                                         placeholder="Search employees for configuration..."
-                                        className="pl-9"
+                                        className="pl-9 bg-background border-input text-foreground"
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
                                 </div>
                             </div>
-                            <Card>
+                            <Card className="border border-border/60 shadow-sm bg-card">
                                 <CardHeader>
-                                    <CardTitle>Employee Pay Structures</CardTitle>
+                                    <CardTitle className="text-foreground">Employee Pay Structures</CardTitle>
                                     <CardDescription>Configure how each employee is compensated.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -548,14 +550,14 @@ export default function SalaryManagementPage() {
                                         {filteredEmployees.map((emp) => {
                                             const config = configs[emp.id];
                                             return (
-                                                <Card key={emp.id} className="bg-card shadow-sm hover:border-primary/50 transition-colors group">
+                                                <Card key={emp.id} className="bg-card border border-border/60 shadow-xs hover:border-primary/50 transition-colors group">
                                                     <CardContent className="p-4 flex items-center justify-between">
                                                         <div className="flex items-center gap-3">
                                                             <div className="p-2 bg-muted rounded-full">
                                                                 <UserIcon className="h-5 w-5 text-muted-foreground" />
                                                             </div>
                                                             <div>
-                                                                <h4 className="font-bold text-sm leading-tight">{emp.name}</h4>
+                                                                <h4 className="font-bold text-sm leading-tight text-foreground">{emp.name}</h4>
                                                                 <p className="text-xs text-muted-foreground">{emp.position?.name || "No position"}</p>
                                                             </div>
                                                         </div>
@@ -572,18 +574,18 @@ export default function SalaryManagementPage() {
                                                         </Button>
                                                     </CardContent>
                                                     {config ? (
-                                                        <div className="px-4 pb-4 border-t pt-3 grid grid-cols-2 gap-y-2">
+                                                        <div className="px-4 pb-4 border-t border-border pt-3 grid grid-cols-2 gap-y-2">
                                                             <div className="text-[10px] uppercase font-medium text-muted-foreground">Type</div>
                                                             <div className="text-[10px] font-bold text-right uppercase text-primary">{config.pay_type}</div>
                                                             <div className="text-[10px] uppercase font-medium text-muted-foreground">Base</div>
-                                                            <div className="text-[10px] font-bold text-right">₹{config.base_amount.toLocaleString()}</div>
+                                                            <div className="text-[10px] font-bold text-right text-foreground">₹{config.base_amount.toLocaleString()}</div>
                                                             <div className="text-[10px] uppercase font-medium text-muted-foreground">OT Rate</div>
-                                                            <div className="text-[10px] font-bold text-right">₹{config.overtime_rate}/hr</div>
+                                                            <div className="text-[10px] font-bold text-right text-foreground">₹{config.overtime_rate}/hr</div>
                                                             <div className="text-[10px] uppercase font-medium text-muted-foreground">Method</div>
-                                                            <div className="text-[10px] font-bold text-right uppercase text-muted-foreground">{config.payment_method?.replace('_', ' ') || 'Cash'}</div>
+                                                            <div className="text-[10px] font-bold text-right uppercase text-foreground">{config.payment_method?.replace('_', ' ') || 'Cash'}</div>
                                                         </div>
                                                     ) : (
-                                                        <div className="px-4 pb-4 border-t pt-3 flex items-center justify-center">
+                                                        <div className="px-4 pb-4 border-t border-border pt-3 flex items-center justify-center">
                                                             <Button
                                                                 variant="link"
                                                                 className="text-[10px] h-auto p-0"
@@ -688,19 +690,19 @@ export default function SalaryManagementPage() {
                     {selectedPayout && (
                         <div className="space-y-6 py-4">
                             <div className="grid grid-cols-3 gap-2">
-                                <Card className="bg-muted/50 border-none">
+                                <Card className="bg-muted/40 border border-border/60">
                                     <div className="p-2">
                                         <p className="text-[9px] uppercase font-bold text-muted-foreground mb-1">Period Start</p>
-                                        <p className="text-xs font-medium">{selectedPayout.period_start}</p>
+                                        <p className="text-xs font-semibold text-foreground">{selectedPayout.period_start}</p>
                                     </div>
                                 </Card>
-                                <Card className="bg-muted/50 border-none">
+                                <Card className="bg-muted/40 border border-border/60">
                                     <div className="p-2">
                                         <p className="text-[9px] uppercase font-bold text-muted-foreground mb-1">Period End</p>
-                                        <p className="text-xs font-medium">{selectedPayout.period_end}</p>
+                                        <p className="text-xs font-semibold text-foreground">{selectedPayout.period_end}</p>
                                     </div>
                                 </Card>
-                                <Card className="bg-blue-50 dark:bg-blue-950/30 border-none">
+                                <Card className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-900/40">
                                     <div className="p-2">
                                         <p className="text-[9px] uppercase font-bold text-blue-600 dark:text-blue-400 mb-1">Days Present</p>
                                         <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{selectedPayout.days_present || 0} Days</p>
@@ -709,85 +711,85 @@ export default function SalaryManagementPage() {
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-3 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                                    <h4 className="text-xs font-bold uppercase text-muted-foreground border-b pb-1">Earnings</h4>
+                                <div className="space-y-3 bg-muted/40 p-3 rounded-lg border border-border">
+                                    <h4 className="text-xs font-bold uppercase text-muted-foreground border-b border-border pb-1">Earnings</h4>
                                     
                                     <div className="space-y-2">
-                                        <div className="flex justify-between text-xs">
+                                        <div className="flex justify-between text-xs items-center">
                                             <span className="text-muted-foreground">Base Salary</span>
                                             {isEditingPayout ? (
                                                 <Input
                                                     type="number"
-                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    className="h-6 w-16 text-right text-xs p-1 bg-background border-input text-foreground"
                                                     value={editPayoutData.base_calc}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, base_calc: e.target.value })}
                                                 />
                                             ) : (
-                                                <span className="font-semibold">₹{selectedPayout.base_calc?.toLocaleString()}</span>
+                                                <span className="font-semibold text-foreground">₹{selectedPayout.base_calc?.toLocaleString()}</span>
                                             )}
                                         </div>
                                         
-                                        <div className="flex justify-between text-xs">
+                                        <div className="flex justify-between text-xs items-center">
                                             <span className="text-muted-foreground">Job Incentives</span>
                                             {isEditingPayout ? (
                                                 <Input
                                                     type="number"
-                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    className="h-6 w-16 text-right text-xs p-1 bg-background border-input text-foreground"
                                                     value={editPayoutData.job_incentives}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, job_incentives: e.target.value })}
                                                 />
                                             ) : (
-                                                <span className="font-semibold">₹{selectedPayout.job_incentives?.toLocaleString()}</span>
+                                                <span className="font-semibold text-foreground">₹{selectedPayout.job_incentives?.toLocaleString()}</span>
                                             )}
                                         </div>
                                         
-                                        <div className="flex justify-between text-xs">
+                                        <div className="flex justify-between text-xs items-center">
                                             <span className="text-muted-foreground">Overtime Pay</span>
                                             {isEditingPayout ? (
                                                 <Input
                                                     type="number"
-                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    className="h-6 w-16 text-right text-xs p-1 bg-background border-input text-foreground"
                                                     value={editPayoutData.overtime_pay}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, overtime_pay: e.target.value })}
                                                 />
                                             ) : (
-                                                <span className="font-semibold">₹{selectedPayout.overtime_pay?.toLocaleString()}</span>
+                                                <span className="font-semibold text-foreground">₹{selectedPayout.overtime_pay?.toLocaleString()}</span>
                                             )}
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div className="space-y-3 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                                    <h4 className="text-xs font-bold uppercase text-muted-foreground border-b pb-1">Deductions & Adjustments</h4>
+                                <div className="space-y-3 bg-muted/40 p-3 rounded-lg border border-border">
+                                    <h4 className="text-xs font-bold uppercase text-muted-foreground border-b border-border pb-1">Deductions & Adjustments</h4>
                                     
                                     <div className="space-y-2">
-                                        <div className="flex justify-between text-xs">
+                                        <div className="flex justify-between text-xs items-center">
                                             <span className="text-muted-foreground">Attendance Adj.</span>
                                             {isEditingPayout ? (
                                                 <Input
                                                     type="number"
-                                                    className="h-6 w-16 text-right text-xs p-1 text-destructive"
+                                                    className="h-6 w-16 text-right text-xs p-1 text-destructive bg-background border-input"
                                                     value={editPayoutData.attendance_adj}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, attendance_adj: e.target.value })}
                                                 />
                                             ) : (
-                                                <span className={`font-semibold ${selectedPayout.attendance_adj < 0 ? 'text-destructive' : ''}`}>
+                                                <span className={`font-semibold ${selectedPayout.attendance_adj < 0 ? 'text-destructive' : 'text-foreground'}`}>
                                                     {selectedPayout.attendance_adj < 0 ? '-' : ''}₹{Math.abs(selectedPayout.attendance_adj || 0)?.toLocaleString()}
                                                 </span>
                                             )}
                                         </div>
                                         
-                                        <div className="flex justify-between text-xs">
+                                        <div className="flex justify-between text-xs items-center">
                                             <span className="text-muted-foreground">Arrears/Corr.</span>
                                             {isEditingPayout ? (
                                                 <Input
                                                     type="number"
-                                                    className="h-6 w-16 text-right text-xs p-1"
+                                                    className="h-6 w-16 text-right text-xs p-1 bg-background border-input text-foreground"
                                                     value={editPayoutData.arrears_adj}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, arrears_adj: e.target.value })}
                                                 />
                                             ) : (
-                                                <span className={`font-semibold ${selectedPayout.arrears_adj < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                                                <span className={`font-semibold ${selectedPayout.arrears_adj < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                     {selectedPayout.arrears_adj > 0 ? '+' : ''}₹{selectedPayout.arrears_adj?.toLocaleString()}
                                                 </span>
                                             )}
@@ -796,8 +798,8 @@ export default function SalaryManagementPage() {
                                 </div>
                             </div>
 
-                            <div className="flex justify-between text-sm py-4 border-t border-b">
-                                <span className="font-bold">Total Payout</span>
+                            <div className="flex justify-between text-sm py-4 border-t border-b border-border">
+                                <span className="font-bold text-foreground">Total Payout</span>
                                 <span className="font-bold text-primary text-lg">₹{(isEditingPayout ? (
                                     (parseFloat(editPayoutData.base_calc) || 0) +
                                     (parseFloat(editPayoutData.attendance_adj) || 0) +
@@ -807,7 +809,7 @@ export default function SalaryManagementPage() {
                                 ) : selectedPayout.total_amount)?.toLocaleString()}</span>
                             </div>
 
-                            <div className="border-t pt-4 space-y-3">
+                            <div className="border-t border-border pt-4 space-y-3">
                                 <h4 className="text-xs font-bold uppercase text-muted-foreground">Payment Details</h4>
                                 
                                 <div className="grid grid-cols-2 gap-4">
@@ -818,7 +820,7 @@ export default function SalaryManagementPage() {
                                                 value={editPayoutData.payment_method || 'bank_transfer'}
                                                 onValueChange={(val) => setEditPayoutData({ ...editPayoutData, payment_method: val })}
                                             >
-                                                <SelectTrigger className="h-8 text-xs">
+                                                <SelectTrigger className="h-8 text-xs bg-background border-input text-foreground">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -828,7 +830,7 @@ export default function SalaryManagementPage() {
                                                 </SelectContent>
                                             </Select>
                                         ) : (
-                                            <p className="text-xs font-semibold uppercase">{selectedPayout.payment_method?.replace('_', ' ') || 'Cash'}</p>
+                                            <p className="text-xs font-semibold uppercase text-foreground">{selectedPayout.payment_method?.replace('_', ' ') || 'Cash'}</p>
                                         )}
                                     </div>
                                     
@@ -837,53 +839,53 @@ export default function SalaryManagementPage() {
                                             <Label className="text-[10px] text-muted-foreground uppercase">UPI ID</Label>
                                             {isEditingPayout ? (
                                                 <Input
-                                                    className="h-8 text-xs"
+                                                    className="h-8 text-xs bg-background border-input text-foreground"
                                                     value={editPayoutData.upi_id || ''}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, upi_id: e.target.value })}
                                                 />
                                             ) : (
-                                                <p className="text-xs font-semibold">{selectedPayout.upi_id || 'Not specified'}</p>
+                                                <p className="text-xs font-semibold text-foreground">{selectedPayout.upi_id || 'Not specified'}</p>
                                             )}
                                         </div>
                                     )}
                                 </div>
                                 
                                 {((isEditingPayout ? editPayoutData.payment_method : selectedPayout.payment_method) === 'bank_transfer') && (
-                                    <div className="grid grid-cols-3 gap-2 bg-muted/30 p-2 rounded border text-xs">
+                                    <div className="grid grid-cols-3 gap-2 bg-muted/40 p-2.5 rounded-lg border border-border text-xs">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] text-muted-foreground uppercase">Bank Name</Label>
                                             {isEditingPayout ? (
                                                 <Input
-                                                    className="h-6 text-xs p-1"
+                                                    className="h-6 text-xs p-1 bg-background border-input text-foreground"
                                                     value={editPayoutData.bank_name || ''}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, bank_name: e.target.value })}
                                                 />
                                             ) : (
-                                                <p className="font-semibold">{selectedPayout.bank_name || '-'}</p>
+                                                <p className="font-semibold text-foreground">{selectedPayout.bank_name || '-'}</p>
                                             )}
                                         </div>
                                         <div className="space-y-1 col-span-1">
                                             <Label className="text-[10px] text-muted-foreground uppercase">Account Number</Label>
                                             {isEditingPayout ? (
                                                 <Input
-                                                    className="h-6 text-xs p-1"
+                                                    className="h-6 text-xs p-1 bg-background border-input text-foreground"
                                                     value={editPayoutData.account_number || ''}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, account_number: e.target.value })}
                                                 />
                                             ) : (
-                                                <p className="font-semibold">{selectedPayout.account_number || '-'}</p>
+                                                <p className="font-semibold text-foreground">{selectedPayout.account_number || '-'}</p>
                                             )}
                                         </div>
                                         <div className="space-y-1">
                                             <Label className="text-[10px] text-muted-foreground uppercase">IFSC Code</Label>
                                             {isEditingPayout ? (
                                                 <Input
-                                                    className="h-6 text-xs p-1"
+                                                    className="h-6 text-xs p-1 bg-background border-input text-foreground"
                                                     value={editPayoutData.ifsc_code || ''}
                                                     onChange={(e) => setEditPayoutData({ ...editPayoutData, ifsc_code: e.target.value.toUpperCase() })}
                                                 />
                                             ) : (
-                                                <p className="font-semibold">{selectedPayout.ifsc_code || '-'}</p>
+                                                <p className="font-semibold text-foreground">{selectedPayout.ifsc_code || '-'}</p>
                                             )}
                                         </div>
                                     </div>
@@ -894,16 +896,16 @@ export default function SalaryManagementPage() {
                                 )}
                             </div>
 
-                            <div className="space-y-2 border-t pt-4">
+                            <div className="space-y-2 border-t border-border pt-4">
                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Notes</p>
                                 {isEditingPayout ? (
                                     <Input
-                                        className="text-xs"
+                                        className="text-xs bg-background border-input text-foreground"
                                         value={editPayoutData.notes}
                                         onChange={(e) => setEditPayoutData({ ...editPayoutData, notes: e.target.value })}
                                     />
                                 ) : selectedPayout.notes && (
-                                    <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-lg border border-blue-100/50 dark:border-blue-900/30">
+                                    <div className="p-3 bg-blue-50/50 dark:bg-blue-950/30 rounded-lg border border-blue-100/60 dark:border-blue-900/40">
                                         <p className="text-xs text-blue-700 dark:text-blue-300">{selectedPayout.notes}</p>
                                     </div>
                                 )}

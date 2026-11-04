@@ -260,7 +260,7 @@ const InvoiceItemRow = ({
     }, []);
 
     return (
-        <TableRow className="hover:bg-muted/10 border-b border-slate-100">
+        <TableRow className="hover:bg-muted/30 border-b border-border/60">
             {/* Index */}
             <TableCell className="p-1 font-mono text-xs text-muted-foreground w-8 text-center align-middle">
                 {index + 1}
@@ -276,7 +276,7 @@ const InvoiceItemRow = ({
                         }}
                         disabled={isReadOnly}
                     >
-                        <SelectTrigger className="h-8 border-none bg-transparent hover:bg-slate-100/50 focus:ring-0 shadow-none px-2 text-xs">
+                        <SelectTrigger className="h-8 border-none bg-transparent hover:bg-muted/50 focus:ring-0 shadow-none px-2 text-xs">
                             <SelectValue placeholder="Category..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -300,14 +300,14 @@ const InvoiceItemRow = ({
                     onKeyDown={handleNameKeyDown}
                     disabled={isReadOnly}
                     placeholder={itemType === 'service' ? "Service description..." : "Part name..."}
-                    className="h-8 border-none bg-transparent hover:bg-slate-100/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none px-2 font-sans text-xs"
+                    className="h-8 border-none bg-transparent hover:bg-muted/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none px-2 font-sans text-xs"
                     autoComplete="off"
                 />
 
                 {showDropdown && suggestions.length > 0 && (
                     <div
                         ref={dropdownRef}
-                        className="absolute left-0 right-0 z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto"
+                        className="absolute left-0 right-0 z-50 mt-1 bg-popover text-popover-foreground border border-border rounded-md shadow-lg max-h-60 overflow-y-auto"
                         style={{ top: '100%' }}
                     >
                         {suggestions.map((s, idx) => {
@@ -322,20 +322,20 @@ const InvoiceItemRow = ({
                                     className={cn(
                                         "px-3 py-2 text-xs cursor-pointer flex justify-between items-center transition-colors rounded-sm",
                                         idx === activeIndex
-                                            ? "bg-primary/10 text-primary-foreground font-semibold"
-                                            : "hover:bg-slate-50 text-slate-700"
+                                            ? "bg-accent text-accent-foreground font-semibold"
+                                            : "hover:bg-muted text-foreground"
                                     )}
                                 >
                                     <div className="flex flex-col min-w-0">
                                         <span className={cn(
                                             "truncate font-medium",
-                                            idx === activeIndex ? "text-primary" : "text-slate-800"
+                                            idx === activeIndex ? "text-primary font-bold" : "text-foreground"
                                         )}>
                                             {brand ? `[${brand}] ` : ''}{name}
                                         </span>
                                         {category && <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">{category}</span>}
                                     </div>
-                                    {price > 0 && <span className="font-mono font-bold text-slate-600 shrink-0 ml-2">₹{price}</span>}
+                                    {price > 0 && <span className="font-mono font-bold text-muted-foreground shrink-0 ml-2">₹{price}</span>}
                                 </div>
                             );
                         })}
@@ -357,7 +357,7 @@ const InvoiceItemRow = ({
                     }}
                     disabled={isReadOnly}
                     placeholder="HSN"
-                    className="h-8 border-none bg-transparent hover:bg-slate-100/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none font-mono text-xs text-center px-1"
+                    className="h-8 border-none bg-transparent hover:bg-muted/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none font-mono text-xs text-center px-1"
                 />
             </TableCell>
 
@@ -376,7 +376,7 @@ const InvoiceItemRow = ({
                     }}
                     disabled={isReadOnly}
                     min={1}
-                    className="h-8 border-none bg-transparent hover:bg-slate-100/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none font-mono text-xs text-right px-2"
+                    className="h-8 border-none bg-transparent hover:bg-muted/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none font-mono text-xs text-right px-2"
                 />
             </TableCell>
 
@@ -397,7 +397,7 @@ const InvoiceItemRow = ({
                         }}
                         disabled={isReadOnly}
                         min={0}
-                        className="h-8 pl-4 pr-2 border-none bg-transparent hover:bg-slate-100/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none font-mono text-xs text-right"
+                        className="h-8 pl-4 pr-2 border-none bg-transparent hover:bg-muted/50 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none font-mono text-xs text-right"
                     />
                 </div>
             </TableCell>
@@ -413,7 +413,7 @@ const InvoiceItemRow = ({
                 >
                     <SelectTrigger
                         id={`${itemType}-gst-${index}`}
-                        className="h-8 border-none bg-transparent hover:bg-slate-100/50 focus:ring-0 shadow-none px-2 text-xs"
+                        className="h-8 border-none bg-transparent hover:bg-muted/50 focus:ring-0 shadow-none px-2 text-xs"
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                                 e.preventDefault();
@@ -434,7 +434,7 @@ const InvoiceItemRow = ({
             </TableCell>
 
             {/* Line Total */}
-            <TableCell className="p-1 w-[120px] text-right font-mono font-bold text-slate-800 pr-4 align-middle">
+            <TableCell className="p-1 w-[120px] text-right font-mono font-bold text-foreground pr-4 align-middle">
                 ₹{(item.total || 0).toFixed(2)}
             </TableCell>
 
@@ -704,8 +704,9 @@ export default function InvoiceEditor() {
 
     const [searchParams] = useSearchParams();
     const [isEditingFinalized, setIsEditingFinalized] = useState(false);
-    const [discarding, setDiscarding] = useState(false);
     const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         if (searchParams.get('edit') === 'true') {
@@ -741,6 +742,26 @@ export default function InvoiceEditor() {
             toast({ variant: "destructive", title: "Error cancelling invoice", description: error.message });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleDeleteInvoice = async () => {
+        if (!id) return;
+        try {
+            setDeleting(true);
+            // Clean up child line items first to ensure database clean cascade
+            await supabase.from('invoice_items').delete().eq('invoice_id', id);
+            const { error } = await supabase.from('invoices').delete().eq('id', id);
+
+            if (error) throw error;
+
+            toast({ title: "Deleted", description: "Invoice deleted successfully." });
+            setShowDeleteDialog(false);
+            navigate('/admin/invoices');
+        } catch (error: any) {
+            console.error("Error deleting invoice:", error);
+            toast({ variant: "destructive", title: "Error deleting invoice", description: error.message });
+            setDeleting(false);
         }
     };
 
@@ -1356,18 +1377,18 @@ export default function InvoiceEditor() {
     if (!invoice) return <div className="p-8 text-center text-red-500 font-bold">Invoice not found</div>;
 
     return (
-        <div className="min-h-screen bg-slate-50/50">
+        <div className="min-h-screen bg-background font-inter">
             <div className="flex flex-col lg:flex-row">
                 <AdminSidebar />
                 <main className="flex-1 p-4 lg:p-8 space-y-6">
                     {/* Header */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl border shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-card text-card-foreground p-4 rounded-xl border border-border shadow-sm">
                         <div className="flex items-center gap-4">
                             <Button variant="outline" size="icon" onClick={() => navigate('/admin/invoices')} className="h-9 w-9">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>
                             <div>
-                                <h1 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                                <h1 className="text-xl font-bold flex items-center gap-2 text-foreground">
                                     {isQuotation ? (invoice.quotation_number ? `Quotation #${invoice.quotation_number}` : (invoice.id ? `Draft Quotation` : 'New Quotation')) : (invoice.bill_number ? `Invoice #${invoice.bill_number}` : 'Draft Invoice')}
                                     <Badge
                                         variant={isCancelled ? "destructive" : isFinalized ? "default" : "secondary"}
@@ -1385,7 +1406,7 @@ export default function InvoiceEditor() {
                         <div className="flex flex-wrap gap-2">
                             {/* Auto-save status toggle & indicator (Drafts only) */}
                             {isDraft && (
-                                <div className="flex items-center gap-3 text-xs mr-2 self-center bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60">
+                                <div className="flex items-center gap-3 text-xs mr-2 self-center bg-muted/40 px-3 py-1.5 rounded-lg border border-border/60">
                                     <div className="flex items-center gap-2">
                                         <Switch
                                             id="auto-save"
@@ -1393,15 +1414,15 @@ export default function InvoiceEditor() {
                                             onCheckedChange={setAutoSaveEnabled}
                                             className="scale-90"
                                         />
-                                        <Label htmlFor="auto-save" className="text-xs text-slate-600 font-medium cursor-pointer select-none">
+                                        <Label htmlFor="auto-save" className="text-xs text-muted-foreground font-medium cursor-pointer select-none">
                                             Auto-save
                                         </Label>
                                     </div>
                                     {autoSaveEnabled && autoSaveStatus !== 'idle' && (
-                                        <div className="h-3 w-px bg-slate-200" />
+                                        <div className="h-3 w-px bg-border" />
                                     )}
                                     {autoSaveEnabled && autoSaveStatus === 'saving' && (
-                                        <span className="flex items-center gap-1.5 text-slate-500">
+                                        <span className="flex items-center gap-1.5 text-muted-foreground">
                                             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                                             Saving...
                                         </span>
@@ -1474,7 +1495,7 @@ export default function InvoiceEditor() {
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={handleRevertToDraft} className="text-slate-700">
+                                            <DropdownMenuItem onClick={handleRevertToDraft} className="text-foreground">
                                                 <RotateCcw className="mr-2 h-4 w-4" /> Revert to Draft
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
@@ -1515,7 +1536,7 @@ export default function InvoiceEditor() {
                                     variant="outline"
                                     onClick={handleReactivateInvoice}
                                     disabled={saving}
-                                    className="border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold"
+                                    className="border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 font-semibold"
                                 >
                                     {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1.5" />}
                                     Restore Invoice
@@ -1527,38 +1548,27 @@ export default function InvoiceEditor() {
                                 size="icon"
                                 className="h-8 w-8"
                                 title="Delete Invoice"
-                                onClick={async () => {
-                                    if (confirm("Are you sure you want to DELETE this invoice? This action cannot be undone.")) {
-                                        setLoading(true);
-                                        const { error } = await supabase.from('invoices').delete().eq('id', id);
-                                        if (error) {
-                                            toast({ variant: "destructive", title: "Error", description: error.message });
-                                            setLoading(false);
-                                        } else {
-                                            toast({ title: "Deleted", description: "Invoice deleted successfully." });
-                                            navigate('/admin/invoices');
-                                        }
-                                    }
-                                }}
+                                disabled={saving || deleting}
+                                onClick={() => setShowDeleteDialog(true)}
                             >
-                                <Trash2 className="h-4 w-4" />
+                                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                             </Button>
                         </div>
                     </div>
 
                     {/* Prominent Banners for Cancelled / Editing Finalized States */}
                     {isCancelled && (
-                        <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/90 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                        <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/90 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-lg bg-rose-100 text-rose-700 shrink-0">
+                                <div className="p-2.5 rounded-lg bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 shrink-0">
                                     <Ban className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-sm text-rose-900 flex items-center gap-2">
+                                    <h3 className="font-bold text-sm text-rose-900 dark:text-rose-200 flex items-center gap-2">
                                         This Invoice is Cancelled
                                         <Badge variant="destructive" className="text-[10px] py-0">Voided</Badge>
                                     </h3>
-                                    <p className="text-xs text-rose-700 mt-0.5">
+                                    <p className="text-xs text-rose-700 dark:text-rose-300 mt-0.5">
                                         This document has been voided. It is excluded from active ledger balances and sales totals.
                                     </p>
                                 </div>
@@ -1566,7 +1576,7 @@ export default function InvoiceEditor() {
                             <Button
                                 size="sm"
                                 variant="outline"
-                                className="border-rose-300 bg-white hover:bg-rose-100 text-rose-800 shrink-0 font-medium"
+                                className="border-rose-300 dark:border-rose-800 bg-card hover:bg-rose-100 dark:hover:bg-rose-950 text-rose-800 dark:text-rose-200 shrink-0 font-medium"
                                 onClick={handleReactivateInvoice}
                                 disabled={saving}
                             >
@@ -1577,19 +1587,19 @@ export default function InvoiceEditor() {
                     )}
 
                     {isFinalized && isEditingFinalized && (
-                        <div className="p-4 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+                        <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-900/60 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-lg bg-amber-100 text-amber-800 shrink-0">
+                                <div className="p-2.5 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 shrink-0">
                                     <Pencil className="h-5 w-5" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <h3 className="font-bold text-sm text-amber-950">Editing Finalized Invoice</h3>
-                                        <Badge variant="outline" className="border-amber-400 bg-amber-100 text-amber-900 text-[10px] py-0 font-mono">
+                                        <h3 className="font-bold text-sm text-amber-950 dark:text-amber-200">Editing Finalized Invoice</h3>
+                                        <Badge variant="outline" className="border-amber-400 dark:border-amber-700 bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-300 text-[10px] py-0 font-mono">
                                             {invoice.bill_number ? `INV-${invoice.bill_number}` : invoice.invoice_number}
                                         </Badge>
                                     </div>
-                                    <p className="text-xs text-amber-800 mt-0.5">
+                                    <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
                                         You can modify items, add or remove services/parts, update quantities, rates, and notes. Click <strong>Save Changes</strong> to update.
                                     </p>
                                 </div>
@@ -1598,7 +1608,7 @@ export default function InvoiceEditor() {
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    className="bg-white hover:bg-amber-100 border-amber-300 text-amber-900 text-xs"
+                                    className="bg-card hover:bg-amber-100 dark:hover:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs"
                                     onClick={handleCancelEditing}
                                     disabled={saving || discarding}
                                 >
@@ -1642,14 +1652,14 @@ export default function InvoiceEditor() {
                     <div className="w-full space-y-6">
                         {/* Work Order Sync / Import panel */}
                         {!isReadOnly && (woServices.length > 0 || woParts.length > 0) && (
-                            <Card className="border border-orange-200/60 bg-orange-50/20 shadow-sm overflow-hidden">
-                                <CardHeader className="pb-3 bg-orange-50/40 border-b border-orange-100">
+                            <Card className="border border-orange-200/60 dark:border-orange-900/40 bg-orange-50/20 dark:bg-orange-950/20 shadow-sm overflow-hidden">
+                                <CardHeader className="pb-3 bg-orange-50/40 dark:bg-orange-950/40 border-b border-orange-100 dark:border-orange-900/40">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-orange-800">
+                                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-orange-800 dark:text-orange-300">
                                                 <RefreshCw className="h-4 w-4 text-orange-600 animate-spin-slow" /> Work Order Import Center
                                             </CardTitle>
-                                            <CardDescription className="text-xs text-orange-600/85 mt-1">
+                                            <CardDescription className="text-xs text-orange-600/85 dark:text-orange-400 mt-1">
                                                 Select services/parts from the Work Order to add to this invoice.
                                             </CardDescription>
                                         </div>
@@ -1659,7 +1669,7 @@ export default function InvoiceEditor() {
                                     {/* Services */}
                                     {woServices.length > 0 && (
                                         <div className="space-y-2">
-                                            <Label className="text-[10px] font-bold tracking-wider text-orange-800/80 uppercase">Available Services</Label>
+                                            <Label className="text-[10px] font-bold tracking-wider text-orange-800/80 dark:text-orange-400 uppercase">Available Services</Label>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                 {woServices.map(service => {
                                                     const tasksForService = woTasks.filter(t => t.service_id === service.id);
@@ -1687,10 +1697,10 @@ export default function InvoiceEditor() {
                                                                 toast({ title: "Imported Service", description: `Added "${service.service_type}" to invoice.` });
                                                             }}
                                                             className={cn(
-                                                                "flex items-start gap-3 p-3 rounded-lg border text-xs bg-white transition-all",
+                                                                "flex items-start gap-3 p-3 rounded-lg border text-xs transition-all",
                                                                 isImported
-                                                                    ? "opacity-60 border-slate-200/85 bg-slate-50/50 cursor-not-allowed select-none"
-                                                                    : "border-orange-100 hover:border-orange-300 hover:shadow-sm cursor-pointer"
+                                                                    ? "opacity-60 border-border bg-muted/40 cursor-not-allowed select-none"
+                                                                    : "border-orange-100 dark:border-orange-900/40 bg-card hover:border-orange-300 dark:hover:border-orange-700 hover:shadow-sm cursor-pointer"
                                                             )}
                                                         >
                                                             <input
@@ -1700,14 +1710,14 @@ export default function InvoiceEditor() {
                                                                 className="mt-0.5 h-3.5 w-3.5 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
                                                             />
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="font-semibold text-slate-800 truncate">{service.service_type}</p>
+                                                                <p className="font-semibold text-foreground truncate">{service.service_type}</p>
                                                                 {tasksForService.length > 0 && (
-                                                                    <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                                                                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                                                                         {tasksForService.map(t => t.task_name).join(', ')}
                                                                     </p>
                                                                 )}
                                                             </div>
-                                                            <div className="font-mono font-bold text-slate-700">
+                                                            <div className="font-mono font-bold text-foreground">
                                                                 ₹{finalPrice}
                                                             </div>
                                                         </div>
@@ -1720,7 +1730,7 @@ export default function InvoiceEditor() {
                                     {/* Parts */}
                                     {woParts.length > 0 && (
                                         <div className="space-y-2">
-                                            <Label className="text-[10px] font-bold tracking-wider text-orange-800/80 uppercase">Available Parts & Spares</Label>
+                                            <Label className="text-[10px] font-bold tracking-wider text-orange-800/80 dark:text-orange-400 uppercase">Available Parts & Spares</Label>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                 {woParts.map(part => {
                                                     const isImported = items.some(item =>
@@ -1737,10 +1747,10 @@ export default function InvoiceEditor() {
                                                                 toast({ title: "Imported Part", description: `Added "${part.part_name}" to invoice.` });
                                                             }}
                                                             className={cn(
-                                                                "flex items-start gap-3 p-3 rounded-lg border text-xs bg-white transition-all",
+                                                                "flex items-start gap-3 p-3 rounded-lg border text-xs transition-all",
                                                                 isImported
-                                                                    ? "opacity-60 border-slate-200/85 bg-slate-50/50 cursor-not-allowed select-none"
-                                                                    : "border-orange-100 hover:border-orange-300 hover:shadow-sm cursor-pointer"
+                                                                    ? "opacity-60 border-border bg-muted/40 cursor-not-allowed select-none"
+                                                                    : "border-orange-100 dark:border-orange-900/40 bg-card hover:border-orange-300 dark:hover:border-orange-700 hover:shadow-sm cursor-pointer"
                                                             )}
                                                         >
                                                             <input
@@ -1750,12 +1760,12 @@ export default function InvoiceEditor() {
                                                                 className="mt-0.5 h-3.5 w-3.5 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
                                                             />
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="font-semibold text-slate-800 truncate">{part.part_name}</p>
-                                                                <p className="text-[10px] text-slate-500 mt-0.5">
+                                                                <p className="font-semibold text-foreground truncate">{part.part_name}</p>
+                                                                <p className="text-[10px] text-muted-foreground mt-0.5">
                                                                     Qty: {part.quantity} • Unit: ₹{part.unit_price}
                                                                 </p>
                                                             </div>
-                                                            <div className="font-mono font-bold text-slate-700">
+                                                            <div className="font-mono font-bold text-foreground">
                                                                 ₹{part.quantity * part.unit_price}
                                                             </div>
                                                         </div>
@@ -1769,17 +1779,17 @@ export default function InvoiceEditor() {
                         )}
 
                         {/* Main Service and Spares billing layout */}
-                        <Card className="border border-slate-200 shadow-sm w-full">
-                            <CardHeader className="pb-3 border-b bg-slate-50/50">
+                        <Card className="border border-border bg-card text-card-foreground shadow-sm w-full">
+                            <CardHeader className="pb-3 border-b border-border bg-muted/30">
                                 <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
                                     <div>
-                                        <CardTitle className="text-base font-bold text-slate-800">Invoice Creator</CardTitle>
+                                        <CardTitle className="text-base font-bold text-foreground">Invoice Creator</CardTitle>
                                         <CardDescription className="text-xs">Add, edit, or customize tasks and parts for billing</CardDescription>
                                     </div>
                                     {!isReadOnly && (
                                         <div className="flex gap-2">
                                             <Select onValueChange={(val) => handleAddItem(val)}>
-                                                <SelectTrigger className="w-[180px] h-9 text-xs bg-white">
+                                                <SelectTrigger className="w-[180px] h-9 text-xs bg-background border-input text-foreground">
                                                     <SelectValue placeholder="Add Service Section..." />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -1796,26 +1806,26 @@ export default function InvoiceEditor() {
                             <CardContent className="space-y-8 p-6">
 
                                 {/* Customer & Vehicle Quick Details inside Line Items Card */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b pb-6 mb-6 bg-slate-50/30 p-4 rounded-lg">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b border-border pb-6 mb-6 bg-muted/20 p-4 rounded-lg">
                                     <div>
-                                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Client Details</h4>
-                                        <div className="font-semibold text-slate-800 mt-1">{invoice.customer?.name}</div>
+                                        <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Client Details</h4>
+                                        <div className="font-semibold text-foreground mt-1">{invoice.customer?.name}</div>
                                         <div className="text-xs text-muted-foreground mt-0.5">{invoice.customer?.company_name || 'Individual Customer'}</div>
                                         {!isQuotation && invoice.customer?.gst_number && (
-                                            <div className="text-[9px] mt-1 bg-slate-100 px-1.5 py-0.5 rounded w-max text-slate-700 font-mono font-medium">
+                                            <div className="text-[9px] mt-1 bg-muted px-1.5 py-0.5 rounded w-max text-foreground font-mono font-medium border border-border/50">
                                                 GSTIN: {invoice.customer.gst_number}
                                             </div>
                                         )}
                                     </div>
                                     <div>
-                                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vehicle Details</h4>
-                                        <div className="text-xs font-semibold text-slate-800 mt-1">{invoice.work_order?.vehicle?.model || 'N/A'}</div>
-                                        <div className="text-xs font-mono text-slate-600 mt-0.5">{invoice.work_order?.vehicle?.vehicle_number || 'N/A'}</div>
+                                        <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vehicle Details</h4>
+                                        <div className="text-xs font-semibold text-foreground mt-1">{invoice.work_order?.vehicle?.model || 'N/A'}</div>
+                                        <div className="text-xs font-mono text-muted-foreground mt-0.5">{invoice.work_order?.vehicle?.vehicle_number || 'N/A'}</div>
                                     </div>
                                     <div>
-                                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Invoice Metadata</h4>
-                                        <div className="text-xs text-slate-800 mt-1">
-                                            Status: <Badge variant="outline" className="text-[10px] ml-1 bg-white">{invoice.status}</Badge>
+                                        <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Invoice Metadata</h4>
+                                        <div className="text-xs text-foreground mt-1">
+                                            Status: <Badge variant="outline" className="text-[10px] ml-1 bg-background text-foreground border-border">{invoice.status}</Badge>
                                         </div>
                                         <div className="text-[11px] text-muted-foreground mt-1">
                                             Date: {invoice.invoice_date ? format(new Date(invoice.invoice_date), "dd MMM yyyy") : 'N/A'}
@@ -1825,7 +1835,7 @@ export default function InvoiceEditor() {
 
                                 {/* Service Bill Section */}
                                 <div className="space-y-4">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-2">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-2 gap-2">
                                         <div className="flex items-center gap-2">
                                             <h3 className="text-sm font-bold text-primary tracking-wide flex items-center gap-2">
                                                 <Receipt className="h-4 w-4" /> I. SERVICE BILL
@@ -1833,7 +1843,7 @@ export default function InvoiceEditor() {
                                             {taxSettings.enable_dual_gst ? (
                                                 taxSettings.service_gst_number && (
                                                     <div className="flex items-center gap-1.5">
-                                                        <Badge variant="outline" className="text-[10px] font-mono text-blue-700 bg-blue-50 border-blue-200">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-blue-700 bg-blue-50 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                                                             GSTIN: {taxSettings.service_gst_number}
                                                         </Badge>
                                                         <Button
@@ -1841,7 +1851,7 @@ export default function InvoiceEditor() {
                                                             size="sm"
                                                             disabled={isSyncingGst}
                                                             onClick={syncGstFromProfile}
-                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-primary gap-1"
                                                             title="Sync latest GST numbers from Settings"
                                                         >
                                                             <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
@@ -1851,7 +1861,7 @@ export default function InvoiceEditor() {
                                             ) : (
                                                 (companyProfile?.tax_id || taxSettings.service_gst_number) && (
                                                     <div className="flex items-center gap-1.5">
-                                                        <Badge variant="outline" className="text-[10px] font-mono text-slate-700 bg-slate-50 border-slate-200">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-foreground bg-muted border-border">
                                                             GSTIN: {taxSettings.service_gst_number || companyProfile?.tax_id}
                                                         </Badge>
                                                         <Button
@@ -1859,7 +1869,7 @@ export default function InvoiceEditor() {
                                                             size="sm"
                                                             disabled={isSyncingGst}
                                                             onClick={syncGstFromProfile}
-                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-primary gap-1"
                                                             title="Sync latest GST numbers from Settings"
                                                         >
                                                             <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
@@ -1876,9 +1886,9 @@ export default function InvoiceEditor() {
                                                         <Button
                                                             variant="outline"
                                                             role="combobox"
-                                                            className="w-[260px] justify-between h-8 text-xs bg-white border-slate-200"
+                                                            className="w-[260px] justify-between h-8 text-xs bg-background border-input text-foreground"
                                                         >
-                                                            <span className="flex items-center gap-1 text-slate-500 font-normal truncate">
+                                                            <span className="flex items-center gap-1 text-muted-foreground font-normal truncate">
                                                                 <Plus className="h-3 w-3 text-primary mr-1" />
                                                                 Quick Search & Add Service...
                                                             </span>
@@ -1935,10 +1945,10 @@ export default function InvoiceEditor() {
                                                                                 className="flex justify-between items-center py-1.5"
                                                                             >
                                                                                 <div className="flex flex-col min-w-0">
-                                                                                    <span className="font-semibold text-slate-800 text-xs truncate">{task.name}</span>
+                                                                                    <span className="font-semibold text-foreground text-xs truncate">{task.name}</span>
                                                                                     <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">{catName}</span>
                                                                                 </div>
-                                                                                {(task as any).price && <span className="font-mono text-xs font-bold text-slate-700 ml-2 shrink-0">₹{(task as any).price}</span>}
+                                                                                {(task as any).price && <span className="font-mono text-xs font-bold text-muted-foreground ml-2 shrink-0">₹{(task as any).price}</span>}
                                                                             </CommandItem>
                                                                         );
                                                                     })}
@@ -1954,9 +1964,9 @@ export default function InvoiceEditor() {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="border rounded-lg overflow-visible bg-white shadow-sm font-sans">
+                                    <div className="border border-border rounded-lg overflow-visible bg-card text-card-foreground shadow-sm font-sans">
                                         <Table wrapperClassName="overflow-visible">
-                                            <TableHeader className="bg-slate-50/50 font-sans">
+                                            <TableHeader className="bg-muted/40 font-sans">
                                                 <TableRow>
                                                     <TableHead className="w-8 text-center text-xs font-semibold">#</TableHead>
                                                     <TableHead className="w-[180px] text-xs font-semibold">Category</TableHead>
@@ -1990,7 +2000,7 @@ export default function InvoiceEditor() {
                                                 })}
                                                 {items.filter(i => i.type === 'service').length === 0 && (
                                                     <TableRow>
-                                                        <TableCell colSpan={isReadOnly ? 8 : 9} className="text-center py-6 text-xs text-muted-foreground bg-slate-50/10">
+                                                        <TableCell colSpan={isReadOnly ? 8 : 9} className="text-center py-6 text-xs text-muted-foreground bg-muted/10">
                                                             No service items added.
                                                         </TableCell>
                                                     </TableRow>
@@ -2002,7 +2012,7 @@ export default function InvoiceEditor() {
 
                                 {/* Inventory Bill Section */}
                                 <div className="space-y-4">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-2">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-2 gap-2">
                                         <div className="flex items-center gap-2">
                                             <h3 className="text-sm font-bold text-primary tracking-wide flex items-center gap-2">
                                                 <Receipt className="h-4 w-4" /> II. INVENTORY / SPARES BILL
@@ -2010,7 +2020,7 @@ export default function InvoiceEditor() {
                                             {taxSettings.enable_dual_gst ? (
                                                 taxSettings.spare_gst_number && (
                                                     <div className="flex items-center gap-1.5">
-                                                        <Badge variant="outline" className="text-[10px] font-mono text-orange-700 bg-orange-50 border-orange-200">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-orange-700 bg-orange-50 dark:bg-orange-950/50 dark:text-orange-300 border-orange-200 dark:border-orange-800">
                                                             GSTIN: {taxSettings.spare_gst_number}
                                                         </Badge>
                                                         <Button
@@ -2018,7 +2028,7 @@ export default function InvoiceEditor() {
                                                             size="sm"
                                                             disabled={isSyncingGst}
                                                             onClick={syncGstFromProfile}
-                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-primary gap-1"
                                                             title="Sync latest GST numbers from Settings"
                                                         >
                                                             <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
@@ -2028,7 +2038,7 @@ export default function InvoiceEditor() {
                                             ) : (
                                                 (companyProfile?.tax_id || taxSettings.spare_gst_number) && (
                                                     <div className="flex items-center gap-1.5">
-                                                        <Badge variant="outline" className="text-[10px] font-mono text-slate-700 bg-slate-50 border-slate-200">
+                                                        <Badge variant="outline" className="text-[10px] font-mono text-foreground bg-muted border-border">
                                                             GSTIN: {taxSettings.spare_gst_number || companyProfile?.tax_id}
                                                         </Badge>
                                                         <Button
@@ -2036,7 +2046,7 @@ export default function InvoiceEditor() {
                                                             size="sm"
                                                             disabled={isSyncingGst}
                                                             onClick={syncGstFromProfile}
-                                                            className="h-5 px-1.5 text-[10px] text-slate-500 hover:text-primary gap-1"
+                                                            className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-primary gap-1"
                                                             title="Sync latest GST numbers from Settings"
                                                         >
                                                             <RefreshCw className={cn("h-2.5 w-2.5", isSyncingGst && "animate-spin")} /> Sync
@@ -2053,9 +2063,9 @@ export default function InvoiceEditor() {
                                                         <Button
                                                             variant="outline"
                                                             role="combobox"
-                                                            className="w-[260px] justify-between h-8 text-xs bg-white border-slate-200"
+                                                            className="w-[260px] justify-between h-8 text-xs bg-background border-input text-foreground"
                                                         >
-                                                            <span className="flex items-center gap-1 text-slate-500 font-normal truncate">
+                                                            <span className="flex items-center gap-1 text-muted-foreground font-normal truncate">
                                                                 <Plus className="h-3 w-3 text-primary mr-1" />
                                                                 Quick Search & Add Spare...
                                                             </span>
@@ -2111,7 +2121,7 @@ export default function InvoiceEditor() {
                                                                         >
                                                                             <div className="flex flex-col min-w-0">
                                                                                 <div className="flex items-center gap-1.5">
-                                                                                    <span className="font-semibold text-slate-800 text-xs truncate">{item.item_name}</span>
+                                                                                    <span className="font-semibold text-foreground text-xs truncate">{item.item_name}</span>
                                                                                     {item.oem_part_number && (
                                                                                         <span className="text-[10px] font-mono text-primary font-bold">OEM: {item.oem_part_number}</span>
                                                                                     )}
@@ -2125,7 +2135,7 @@ export default function InvoiceEditor() {
                                                                                     )}
                                                                                 </div>
                                                                             </div>
-                                                                            <span className="font-mono text-xs font-bold text-slate-700 ml-2 shrink-0">₹{item.unit_price}</span>
+                                                                            <span className="font-mono text-xs font-bold text-muted-foreground ml-2 shrink-0">₹{item.unit_price}</span>
                                                                         </CommandItem>
                                                                     ))}
                                                                 </CommandGroup>
@@ -2140,9 +2150,9 @@ export default function InvoiceEditor() {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="border rounded-lg overflow-visible bg-white shadow-sm font-sans">
+                                    <div className="border border-border rounded-lg overflow-visible bg-card text-card-foreground shadow-sm font-sans">
                                         <Table wrapperClassName="overflow-visible">
-                                            <TableHeader className="bg-slate-50/50 font-sans">
+                                            <TableHeader className="bg-muted/40 font-sans">
                                                 <TableRow>
                                                     <TableHead className="w-8 text-center text-xs font-semibold">#</TableHead>
                                                     <TableHead className="min-w-[200px] text-xs font-semibold">Part Name</TableHead>
@@ -2174,7 +2184,7 @@ export default function InvoiceEditor() {
                                                 })}
                                                 {items.filter(i => i.type === 'part').length === 0 && (
                                                     <TableRow>
-                                                        <TableCell colSpan={isReadOnly ? 7 : 8} className="text-center py-6 text-xs text-muted-foreground bg-slate-50/10">
+                                                        <TableCell colSpan={isReadOnly ? 7 : 8} className="text-center py-6 text-xs text-muted-foreground bg-muted/10">
                                                             No spare parts added.
                                                         </TableCell>
                                                     </TableRow>
@@ -2185,27 +2195,27 @@ export default function InvoiceEditor() {
                                 </div>
 
                                 {/* Billing Summary, Remittance, Notes inside main Card */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-8 border-t border-slate-100">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-8 border-t border-border">
                                     {/* Left side: Notes & Bank Remittance */}
                                     <div className="space-y-4">
                                         <div>
-                                            <h4 className="text-xs font-bold text-slate-700 mb-2">Invoice Terms & Notes</h4>
+                                            <h4 className="text-xs font-bold text-foreground mb-2">Invoice Terms & Notes</h4>
                                             <Textarea
                                                 value={invoice.notes || ''}
                                                 onChange={(e) => setInvoice({ ...invoice, notes: e.target.value })}
                                                 placeholder="Add payment guidelines, warranty specifications, or general notes..."
                                                 disabled={isReadOnly}
-                                                className="min-h-[100px] text-xs bg-slate-50/30"
+                                                className="min-h-[100px] text-xs bg-background border-input text-foreground"
                                             />
                                         </div>
 
-                                        <div className="border border-dashed rounded-lg p-3 bg-slate-50/50 text-[10px]">
-                                            <p className="font-bold text-[9px] text-slate-400 uppercase tracking-wider mb-2">Remittance Instructions</p>
+                                        <div className="border border-dashed border-border rounded-lg p-3 bg-muted/30 text-[10px]">
+                                            <p className="font-bold text-[9px] text-muted-foreground uppercase tracking-wider mb-2">Remittance Instructions</p>
                                             {companyProfile?.bank_name ? (
-                                                <div className="space-y-1 font-mono text-slate-600">
-                                                    <div className="flex justify-between"><span>Bank:</span> <span className="font-semibold text-slate-700">{companyProfile.bank_name}</span></div>
-                                                    <div className="flex justify-between"><span>Acct:</span> <span className="font-semibold text-slate-700">{companyProfile.acc_number}</span></div>
-                                                    <div className="flex justify-between"><span>IFSC:</span> <span className="font-semibold text-slate-700">{companyProfile.ifsc}</span></div>
+                                                <div className="space-y-1 font-mono text-muted-foreground">
+                                                    <div className="flex justify-between"><span>Bank:</span> <span className="font-semibold text-foreground">{companyProfile.bank_name}</span></div>
+                                                    <div className="flex justify-between"><span>Acct:</span> <span className="font-semibold text-foreground">{companyProfile.acc_number}</span></div>
+                                                    <div className="flex justify-between"><span>IFSC:</span> <span className="font-semibold text-foreground">{companyProfile.ifsc}</span></div>
                                                 </div>
                                             ) : (
                                                 <p className="italic text-muted-foreground">No bank account details configured in Company Profile.</p>
@@ -2214,12 +2224,12 @@ export default function InvoiceEditor() {
                                     </div>
 
                                     {/* Right side: Calculations */}
-                                    <div className="bg-slate-50/40 border border-slate-100 rounded-lg p-5 space-y-4">
-                                        <h4 className="text-xs font-bold text-slate-700 border-b pb-2">Billing Summary</h4>
+                                    <div className="bg-muted/30 border border-border rounded-lg p-5 space-y-4">
+                                        <h4 className="text-xs font-bold text-foreground border-b border-border pb-2">Billing Summary</h4>
                                         <div className="space-y-2 text-xs">
                                             <div className="flex justify-between text-muted-foreground">
                                                 <span>Subtotal</span>
-                                                <span className="font-mono">₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                <span className="font-mono text-foreground font-medium">₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                             </div>
 
                                             {taxSettings.enable_dual_gst ? (
@@ -2228,15 +2238,15 @@ export default function InvoiceEditor() {
                                                         <span className="flex items-center gap-1 text-[11px]">
                                                             <Wrench className="h-3 w-3 text-primary" /> Service GST ({taxSettings.service_gst_rate}%)
                                                         </span>
-                                                        <span className="font-mono">₹{serviceTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                        <span className="font-mono text-foreground">₹{serviceTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                     </div>
                                                     <div className="flex justify-between items-center text-muted-foreground">
                                                         <span className="flex items-center gap-1 text-[11px]">
                                                             <Package className="h-3 w-3 text-amber-600" /> Spare GST ({taxSettings.spare_gst_rate}%)
                                                         </span>
-                                                        <span className="font-mono">₹{spareTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                        <span className="font-mono text-foreground">₹{spareTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                     </div>
-                                                    <div className="flex justify-between items-center font-medium text-foreground pt-1 border-t border-dashed">
+                                                    <div className="flex justify-between items-center font-medium text-foreground pt-1 border-t border-dashed border-border">
                                                         <span>Total Tax (GST)</span>
                                                         <span className="font-mono">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                     </div>
@@ -2246,26 +2256,26 @@ export default function InvoiceEditor() {
                                                     <div className="flex items-center gap-1.5">
                                                         <span>Tax (GST)</span>
                                                         {!isReadOnly && (
-                                                            <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                                                <span className="text-[10px] text-slate-500">Rate:</span>
+                                                            <div className="flex items-center gap-1 bg-background px-1.5 py-0.5 rounded border border-input">
+                                                                <span className="text-[10px] text-muted-foreground">Rate:</span>
                                                                 <Input
                                                                     type="number"
-                                                                    className="w-10 h-5 text-[10px] p-0.5 text-center font-mono border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                    className="w-10 h-5 text-[10px] p-0.5 text-center font-mono border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-foreground"
                                                                     value={taxRate}
                                                                     onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
                                                                 />
-                                                                <span className="text-[10px] text-slate-500">%</span>
+                                                                <span className="text-[10px] text-muted-foreground">%</span>
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <span className="font-mono">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    <span className="font-mono text-foreground">₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                 </div>
                                             )}
 
                                             <Separator className="my-2" />
 
                                             <div className="flex justify-between items-center">
-                                                <span className="text-sm font-bold text-slate-800">Grand Total</span>
+                                                <span className="text-sm font-bold text-foreground">Grand Total</span>
                                                 <span className="text-lg font-bold font-mono text-primary">
                                                     ₹{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                 </span>
@@ -2276,20 +2286,20 @@ export default function InvoiceEditor() {
                                                 <>
                                                     <Separator className="my-2" />
                                                     <div className="space-y-1.5">
-                                                        <div className="flex justify-between text-green-600 font-medium">
+                                                        <div className="flex justify-between text-green-600 dark:text-green-400 font-medium">
                                                             <span>Total Paid</span>
                                                             <span className="font-mono">₹{payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                         </div>
-                                                        <div className="flex justify-between text-orange-600 font-medium">
+                                                        <div className="flex justify-between text-orange-600 dark:text-orange-400 font-medium">
                                                             <span>Deductions Applied</span>
                                                             <span className="font-mono">₹{(invoice?.total_deductions || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                         </div>
-                                                        <div className="flex justify-between items-center pt-2 border-t font-bold text-sm text-slate-800">
+                                                        <div className="flex justify-between items-center pt-2 border-t border-border font-bold text-sm text-foreground">
                                                             <span>Balance Due</span>
                                                             <span className={cn(
                                                                 "font-mono font-bold",
                                                                 grandTotal - payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (invoice?.total_deductions || 0) <= 0
-                                                                    ? "text-green-600"
+                                                                    ? "text-green-600 dark:text-green-400"
                                                                     : "text-destructive"
                                                             )}>
                                                                 ₹{Math.max(0, grandTotal - payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (p.amount_applied || p.amount), 0) - (invoice?.total_deductions || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -2305,18 +2315,18 @@ export default function InvoiceEditor() {
                         </Card>
 
                         {/* Collapsible Invoice Designer Settings Panel */}
-                        <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden w-full">
+                        <Card className="border border-border shadow-sm bg-card text-card-foreground overflow-hidden w-full">
                             <CardHeader
-                                className="bg-gradient-to-r from-slate-50 to-slate-100/50 pb-3 border-b cursor-pointer hover:bg-slate-100/50 transition-colors select-none"
+                                className="bg-muted/40 pb-3 border-b border-border cursor-pointer hover:bg-muted/60 transition-colors select-none"
                                 onClick={() => setShowDesignerPanel(!showDesignerPanel)}
                             >
                                 <div className="flex items-center justify-between">
-                                    <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
                                         <Palette className="h-4 w-4 text-primary" /> Invoice Designer Settings
                                     </CardTitle>
                                     <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] bg-white border-slate-200">Style Engine</Badge>
-                                        {showDesignerPanel ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+                                        <Badge variant="outline" className="text-[10px] bg-background border-border text-foreground">Style Engine</Badge>
+                                        {showDesignerPanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                                     </div>
                                 </div>
                                 <CardDescription className="text-[11px] mt-0.5">Customize layout styles, colors, and terms</CardDescription>
@@ -2325,7 +2335,7 @@ export default function InvoiceEditor() {
                                 <CardContent className="p-3.5 space-y-3 animate-in fade-in duration-200">
                                     {/* Accent Color Selection */}
                                     <div className="space-y-2">
-                                        <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Accent Theme Color</Label>
+                                        <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Accent Theme Color</Label>
                                         <div className="flex gap-3 pt-1">
                                             {[
                                                 { name: 'slate', bg: 'bg-slate-900', ring: 'ring-slate-400' },
@@ -2353,15 +2363,15 @@ export default function InvoiceEditor() {
                                     </div>
 
                                     {/* Toggle & Visibility */}
-                                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                                    <div className="pt-2 border-t border-border flex items-center justify-between">
                                         <div className="space-y-0.5">
-                                            <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Company Logo</Label>
+                                            <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">Company Logo</Label>
                                             <span className="text-[10px] text-muted-foreground">Show logo at the top of document</span>
                                         </div>
                                         <button
                                             type="button"
                                             onClick={() => handleShowLogoChange(!showLogo)}
-                                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${showLogo ? 'bg-primary' : 'bg-slate-200'
+                                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${showLogo ? 'bg-primary' : 'bg-muted'
                                                 }`}
                                         >
                                             <span
@@ -2372,32 +2382,32 @@ export default function InvoiceEditor() {
                                     </div>
 
                                     {/* Custom Document Overrides */}
-                                    <div className="pt-3 border-t border-slate-100 space-y-3">
+                                    <div className="pt-3 border-t border-border space-y-3">
                                         <div className="space-y-1">
-                                            <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Custom Terms & Conditions</Label>
+                                            <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Custom Terms & Conditions</Label>
                                             <Textarea
                                                 value={customTerms}
                                                 onChange={(e) => handleCustomTermsChange(e.target.value)}
                                                 placeholder="Override default terms and conditions..."
-                                                className="text-xs min-h-[70px] bg-slate-50/50 focus:bg-white transition-colors"
+                                                className="text-xs min-h-[70px] bg-background border-input text-foreground transition-colors"
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Custom Footer Note</Label>
+                                            <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Custom Footer Note</Label>
                                             <Input
                                                 value={customFooter}
                                                 onChange={(e) => handleCustomFooterChange(e.target.value)}
                                                 placeholder="Override default footer note..."
-                                                className="text-xs bg-slate-50/50 focus:bg-white transition-colors"
+                                                className="text-xs bg-background border-input text-foreground transition-colors"
                                             />
                                         </div>
                                         <div className="space-y-1 pt-1">
-                                            <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Authorized Signatory</Label>
+                                            <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Authorized Signatory</Label>
                                             <Select
                                                 value={selectedSignatureUrl || "default"}
                                                 onValueChange={(val) => handleSignatureChange(val === "default" ? "" : val)}
                                             >
-                                                <SelectTrigger className="w-full h-8 text-xs bg-slate-50/50 focus:bg-white transition-colors">
+                                                <SelectTrigger className="w-full h-8 text-xs bg-background border-input text-foreground transition-colors">
                                                     <SelectValue placeholder="System Default" />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -2416,33 +2426,33 @@ export default function InvoiceEditor() {
                         </Card>
 
                         {/* Collapsible Live Interactive Invoice Preview Panel */}
-                        <Card className="border border-slate-200 shadow-sm overflow-hidden bg-slate-50 w-full">
+                        <Card className="border border-border shadow-sm overflow-hidden bg-card text-card-foreground w-full">
                             <CardHeader
-                                className="bg-white border-b py-3 px-4 flex flex-row items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                                className="bg-card border-b border-border py-3 px-4 flex flex-row items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors select-none"
                                 onClick={() => setShowLivePreview(!showLivePreview)}
                             >
                                 <div>
-                                    <CardTitle className="text-xs font-bold flex items-center gap-1.5 text-slate-800">
+                                    <CardTitle className="text-xs font-bold flex items-center gap-1.5 text-foreground">
                                         <Eye className="h-3.5 w-3.5 text-primary" /> Live Document Preview
                                     </CardTitle>
                                     <CardDescription className="text-[10px]">Real-time visual display of printing layout & separate bills</CardDescription>
                                 </div>
-                                {showLivePreview ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+                                {showLivePreview ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                             </CardHeader>
                             {showLivePreview && (
-                                <CardContent className="p-3.5 max-h-[75vh] overflow-y-auto bg-slate-100 animate-in fade-in duration-200 space-y-3">
+                                <CardContent className="p-3.5 max-h-[75vh] overflow-y-auto bg-muted/40 animate-in fade-in duration-200 space-y-3">
                                     {/* Document View Switcher & Action Bar */}
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-card text-card-foreground p-2.5 rounded-lg border border-border shadow-xs">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <span className="text-xs font-bold text-slate-700">Document View:</span>
+                                            <span className="text-xs font-bold text-foreground">Document View:</span>
                                             {taxSettings.enable_dual_gst ? (
-                                                <div className="inline-flex rounded-md shadow-2xs bg-slate-100 p-0.5 border border-slate-200">
+                                                <div className="inline-flex rounded-md shadow-2xs bg-muted/70 p-0.5 border border-border">
                                                     <button
                                                         type="button"
                                                         onClick={() => setBillViewMode('both')}
                                                         className={cn(
                                                             "px-2.5 py-1 text-xs font-semibold rounded transition-all",
-                                                            billViewMode === 'both' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                            billViewMode === 'both' ? "bg-background text-foreground shadow-xs font-bold" : "text-muted-foreground hover:text-foreground"
                                                         )}
                                                     >
                                                         2 Bills (Print Both)
@@ -2452,7 +2462,7 @@ export default function InvoiceEditor() {
                                                         onClick={() => setBillViewMode('service')}
                                                         className={cn(
                                                             "px-2.5 py-1 text-xs font-semibold rounded transition-all",
-                                                            billViewMode === 'service' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                            billViewMode === 'service' ? "bg-background text-foreground shadow-xs font-bold" : "text-muted-foreground hover:text-foreground"
                                                         )}
                                                     >
                                                         Bill 1 (Services)
@@ -2462,7 +2472,7 @@ export default function InvoiceEditor() {
                                                         onClick={() => setBillViewMode('spare')}
                                                         className={cn(
                                                             "px-2.5 py-1 text-xs font-semibold rounded transition-all",
-                                                            billViewMode === 'spare' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                            billViewMode === 'spare' ? "bg-background text-foreground shadow-xs font-bold" : "text-muted-foreground hover:text-foreground"
                                                         )}
                                                     >
                                                         Bill 2 (Spares)
@@ -2472,14 +2482,14 @@ export default function InvoiceEditor() {
                                                         onClick={() => setBillViewMode('combined')}
                                                         className={cn(
                                                             "px-2.5 py-1 text-xs font-semibold rounded transition-all",
-                                                            billViewMode === 'combined' ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                                                            billViewMode === 'combined' ? "bg-background text-foreground shadow-xs font-bold" : "text-muted-foreground hover:text-foreground"
                                                         )}
                                                     >
                                                         Combined Single
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <Badge variant="outline" className="text-xs font-semibold text-slate-800 bg-slate-100 border-slate-300 py-1 px-3">
+                                                <Badge variant="outline" className="text-xs font-semibold text-foreground bg-muted border-border py-1 px-3">
                                                     1 GST Mode: Single Universal GST Bill
                                                 </Badge>
                                             )}
@@ -2505,7 +2515,7 @@ export default function InvoiceEditor() {
                                         </div>
                                     </div>
 
-                                    <div className="bg-white rounded-lg shadow border border-slate-200 p-4 sm:p-6 min-h-[500px] text-xs">
+                                    <div className="bg-white rounded-lg shadow-md border border-border/80 p-4 sm:p-6 min-h-[500px] text-xs max-w-4xl mx-auto">
                                         <InvoiceTemplate
                                             invoice={invoice}
                                             items={items}
@@ -2568,20 +2578,20 @@ export default function InvoiceEditor() {
                                     <Ban className="h-5 w-5" /> Cancel Invoice?
                                 </AlertDialogTitle>
                                 <AlertDialogDescription className="space-y-3 pt-2 text-left">
-                                    <p className="text-sm text-slate-700">
+                                    <p className="text-sm text-foreground">
                                         Are you sure you want to cancel{" "}
-                                        <strong className="text-slate-900">
+                                        <strong className="text-foreground">
                                             {isQuotation ? 'Quotation' : 'Invoice'} #{invoice?.bill_number || invoice?.quotation_number || invoice?.invoice_number}
                                         </strong>
                                         ?
                                     </p>
-                                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 space-y-1">
+                                    <div className="bg-muted/40 border border-border rounded-lg p-3 text-xs text-muted-foreground space-y-1">
                                         <p>• The invoice status will be marked as <strong>Cancelled</strong>.</p>
                                         <p>• It will be excluded from outstanding customer ledger balances and revenue totals.</p>
                                         <p>• You can restore this invoice anytime if needed.</p>
                                     </div>
                                     {payments && payments.length > 0 && (
-                                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300">
                                             <strong>⚠️ Notice:</strong> This invoice has <strong>{payments.length} payment(s)</strong> totalling{" "}
                                             <strong>₹{payments.reduce((s: number, p: any) => s + (p.amount_applied || p.amount || 0), 0).toLocaleString()}</strong>.
                                             Cancelling will void the invoice, but payment records will remain in financial logs.
@@ -2598,6 +2608,41 @@ export default function InvoiceEditor() {
                                 >
                                     {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Yes, Cancel Invoice
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+
+                    {/* Delete Invoice Confirmation Modal */}
+                    <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                                    <Trash2 className="h-5 w-5" /> Delete Invoice?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription className="space-y-3 pt-2 text-left">
+                                    <p className="text-sm text-foreground">
+                                        Are you sure you want to permanently delete{" "}
+                                        <strong className="text-foreground">
+                                            {isQuotation ? 'Quotation' : 'Invoice'} #{invoice?.bill_number || invoice?.quotation_number || invoice?.invoice_number || id}
+                                        </strong>
+                                        ?
+                                    </p>
+                                    <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-xs text-destructive space-y-1">
+                                        <p>• This action <strong>cannot be undone</strong>.</p>
+                                        <p>• All line items and metadata associated with this invoice will be permanently removed.</p>
+                                    </div>
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={handleDeleteInvoice}
+                                    disabled={deleting}
+                                    className="bg-destructive hover:bg-destructive/90 text-white font-medium"
+                                >
+                                    {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Delete Record
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>

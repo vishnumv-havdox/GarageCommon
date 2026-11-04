@@ -4,9 +4,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { TaskSelector, TaskItem, TaskTemplate } from "./TaskSelector";
 import { SectionStaffPanel } from "./SectionStaffPanel";
-import { Trash2, Wrench, FileText, IndianRupee } from "lucide-react";
+import { Trash2, Wrench, ShieldAlert, FileText, IndianRupee } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,7 @@ interface ServiceSectionProps {
     onTaskUpdate?: (task: TaskTemplate, newName: string, newPrice?: number) => Promise<void>;
     onTaskDelete?: (taskId: string) => Promise<void>;
     workOrderId?: string;
+    isFcExclusive?: boolean;
 }
 
 export function ServiceSection({
@@ -68,7 +70,8 @@ export function ServiceSection({
     onCustomTaskAdd,
     onTaskUpdate,
     onTaskDelete,
-    workOrderId
+    workOrderId,
+    isFcExclusive = false
 }: ServiceSectionProps) {
 
     const totalTasksCost = data.tasks.reduce((sum, task) => sum + (task.price || 0), 0);
@@ -89,11 +92,23 @@ export function ServiceSection({
     }, [totalTasksCost, data.cost, data.tasks.length, data.basePrice, data.calculatedPrice]);
 
     return (
-        <Card className="border-l-4 border-l-primary shadow-sm hover:shadow-md transition-shadow">
+        <Card className={cn(
+            "border-l-4 shadow-sm hover:shadow-md transition-shadow",
+            isFcExclusive ? "border-l-amber-500" : "border-l-primary"
+        )}>
             <CardHeader className="flex flex-row items-center justify-between py-3 bg-muted/10">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Wrench className="h-4 w-4" />
-                    {serviceType}
+                    {isFcExclusive ? (
+                        <ShieldAlert className="h-4 w-4 text-amber-500" />
+                    ) : (
+                        <Wrench className="h-4 w-4 text-primary" />
+                    )}
+                    <span>{serviceType}</span>
+                    {isFcExclusive && (
+                        <Badge variant="outline" className="bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 text-[10px] ml-1 font-medium">
+                            FC Compliance
+                        </Badge>
+                    )}
                 </CardTitle>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={onRemove}>
                     <Trash2 className="h-4 w-4" />

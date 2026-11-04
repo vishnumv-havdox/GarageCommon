@@ -475,13 +475,13 @@ export default function StaffAttendance() {
                                                 <TableRow key={row.id}>
                                                     <TableCell className="font-bold">{format(new Date(row.date), 'MMM dd, EEE')}</TableCell>
                                                     <TableCell>
-                                                        <Badge className={`text-[10px] uppercase font-bold border-none ${row.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
-                                                            row.status === 'absent' ? 'bg-rose-100 text-rose-700' :
-                                                                row.status === 'half-day' ? 'bg-amber-100 text-amber-700' :
-                                                                    row.status === 'leave' ? 'bg-blue-100 text-blue-700' :
-                                                                        row.status === 'holiday' ? 'bg-slate-100 text-slate-700' :
-                                                                            row.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700' :
-                                                                                'bg-purple-100 text-purple-700'
+                                                        <Badge className={`text-[10px] uppercase font-bold border-none ${row.status === 'present' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400' :
+                                                            row.status === 'absent' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-400' :
+                                                                row.status === 'half-day' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400' :
+                                                                    row.status === 'leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-400' :
+                                                                        row.status === 'holiday' ? 'bg-muted text-muted-foreground' :
+                                                                            row.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-400' :
+                                                                                'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-400'
                                                             }`}>
                                                             {row.status}
                                                         </Badge>

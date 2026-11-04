@@ -11,7 +11,6 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface SalaryConfigFormProps {
     employeeId: string;
@@ -76,12 +75,9 @@ export function SalaryConfigForm({ employeeId, employeeName, onSuccess, initialD
     };
 
     return (
-        <Card className="border-none shadow-none bg-muted/30">
-            <CardHeader className="px-0 pt-0">
-                <CardTitle className="text-lg">Salary Structure: {employeeName}</CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0">
-                <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="pt-1">
+            <p className="text-xs text-muted-foreground -mt-2 mb-4">Structure and payment terms for <span className="font-bold text-foreground">{employeeName}</span></p>
+            <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Pay Type</Label>
@@ -208,12 +204,11 @@ export function SalaryConfigForm({ employeeId, employeeName, onSuccess, initialD
                     </div>
 
                     <div className="pt-2">
-                        <Button type="submit" className="w-full" disabled={loading}>
+                        <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold" disabled={loading}>
                             {loading ? "Saving..." : "Save Configuration"}
                         </Button>
                     </div>
                 </form>
-            </CardContent>
-        </Card>
+        </div>
     );
 }

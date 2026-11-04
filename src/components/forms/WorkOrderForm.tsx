@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { useSearchParams } from "react-router-dom"
-import { Loader2, Wrench, Search, ChevronDown, ChevronRight, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, UserPlus, Camera, Upload as UploadIcon, X, Package, CheckCircle2, Truck, ListOrdered, ArrowLeft, RotateCcw, Gauge, Fuel, FileText, Phone, Eye, ExternalLink, AlertTriangle, ShieldAlert } from "lucide-react"
+import { Loader2, Wrench, Search, ChevronDown, ChevronRight, Plus, IndianRupee, Layers, Edit, Trash2, Activity, Settings, ClipboardList, User, UserPlus, Camera, Upload as UploadIcon, X, Package, CheckCircle2, Truck, ListOrdered, ArrowLeft, RotateCcw, Gauge, Fuel, FileText, Phone, Eye, ExternalLink, AlertTriangle, ShieldAlert, Sparkles } from "lucide-react"
 import { ServiceSection, ServiceSectionData } from "@/components/work-orders/ServiceSection"
 import { TaskItem, TaskTemplate } from "@/components/work-orders/TaskSelector"
 import { format, addYears } from "date-fns"
@@ -126,6 +126,8 @@ interface WorkOrderFormProps {
   }
 }
 
+export type WorkOrderMode = 'standard' | 'fc_only' | 'combined';
+
 export function WorkOrderForm({
   onSuccess,
   onCancel,
@@ -161,8 +163,10 @@ export function WorkOrderForm({
     required_fields?: string[];
     is_fc_exclusive?: boolean; // Added for FC Work flow
   }
+  const [workOrderMode, setWorkOrderMode] = useState<WorkOrderMode>('standard');
   const [dbServiceTypes, setDbServiceTypes] = useState<DBServiceType[]>([])
   const [isFCWork, setIsFCWork] = useState(false) // Toggle state for FC Work
+  const [newServiceIsFcExclusive, setNewServiceIsFcExclusive] = useState(false)
   const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([])
 
   interface PricingRule {
@@ -359,6 +363,7 @@ export function WorkOrderForm({
 
       const urlIsFC = searchParams.get('isFC') === 'true';
       if (urlIsFC) {
+        setWorkOrderMode('fc_only');
         setIsFCWork(true);
         setLifecycleData(prev => ({
           ...prev,
@@ -611,47 +616,90 @@ export function WorkOrderForm({
     setBelongings(prev => prev.filter((_, i) => i !== index));
   };
 
-  const displayedServices = useMemo(() => {
-    const filtered = dbServiceTypes.filter(service => {
-      // 1. FC Filter (Global Priority)
-      if (isFCWork) {
-        // In FC Mode: Show ALL services (FC + Normal)
-        // No filtering needed here, logic falls through to standard applicability
-      } else {
-        // In Standard Mode: Show ONLY non-FC services
-        // (treat undefined/null as false for backward compatibility)
-        if (service.is_fc_exclusive === true) return false;
-      }
-
-      // 2. Initial State: If no vehicle selected, show all (that passed FC filter)
+  // Applicability-filtered services based on vehicle selection
+  const applicableServices = useMemo(() => {
+    return dbServiceTypes.filter(service => {
       if (!selectedVehicle) return true;
-
-      // 3. Strict Applicability Rules
       const serviceRules = applicabilityRules.filter(r => r.service_type_id === service.id);
-      if (serviceRules.length === 0) return true; // Universal (No rules defined)
-
-      // Check if ANY rule matches the current vehicle (OR logic between rules)
-      const matches = serviceRules.some(rule => {
-        // Within a rule, ALL defined constraints must match (AND logic)
+      if (serviceRules.length === 0) return true;
+      return serviceRules.some(rule => {
         if (rule.vehicle_manufacturer_id && rule.vehicle_manufacturer_id !== selectedVehicle.manufacturer_id) return false;
         if (rule.vehicle_type_id && rule.vehicle_type_id !== selectedVehicle.vehicle_type_id) return false;
         if (rule.vehicle_category_id && rule.vehicle_category_id !== selectedVehicle.vehicle_category_id) return false;
         return true;
       });
-
-      return matches;
     });
+  }, [dbServiceTypes, applicabilityRules, selectedVehicle]);
 
-    // Sort FC exclusive services to the top if in FC mode
-    if (isFCWork) {
-      return [...filtered].sort((a, b) => {
-        if (a.is_fc_exclusive === b.is_fc_exclusive) return 0;
-        return a.is_fc_exclusive ? -1 : 1;
+  // Separate FC compliance services and General workshop services
+  const fcServices = useMemo(() => {
+    return applicableServices.filter(s => s.is_fc_exclusive === true);
+  }, [applicableServices]);
+
+  const generalServices = useMemo(() => {
+    return applicableServices.filter(s => !s.is_fc_exclusive);
+  }, [applicableServices]);
+
+  const displayedServices = useMemo(() => {
+    if (workOrderMode === 'fc_only') return fcServices;
+    if (workOrderMode === 'standard') return generalServices;
+    return applicableServices;
+  }, [workOrderMode, fcServices, generalServices, applicableServices]);
+
+  const selectedFcCount = useMemo(() => {
+    const fcNames = new Set(fcServices.map(s => s.name));
+    return selectedServices.filter(name => fcNames.has(name)).length;
+  }, [selectedServices, fcServices]);
+
+  const selectedGeneralCount = useMemo(() => {
+    const generalNames = new Set(generalServices.map(s => s.name));
+    return selectedServices.filter(name => generalNames.has(name)).length;
+  }, [selectedServices, generalServices]);
+
+  const fcExpiryStatus = useMemo(() => {
+    const expDateStr = lifecycleData.fc_expiry_date || selectedVehicle?.fc_expiry_date;
+    if (!expDateStr) return null;
+    const exp = new Date(expDateStr);
+    if (isNaN(exp.getTime())) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return {
+      diffDays,
+      isExpired: diffDays < 0,
+      isDueSoon: diffDays >= 0 && diffDays <= 30,
+      formattedDate: format(exp, "dd MMM yyyy"),
+      label: diffDays < 0 ? `Expired (${Math.abs(diffDays)}d ago)` : diffDays <= 30 ? `Due in ${diffDays} days` : `Valid (${diffDays}d left)`
+    };
+  }, [lifecycleData.fc_expiry_date, selectedVehicle?.fc_expiry_date]);
+
+  const handleModeChange = (newMode: WorkOrderMode) => {
+    setWorkOrderMode(newMode);
+    const isFC = newMode === 'fc_only' || newMode === 'combined';
+    setIsFCWork(isFC);
+    setLifecycleData(prev => ({
+      ...prev,
+      is_fc_renewal: isFC,
+      fc_issue_date: isFC ? (prev.fc_issue_date || new Date().toISOString().split('T')[0]) : prev.fc_issue_date,
+      fc_expiry_date: isFC ? (prev.fc_expiry_date || (selectedVehicle?.fc_expiry_date ? format(addYears(new Date(selectedVehicle.fc_expiry_date), 1), 'yyyy-MM-dd') : format(addYears(new Date(), 1), 'yyyy-MM-dd'))) : prev.fc_expiry_date
+    }));
+
+    if (newMode === 'standard') {
+      // Deselect FC-exclusive services
+      fcServices.forEach(s => {
+        if (selectedServices.includes(s.name)) {
+          handleServiceToggle(s.name, false);
+        }
+      });
+    } else if (newMode === 'fc_only') {
+      // Deselect standard services
+      generalServices.forEach(s => {
+        if (selectedServices.includes(s.name)) {
+          handleServiceToggle(s.name, false);
+        }
       });
     }
-
-    return filtered;
-  }, [dbServiceTypes, applicabilityRules, selectedVehicle, isFCWork]);
+  };
 
   // Computed Task Templates (Context-Aware Pricing)
   const computedTaskTemplates = useMemo(() => {
@@ -1262,7 +1310,9 @@ export function WorkOrderForm({
         }
       } catch (e) {}
 
-      setIsFCWork(Boolean(wo.is_fc_renewal));
+      const isFC = Boolean(wo.is_fc_renewal);
+      setIsFCWork(isFC);
+      setWorkOrderMode(isFC ? 'fc_only' : 'standard');
       setLifecycleData({
         odometer_reading: wo.odometer_reading || 0,
         next_service_due_km: wo.next_service_due_km || 0,
@@ -1325,6 +1375,18 @@ export function WorkOrderForm({
 
       setSelectedServices(loadedSelectedServices);
       setServiceSections(loadedServiceSections);
+
+      if (isFC) {
+        const hasFcService = (services || []).some((s: any) => s.service_type?.toLowerCase().includes('fc'));
+        const hasGeneralService = (services || []).some((s: any) => !s.service_type?.toLowerCase().includes('fc'));
+        if (hasFcService && hasGeneralService) {
+          setWorkOrderMode('combined');
+        } else {
+          setWorkOrderMode('fc_only');
+        }
+      } else {
+        setWorkOrderMode('standard');
+      }
 
       toast({
         title: "Work Order Loaded",
@@ -1458,7 +1520,8 @@ export function WorkOrderForm({
         .from('service_types')
         .insert({
           name: newServiceName.trim(),
-          category: newServiceCategory
+          category: newServiceCategory,
+          is_fc_exclusive: newServiceIsFcExclusive
         })
         .select()
         .single();
@@ -1491,6 +1554,7 @@ export function WorkOrderForm({
       setShowAddServiceDialog(false);
       setNewServiceName("");
       setNewServiceTasks([]);
+      setNewServiceIsFcExclusive(false);
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
@@ -2170,10 +2234,11 @@ export function WorkOrderForm({
           total_sections: selectedServices.length,
           reopened_at: isReopening ? new Date().toISOString() : undefined,
           original_reopen_reason: isReopening ? internalReopenReason : undefined,
-          fc_details: lifecycleData.is_fc_renewal ? {
+          fc_details: (lifecycleData.is_fc_renewal || lifecycleData.fc_number?.trim() || lifecycleData.fc_expiry_date) ? {
             fc_number: lifecycleData.fc_number,
             fc_issue_date: lifecycleData.fc_issue_date,
             fc_expiry_date: lifecycleData.fc_expiry_date,
+            is_renewal_job: lifecycleData.is_fc_renewal
           } : undefined
         }),
         odometer_reading: lifecycleData.odometer_reading || null,
@@ -2486,16 +2551,15 @@ export function WorkOrderForm({
       if (lifecycleData.next_service_due_date) {
         vehicleUpdatePayload.next_service_date = lifecycleData.next_service_due_date;
       }
-      if (lifecycleData.is_fc_renewal) {
-        if (lifecycleData.fc_number?.trim()) {
-          vehicleUpdatePayload.fc_number = lifecycleData.fc_number.trim();
-        }
-        if (lifecycleData.fc_expiry_date) {
-          vehicleUpdatePayload.fc_expiry_date = lifecycleData.fc_expiry_date;
-        }
-        if (lifecycleData.fc_issue_date) {
-          vehicleUpdatePayload.last_fc_date = lifecycleData.fc_issue_date;
-        }
+      // Update vehicle FC details if provided (both for FC renewal jobs AND for standard jobs where advisor tracks/updates FC papers)
+      if (lifecycleData.fc_number?.trim()) {
+        vehicleUpdatePayload.fc_number = lifecycleData.fc_number.trim();
+      }
+      if (lifecycleData.fc_expiry_date) {
+        vehicleUpdatePayload.fc_expiry_date = lifecycleData.fc_expiry_date;
+      }
+      if (lifecycleData.fc_issue_date) {
+        vehicleUpdatePayload.last_fc_date = lifecycleData.fc_issue_date;
       }
 
       await supabase
@@ -2504,7 +2568,7 @@ export function WorkOrderForm({
         .eq('id', vehicleId);
 
       // Record to vehicle_fc_history if FC renewal details provided
-      if (lifecycleData.is_fc_renewal && (lifecycleData.fc_expiry_date || lifecycleData.fc_number?.trim())) {
+      if (lifecycleData.fc_expiry_date || lifecycleData.fc_number?.trim()) {
         await supabase
           .from('vehicle_fc_history')
           .insert({
@@ -2512,7 +2576,9 @@ export function WorkOrderForm({
             fc_number: lifecycleData.fc_number?.trim() || null,
             issue_date: lifecycleData.fc_issue_date || new Date().toISOString().split('T')[0],
             expiry_date: lifecycleData.fc_expiry_date || null,
-            notes: `Recorded via Work Order #${workOrderId || initialWorkOrderId || 'New'}`,
+            notes: lifecycleData.is_fc_renewal 
+              ? `FC Renewal Package via Work Order #${workOrderId || initialWorkOrderId || 'New'}`
+              : `FC Record verified/updated during Standard Service intake (WO #${workOrderId || initialWorkOrderId || 'New'})`,
             created_by: user?.id || null
           });
       }
@@ -4007,7 +4073,15 @@ export function WorkOrderForm({
                 </div>
               )}
               <div className="flex justify-end mb-2">
-                <Popover open={showAddServiceDialog} onOpenChange={setShowAddServiceDialog}>
+                <Popover
+                  open={showAddServiceDialog}
+                  onOpenChange={(open) => {
+                    setShowAddServiceDialog(open);
+                    if (open) {
+                      setNewServiceIsFcExclusive(workOrderMode === 'fc_only');
+                    }
+                  }}
+                >
                   <PopoverTrigger asChild>
                     <Button type="button" variant="outline" size="sm" className="h-8 gap-1">
                       <Plus className="h-3.5 w-3.5" /> Add New Service
@@ -4050,6 +4124,17 @@ export function WorkOrderForm({
                             ))}
                           </SelectContent>
                         </Select>
+                      </div>
+
+                      <div className="flex items-center space-x-2 pt-1 pb-1">
+                        <Checkbox
+                          id="new-service-is-fc-exclusive"
+                          checked={newServiceIsFcExclusive}
+                          onCheckedChange={(checked) => setNewServiceIsFcExclusive(checked as boolean)}
+                        />
+                        <Label htmlFor="new-service-is-fc-exclusive" className="text-xs font-medium cursor-pointer">
+                          Exclusive to FC Renewal (RTO Fitness)
+                        </Label>
                       </div>
 
                       <div className="grid gap-2">
@@ -4162,99 +4247,413 @@ export function WorkOrderForm({
                 </AlertDialog>
               </div>
 
-              {/* Service Selection Header & FC Toggle */}
-              <div className="flex items-center justify-between mt-6 mb-4">
-                <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <Wrench className="h-4 w-4" />
-                  Service Details
-                </h3>
+              {/* Work Order Scope & Mode Selector (Option 1) */}
+              <div className="mt-6 mb-5 p-3.5 rounded-2xl border border-border bg-card shadow-xs space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                      Work Order Scope & Category
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground border-border bg-muted/30">
+                    {workOrderMode === 'standard' && "Standard Workshop Repairs"}
+                    {workOrderMode === 'fc_only' && "FC Renewal Inspection Only"}
+                    {workOrderMode === 'combined' && "Dual Scope: FC + Workshop Repairs"}
+                  </Badge>
+                </div>
 
-                {/* FC Work Toggle - Prominent placement */}
-                <div className="flex items-center space-x-2 bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-200">
-                  <Checkbox
-                    id="fc_mode"
-                    checked={isFCWork}
-                    onCheckedChange={(checked) => {
-                      const isChecked = checked as boolean;
-                      setIsFCWork(isChecked);
-                      setLifecycleData(prev => ({
-                        ...prev,
-                        is_fc_renewal: isChecked,
-                        fc_issue_date: prev.fc_issue_date || new Date().toISOString().split('T')[0],
-                        fc_expiry_date: prev.fc_expiry_date || (selectedVehicle?.fc_expiry_date ? format(addYears(new Date(selectedVehicle.fc_expiry_date), 1), 'yyyy-MM-dd') : format(addYears(new Date(), 1), 'yyyy-MM-dd'))
-                      }));
-                    }}
-                    className="data-[state=checked]:bg-yellow-600 data-[state=checked]:border-yellow-600"
-                  />
-                  <label
-                    htmlFor="fc_mode"
-                    className="text-sm font-bold leading-none cursor-pointer text-yellow-900"
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* Mode 1: Standard Service */}
+                  <button
+                    type="button"
+                    onClick={() => handleModeChange('standard')}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-xl border text-left transition-all",
+                      workOrderMode === 'standard'
+                        ? "bg-primary/10 border-primary text-foreground shadow-xs font-semibold ring-1 ring-primary/40"
+                        : "bg-muted/20 border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    )}
                   >
-                    FC Work Order?
-                  </label>
+                    <div className={cn(
+                      "p-2 rounded-lg shrink-0",
+                      workOrderMode === 'standard' ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    )}>
+                      <Wrench className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-foreground">Standard Workshop</div>
+                      <div className="text-[10px] text-muted-foreground">General repairs & maintenance</div>
+                    </div>
+                  </button>
+
+                  {/* Mode 2: FC Renewal Only */}
+                  <button
+                    type="button"
+                    onClick={() => handleModeChange('fc_only')}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-xl border text-left transition-all",
+                      workOrderMode === 'fc_only'
+                        ? "bg-amber-500/10 border-amber-500 text-amber-900 dark:text-amber-200 shadow-xs font-semibold ring-1 ring-amber-500/40"
+                        : "bg-muted/20 border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    )}
+                  >
+                    <div className={cn(
+                      "p-2 rounded-lg shrink-0",
+                      workOrderMode === 'fc_only' ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"
+                    )}>
+                      <ShieldAlert className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-foreground">FC Renewal Only</div>
+                      <div className="text-[10px] text-muted-foreground">RTO fitness compliance only</div>
+                    </div>
+                  </button>
+
+                  {/* Mode 3: Combined (FC + General Service) */}
+                  <button
+                    type="button"
+                    onClick={() => handleModeChange('combined')}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-xl border text-left transition-all",
+                      workOrderMode === 'combined'
+                        ? "bg-purple-500/10 border-purple-500 text-purple-900 dark:text-purple-200 shadow-xs font-semibold ring-1 ring-purple-500/40"
+                        : "bg-muted/20 border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    )}
+                  >
+                    <div className={cn(
+                      "p-2 rounded-lg shrink-0",
+                      workOrderMode === 'combined' ? "bg-purple-600 text-white" : "bg-muted text-muted-foreground"
+                    )}>
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-foreground">Combined (FC + General)</div>
+                      <div className="text-[10px] text-muted-foreground">FC passing + other repairs</div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
-              <div id="service-selection" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {displayedServices
-                  .map((type) => {
-                    const isSelected = selectedServices.includes(type.name);
-                    return (
-                      <div 
-                        key={type.id} 
-                        className={cn(
-                          "group relative flex items-center space-x-2 border rounded-xl p-3 transition-all cursor-pointer pr-12 select-none",
-                          isSelected 
-                            ? "bg-primary/10 border-primary/40 shadow-xs" 
-                            : "hover:bg-muted/50 border-input"
-                        )}
-                        onClick={() => handleServiceToggle(type.name, !isSelected)}
-                      >
-                        <Checkbox
-                          id={`service-${type.id}`}
-                          checked={isSelected}
-                          onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <Label
-                          htmlFor={`service-${type.id}`}
-                          className="text-sm font-medium leading-none cursor-pointer flex-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {type.name}
-                        </Label>
+              {/* Service Selection Body */}
+              <div id="service-selection" className="space-y-6">
+                {/* Mode 1: FC Only Mode */}
+                {workOrderMode === 'fc_only' && (
+                  <div className="p-4 rounded-xl border border-amber-300/70 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="h-4 w-4 text-amber-600" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                          FC Compliance Services ({selectedFcCount} selected)
+                        </h4>
+                      </div>
+                      <Badge className="bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 text-[10px]">
+                        RTO Fitness Package
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Displaying strict RTO Fitness Certificate passing services. If vehicle also needs general workshop repairs, switch to Combined mode above.
+                    </p>
+                    {fcServices.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 pt-1">
+                        {fcServices.map((type) => {
+                          const isSelected = selectedServices.includes(type.name);
+                          return (
+                            <div 
+                              key={type.id} 
+                              className={cn(
+                                "group relative flex items-center space-x-2 border rounded-xl p-3 transition-all cursor-pointer pr-12 select-none",
+                                isSelected 
+                                  ? "bg-amber-500/15 border-amber-500/50 shadow-xs ring-1 ring-amber-500/30 text-foreground"
+                                  : "hover:bg-muted/50 border-input bg-card text-foreground"
+                              )}
+                              onClick={() => handleServiceToggle(type.name, !isSelected)}
+                            >
+                              <Checkbox
+                                id={`service-${type.id}`}
+                                checked={isSelected}
+                                onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
+                                onClick={(e) => e.stopPropagation()}
+                                className={cn(isSelected && "data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600")}
+                              />
+                              <Label
+                                htmlFor={`service-${type.id}`}
+                                className="text-sm font-medium leading-none cursor-pointer flex-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {type.name}
+                              </Label>
+                              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-blue-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingService(type);
+                                    setEditServiceName(type.name);
+                                  }}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteService(type);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground p-3 border border-dashed rounded-lg text-center">
+                        No FC exclusive services found. Use "Add New Service" above to create an FC service.
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                      {/* Action Buttons */}
-                      < div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity" >
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 hover:text-blue-600"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingService(type);
-                            setEditServiceName(type.name);
-                          }}
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteService(type);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                {/* Mode 2: Standard Mode */}
+                {workOrderMode === 'standard' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wrench className="h-4 w-4 text-primary" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          General Workshop Services ({selectedGeneralCount} selected)
+                        </h4>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">
+                        Standard Maintenance & Repairs
+                      </Badge>
+                    </div>
+                    {generalServices.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {generalServices.map((type) => {
+                          const isSelected = selectedServices.includes(type.name);
+                          return (
+                            <div 
+                              key={type.id} 
+                              className={cn(
+                                "group relative flex items-center space-x-2 border rounded-xl p-3 transition-all cursor-pointer pr-12 select-none",
+                                isSelected 
+                                  ? "bg-primary/10 border-primary/40 shadow-xs ring-1 ring-primary/30 text-foreground"
+                                  : "hover:bg-muted/50 border-input bg-card text-foreground"
+                              )}
+                              onClick={() => handleServiceToggle(type.name, !isSelected)}
+                            >
+                              <Checkbox
+                                id={`service-${type.id}`}
+                                checked={isSelected}
+                                onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <Label
+                                htmlFor={`service-${type.id}`}
+                                className="text-sm font-medium leading-none cursor-pointer flex-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {type.name}
+                              </Label>
+                              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-blue-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingService(type);
+                                    setEditServiceName(type.name);
+                                  }}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteService(type);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground p-3 border border-dashed rounded-lg text-center">
+                        No general services match the current vehicle applicability rules.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Mode 3: Combined Mode (Both FC + General clearly separated into 2 distinct sections!) */}
+                {workOrderMode === 'combined' && (
+                  <div className="space-y-6">
+                    {/* Section A: FC Compliance */}
+                    <div className="p-4 rounded-xl border border-amber-300/70 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className="h-4 w-4 text-amber-600" />
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                            1. FC Compliance Services ({selectedFcCount} selected)
+                          </h4>
+                        </div>
+                        <Badge className="bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 text-[10px]">
+                          RTO Fitness Passing
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 pt-1">
+                        {fcServices.map((type) => {
+                          const isSelected = selectedServices.includes(type.name);
+                          return (
+                            <div 
+                              key={type.id} 
+                              className={cn(
+                                "group relative flex items-center space-x-2 border rounded-xl p-3 transition-all cursor-pointer pr-12 select-none",
+                                isSelected 
+                                  ? "bg-amber-500/15 border-amber-500/50 shadow-xs ring-1 ring-amber-500/30 text-foreground"
+                                  : "hover:bg-muted/50 border-input bg-card text-foreground"
+                              )}
+                              onClick={() => handleServiceToggle(type.name, !isSelected)}
+                            >
+                              <Checkbox
+                                id={`service-${type.id}`}
+                                checked={isSelected}
+                                onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
+                                onClick={(e) => e.stopPropagation()}
+                                className={cn(isSelected && "data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600")}
+                              />
+                              <Label
+                                htmlFor={`service-${type.id}`}
+                                className="text-sm font-medium leading-none cursor-pointer flex-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {type.name}
+                              </Label>
+                              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-blue-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingService(type);
+                                    setEditServiceName(type.name);
+                                  }}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteService(type);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Section B: Additional Workshop Repairs */}
+                    <div className="p-4 rounded-xl border border-border bg-card space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Wrench className="h-4 w-4 text-primary" />
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                            2. Additional Workshop & Mechanical Repairs ({selectedGeneralCount} selected)
+                          </h4>
+                        </div>
+                        <Badge variant="outline" className="text-[10px]">
+                          General Maintenance
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 pt-1">
+                        {generalServices.map((type) => {
+                          const isSelected = selectedServices.includes(type.name);
+                          return (
+                            <div 
+                              key={type.id} 
+                              className={cn(
+                                "group relative flex items-center space-x-2 border rounded-xl p-3 transition-all cursor-pointer pr-12 select-none",
+                                isSelected 
+                                  ? "bg-primary/10 border-primary/40 shadow-xs ring-1 ring-primary/30 text-foreground"
+                                  : "hover:bg-muted/50 border-input bg-card text-foreground"
+                              )}
+                              onClick={() => handleServiceToggle(type.name, !isSelected)}
+                            >
+                              <Checkbox
+                                id={`service-${type.id}`}
+                                checked={isSelected}
+                                onCheckedChange={(checked) => handleServiceToggle(type.name, checked as boolean)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <Label
+                                htmlFor={`service-${type.id}`}
+                                className="text-sm font-medium leading-none cursor-pointer flex-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {type.name}
+                              </Label>
+                              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-blue-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingService(type);
+                                    setEditServiceName(type.name);
+                                  }}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteService(type);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -4294,6 +4693,7 @@ export function WorkOrderForm({
                         onTaskUpdate={handleUpdateTaskTemplate}
                         onTaskDelete={handleDeleteTaskTemplate}
                         workOrderId={initialWorkOrderId}
+                        isFcExclusive={Boolean(dbServiceTypes.find(s => s.id === serviceId)?.is_fc_exclusive)}
                       />
                     )
                   })}  </div>
@@ -4393,84 +4793,114 @@ export function WorkOrderForm({
                 </div>
               </div>
 
-              {/* FC Renewal & Fitness Certificate Section (When FC Mode is Active) */}
-              {isFCWork && (
-                <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                      <span className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">
-                        FC Renewal & Certificate Details
-                      </span>
-                    </div>
-                    {selectedVehicle?.fc_expiry_date && (
-                      <span className="text-[11px] text-amber-900 dark:text-amber-300 bg-background/80 px-2.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 shadow-2xs">
-                        Current FC Expiry: <strong className="font-bold">{format(new Date(selectedVehicle.fc_expiry_date), "dd MMM yyyy")}</strong>
-                        {new Date(selectedVehicle.fc_expiry_date) < new Date() && (
-                          <span className="ml-1 text-destructive font-black">(Expired)</span>
-                        )}
-                      </span>
-                    )}
+              {/* Vehicle Fitness Certificate (FC) Tracking & Renewal Section */}
+              <div className={cn(
+                "p-4 rounded-xl border transition-all space-y-3",
+                isFCWork
+                  ? "border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20"
+                  : "border-border bg-card/60"
+              )}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className={cn(
+                      "h-4 w-4",
+                      isFCWork ? "text-amber-600 dark:text-amber-400" : "text-primary"
+                    )} />
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                      {isFCWork ? "FC Renewal & Certificate Details" : "Vehicle Fitness Certificate (FC) Tracking"}
+                    </span>
+                    <Badge variant={isFCWork ? "default" : "outline"} className={cn(
+                      "text-[10px] h-5",
+                      isFCWork 
+                        ? "bg-amber-500 hover:bg-amber-600 text-white border-transparent" 
+                        : "text-muted-foreground border-border bg-muted/40 font-normal"
+                    )}>
+                      {isFCWork ? "RTO FC Renewal Job Package" : "Vehicle Record (Tracking Only)"}
+                    </Badge>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="fc_number" className="text-xs font-medium">FC Certificate / Application No.</Label>
-                      <Input
-                        id="fc_number"
-                        placeholder="e.g. TN-55-FC-2026-001"
-                        className="h-9 text-xs bg-background font-mono"
-                        value={lifecycleData.fc_number || ''}
-                        onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_number: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="fc_issue_date" className="text-xs font-medium">FC Inspection / Issue Date</Label>
-                      <Input
-                        id="fc_issue_date"
-                        type="date"
-                        className="h-9 text-xs bg-background font-mono"
-                        value={lifecycleData.fc_issue_date || ''}
-                        onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_issue_date: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="fc_expiry_date" className="text-xs font-medium">New FC Expiry Date</Label>
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const base = lifecycleData.fc_issue_date ? new Date(lifecycleData.fc_issue_date) : new Date();
-                              setLifecycleData(p => ({ ...p, fc_expiry_date: format(addYears(base, 1), 'yyyy-MM-dd') }));
-                            }}
-                            className="text-[10px] text-primary hover:underline font-medium"
-                          >
-                            +1 Yr
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const base = lifecycleData.fc_issue_date ? new Date(lifecycleData.fc_issue_date) : new Date();
-                              setLifecycleData(p => ({ ...p, fc_expiry_date: format(addYears(base, 2), 'yyyy-MM-dd') }));
-                            }}
-                            className="text-[10px] text-primary hover:underline font-medium"
-                          >
-                            +2 Yrs
-                          </button>
-                        </div>
+                  {fcExpiryStatus && (
+                    <span className={cn(
+                      "text-[11px] px-2.5 py-0.5 rounded-md border font-medium flex items-center gap-1.5",
+                      fcExpiryStatus.isExpired 
+                        ? "bg-destructive/10 text-destructive border-destructive/30" 
+                        : fcExpiryStatus.isDueSoon 
+                        ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold"
+                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                    )}>
+                      <span>Current FC:</span>
+                      <strong>{fcExpiryStatus.formattedDate}</strong>
+                      <span>•</span>
+                      <span className="font-semibold">{fcExpiryStatus.label}</span>
+                    </span>
+                  )}
+                </div>
+
+                {!isFCWork && (
+                  <p className="text-[11px] text-muted-foreground">
+                    This work order is a standard workshop service. You can review or record updated FC papers below to maintain vehicle compliance records and ensure automated renewal reminders.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fc_number" className="text-xs font-medium">FC Certificate / Application No.</Label>
+                    <Input
+                      id="fc_number"
+                      placeholder="e.g. TN-55-FC-2026-001"
+                      className="h-9 text-xs bg-background font-mono"
+                      value={lifecycleData.fc_number || ''}
+                      onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_number: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fc_issue_date" className="text-xs font-medium">FC Inspection / Issue Date</Label>
+                    <Input
+                      id="fc_issue_date"
+                      type="date"
+                      className="h-9 text-xs bg-background font-mono"
+                      value={lifecycleData.fc_issue_date || ''}
+                      onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_issue_date: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="fc_expiry_date" className="text-xs font-medium">
+                        {isFCWork ? "New Target FC Expiry Date" : "Current / Next FC Expiry Date"}
+                      </Label>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const base = lifecycleData.fc_issue_date ? new Date(lifecycleData.fc_issue_date) : new Date();
+                            setLifecycleData(p => ({ ...p, fc_expiry_date: format(addYears(base, 1), 'yyyy-MM-dd') }));
+                          }}
+                          className="text-[10px] text-primary hover:underline font-medium"
+                        >
+                          +1 Yr
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const base = lifecycleData.fc_issue_date ? new Date(lifecycleData.fc_issue_date) : new Date();
+                            setLifecycleData(p => ({ ...p, fc_expiry_date: format(addYears(base, 2), 'yyyy-MM-dd') }));
+                          }}
+                          className="text-[10px] text-primary hover:underline font-medium"
+                        >
+                          +2 Yrs
+                        </button>
                       </div>
-                      <Input
-                        id="fc_expiry_date"
-                        type="date"
-                        className="h-9 text-xs bg-background font-mono"
-                        value={lifecycleData.fc_expiry_date || ''}
-                        onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_expiry_date: e.target.value }))}
-                      />
                     </div>
+                    <Input
+                      id="fc_expiry_date"
+                      type="date"
+                      className="h-9 text-xs bg-background font-mono"
+                      value={lifecycleData.fc_expiry_date || ''}
+                      onChange={(e) => setLifecycleData(prev => ({ ...prev, fc_expiry_date: e.target.value }))}
+                    />
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Relevant Contact Person for this service */}
               {companyContacts.length > 0 && (

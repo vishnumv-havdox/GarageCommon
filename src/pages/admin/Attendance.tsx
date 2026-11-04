@@ -681,21 +681,21 @@ export default function AttendancePage() {
     };
 
     return (
-        <div className="flex flex-col lg:flex-row min-h-screen w-full bg-muted/40 font-inter">
+        <div className="flex flex-col lg:flex-row min-h-screen w-full bg-background font-inter">
             <AdminSidebar />
             <main className="flex-1 p-4 md:p-8">
                 <div className="flex flex-col gap-6 max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
-                            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Workforce Attendance</h1>
-                            <p className="text-muted-foreground">Comprehensive tracking with automated audits and detailed history.</p>
+                            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Workforce Attendance</h1>
+                            <p className="text-sm font-medium text-muted-foreground">Comprehensive tracking with automated audits and detailed history.</p>
                         </div>
 
-                        <div className="flex items-center gap-2 bg-background p-1 rounded-xl border shadow-sm">
+                        <div className="flex items-center gap-2 bg-muted/60 p-1 rounded-xl border border-border/50 shadow-xs">
                             <Tabs value={viewMode} onValueChange={setViewMode} className="w-auto">
                                 <TabsList className="bg-transparent h-9 p-0">
-                                    <TabsTrigger value="daily" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-8 px-4 rounded-lg">Daily Roster</TabsTrigger>
-                                    <TabsTrigger value="history" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-8 px-4 rounded-lg">Detailed History</TabsTrigger>
+                                    <TabsTrigger value="daily" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-8 px-4 rounded-lg font-semibold text-xs transition-all">Daily Roster</TabsTrigger>
+                                    <TabsTrigger value="history" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-8 px-4 rounded-lg font-semibold text-xs transition-all">Detailed History</TabsTrigger>
                                 </TabsList>
                             </Tabs>
                         </div>
@@ -707,20 +707,20 @@ export default function AttendancePage() {
                         <TabsContent value="daily" className="space-y-6 m-0 focus-visible:ring-0">
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                 {[
-                                    { label: "Present Today", value: globalStats.present, icon: UserCheck, color: "emerald" },
-                                    { label: "Absent today", value: globalStats.absent, icon: UserX, color: "rose" },
-                                    { label: "On Leave", value: globalStats.leave, icon: Clock, color: "amber" },
-                                    { label: "Total Workforce", value: employees.length, icon: Users, color: "blue" }
+                                    { label: "Present Today", value: globalStats.present, icon: UserCheck, colorText: "text-emerald-600 dark:text-emerald-400", bgIcon: "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" },
+                                    { label: "Absent today", value: globalStats.absent, icon: UserX, colorText: "text-rose-600 dark:text-rose-400", bgIcon: "bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400" },
+                                    { label: "On Leave", value: globalStats.leave, icon: Clock, colorText: "text-amber-600 dark:text-amber-400", bgIcon: "bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400" },
+                                    { label: "Total Workforce", value: employees.length, icon: Users, colorText: "text-blue-600 dark:text-blue-400", bgIcon: "bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400" }
                                 ].map((stat, i) => (
-                                    <Card key={i} className={`border-none shadow-sm bg-white hover:shadow-md transition-shadow duration-200`}>
+                                    <Card key={i} className="border border-border/60 shadow-sm bg-card text-card-foreground hover:shadow-md transition-shadow duration-200">
                                         <CardContent className="p-4">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <p className={`text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>{stat.label}</p>
-                                                    <h2 className={`text-2xl font-black text-${stat.color}-600`}>{stat.value}</h2>
+                                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+                                                    <h2 className={`text-2xl font-black ${stat.colorText}`}>{stat.value}</h2>
                                                 </div>
-                                                <div className={`p-2 bg-${stat.color}-50 rounded-lg`}>
-                                                    <stat.icon className={`h-5 w-5 text-${stat.color}-500`} />
+                                                <div className={`p-2.5 ${stat.bgIcon} rounded-xl`}>
+                                                    <stat.icon className="h-5 w-5" />
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -728,17 +728,17 @@ export default function AttendancePage() {
                                 ))}
                             </div>
 
-                            <Card className="border-none shadow-lg overflow-hidden">
-                                <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between bg-card pb-6 border-b gap-4">
+                            <Card className="border border-border/60 shadow-md bg-card overflow-hidden">
+                                <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between bg-card pb-6 border-b border-border gap-4">
                                     <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background" onClick={() => {
+                                        <div className="flex items-center gap-1 bg-muted/60 border border-border/50 p-1 rounded-lg">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background text-foreground" onClick={() => {
                                                 const newDate = new Date(date);
                                                 newDate.setDate(newDate.getDate() - 1);
                                                 setDate(newDate);
                                             }}><ChevronLeft className="h-4 w-4" /></Button>
-                                            <Badge variant="outline" className="px-3 py-1 font-semibold text-sm bg-background border-none shadow-sm">{format(date, 'EEEE, MMMM do, yyyy')}</Badge>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background" onClick={() => {
+                                            <Badge variant="outline" className="px-3 py-1 font-semibold text-sm bg-background border border-border/60 shadow-xs text-foreground">{format(date, 'EEEE, MMMM do, yyyy')}</Badge>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background text-foreground" onClick={() => {
                                                 const newDate = new Date(date);
                                                 newDate.setDate(newDate.getDate() + 1);
                                                 setDate(newDate);
@@ -748,7 +748,7 @@ export default function AttendancePage() {
                                     <div className="flex flex-wrap gap-2">
                                         <AlertDialog>
                                             <AlertDialogTrigger asChild>
-                                                <Button variant="outline" size="sm" className="h-9 px-4 font-black transition-all hover:bg-slate-900 hover:text-white">
+                                                <Button variant="outline" size="sm" className="h-9 px-4 font-bold border-border hover:bg-accent hover:text-accent-foreground transition-all">
                                                     <Zap className="mr-2 h-4 w-4 text-amber-500" />
                                                     Mark All Present
                                                 </Button>
@@ -769,7 +769,7 @@ export default function AttendancePage() {
 
                                         <AlertDialog>
                                             <AlertDialogTrigger asChild>
-                                                <Button variant="outline" size="sm" className="h-9 px-4 font-black transition-all hover:bg-rose-50 hover:text-rose-600 border-rose-100 hover:border-rose-200">
+                                                <Button variant="outline" size="sm" className="h-9 px-4 font-bold text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all">
                                                     <Trash2 className="mr-2 h-4 w-4" />
                                                     Clear Roster
                                                 </Button>
@@ -783,7 +783,7 @@ export default function AttendancePage() {
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
                                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={handleClearRoster} className="bg-rose-600 hover:bg-rose-700">Delete All</AlertDialogAction>
+                                                    <AlertDialogAction onClick={handleClearRoster} className="bg-rose-600 hover:bg-rose-700 text-white">Delete All</AlertDialogAction>
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>
                                         </AlertDialog>
@@ -813,13 +813,13 @@ export default function AttendancePage() {
                                 <CardContent className="p-0">
                                     <div className="overflow-x-auto">
                                         <Table>
-                                            <TableHeader className="bg-muted/30">
-                                                <TableRow className="hover:bg-transparent">
-                                                    <TableHead className="font-bold text-slate-900 py-4 px-6">Employee</TableHead>
-                                                    <TableHead className="font-bold text-slate-900 py-4 px-6">Portal Access</TableHead>
-                                                    <TableHead className="font-bold text-slate-900 py-4 px-6 text-center">Status</TableHead>
-                                                    <TableHead className="font-bold text-slate-900 py-4 px-6 text-center">Shift & Duration</TableHead>
-                                                    <TableHead className="font-bold text-slate-900 py-4 px-6 text-right">Actions</TableHead>
+                                            <TableHeader className="bg-muted/40 border-b border-border">
+                                                <TableRow className="hover:bg-transparent border-border">
+                                                    <TableHead className="font-bold text-foreground py-4 px-6">Employee</TableHead>
+                                                    <TableHead className="font-bold text-foreground py-4 px-6">Portal Access</TableHead>
+                                                    <TableHead className="font-bold text-foreground py-4 px-6 text-center">Status</TableHead>
+                                                    <TableHead className="font-bold text-foreground py-4 px-6 text-center">Shift & Duration</TableHead>
+                                                    <TableHead className="font-bold text-foreground py-4 px-6 text-right">Actions</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -831,23 +831,23 @@ export default function AttendancePage() {
                                                     employees.map((emp) => {
                                                         const att = attendance[emp.id];
                                                         return (
-                                                            <TableRow key={emp.id} className="hover:bg-muted/20 transition-colors">
+                                                            <TableRow key={emp.id} className="hover:bg-muted/30 border-border transition-colors">
                                                                 <TableCell className="px-6 py-4">
                                                                     <div className="flex items-center gap-3">
-                                                                        <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+                                                                        <Avatar className="h-10 w-10 border-2 border-border shadow-xs">
                                                                             <AvatarFallback className="text-sm font-bold bg-primary text-primary-foreground">
                                                                                 {emp.name.substring(0, 2).toUpperCase()}
                                                                             </AvatarFallback>
                                                                         </Avatar>
                                                                         <div className="flex flex-col">
-                                                                            <span className="font-bold text-slate-900 text-sm tracking-tight">{emp.name}</span>
-                                                                            <span className="text-[10px] uppercase font-bold text-primary/75 w-fit rounded mt-0.5">{emp.position?.name}</span>
+                                                                            <span className="font-bold text-foreground text-sm tracking-tight">{emp.name}</span>
+                                                                            <span className="text-[10px] uppercase font-bold text-primary/80 w-fit rounded mt-0.5">{emp.position?.name}</span>
                                                                         </div>
                                                                     </div>
                                                                 </TableCell>
 
                                                                 <TableCell className="px-6 py-4">
-                                                                    <Badge variant="outline" className={cn("text-[10px] font-bold px-2 py-0.5", emp.attendance_self_service ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200")}>
+                                                                    <Badge variant="outline" className={cn("text-[10px] font-bold px-2 py-0.5", emp.attendance_self_service ? "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-800/40" : "bg-muted text-muted-foreground border-border")}>
                                                                         {emp.attendance_self_service ? "Enabled" : "Disabled"}
                                                                     </Badge>
                                                                 </TableCell>
@@ -856,13 +856,13 @@ export default function AttendancePage() {
                                                                     {att?.status ? (
                                                                         <Badge variant="outline" className={cn(
                                                                             "text-[10px] uppercase font-bold px-2.5 py-1 border-none",
-                                                                            att.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
-                                                                            att.status === 'absent' ? 'bg-rose-100 text-rose-700' :
-                                                                            att.status === 'half-day' ? 'bg-amber-100 text-amber-700' :
-                                                                            att.status === 'leave' ? 'bg-blue-100 text-blue-700' :
-                                                                            att.status === 'holiday' ? 'bg-slate-100 text-slate-700' :
-                                                                            att.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700' :
-                                                                            'bg-purple-100 text-purple-700'
+                                                                            att.status === 'present' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400' :
+                                                                            att.status === 'absent' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-400' :
+                                                                            att.status === 'half-day' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400' :
+                                                                            att.status === 'leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-400' :
+                                                                            att.status === 'holiday' ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' :
+                                                                            att.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-400' :
+                                                                            'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-400'
                                                                         )}>
                                                                             {att.status}
                                                                         </Badge>
@@ -875,23 +875,23 @@ export default function AttendancePage() {
                                                                     <div className="flex flex-col items-center justify-center gap-1">
                                                                         {att?.check_in ? (
                                                                             <>
-                                                                                <span className="text-xs font-semibold text-slate-700">
+                                                                                <span className="text-xs font-semibold text-foreground">
                                                                                     {format(new Date(att.check_in), 'hh:mm a')}
                                                                                     {att?.check_out ? ` - ${format(new Date(att.check_out), 'hh:mm a')}` : ' - Active'}
                                                                                 </span>
                                                                                 <div className="flex items-center gap-1.5 mt-0.5">
-                                                                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                                                    <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                                                                         {att.total_hours || 0} hrs
                                                                                     </span>
                                                                                     {att.overtime_hours > 0 && (
-                                                                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                                                                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/50 dark:border-indigo-800/40 px-1.5 py-0.5 rounded">
                                                                                             +{att.overtime_hours} OT
                                                                                         </span>
                                                                                     )}
                                                                                 </div>
                                                                             </>
                                                                         ) : (
-                                                                            <span className="text-xs text-slate-400">--</span>
+                                                                            <span className="text-xs text-muted-foreground">--</span>
                                                                         )}
                                                                     </div>
                                                                 </TableCell>
@@ -907,7 +907,7 @@ export default function AttendancePage() {
                                                                                                 <Button
                                                                                                     size="sm"
                                                                                                     variant="outline"
-                                                                                                    className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-100"
+                                                                                                    className="h-8 w-8 p-0 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/40"
                                                                                                     onClick={() => handleManualAction(emp.id, 'clock_in')}
                                                                                                     disabled={actionLoading === `${emp.id}_clock_in`}
                                                                                                 >
@@ -928,7 +928,7 @@ export default function AttendancePage() {
                                                                                                 <Button
                                                                                                     size="sm"
                                                                                                     variant="outline"
-                                                                                                    className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-100"
+                                                                                                    className="h-8 w-8 p-0 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 border-blue-200 dark:border-blue-800/40"
                                                                                                     onClick={() => handleManualAction(emp.id, 'leave')}
                                                                                                     disabled={actionLoading === `${emp.id}_leave`}
                                                                                                 >
@@ -946,7 +946,7 @@ export default function AttendancePage() {
                                                                                             <Button
                                                                                                 size="sm"
                                                                                                 variant="outline"
-                                                                                                className="h-8 px-2.5 gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-100 text-xs font-semibold"
+                                                                                                className="h-8 px-2.5 gap-1.5 text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-rose-200 dark:border-rose-800/40 text-xs font-semibold"
                                                                                                 onClick={() => handleManualAction(emp.id, 'clock_out')}
                                                                                                 disabled={actionLoading === `${emp.id}_clock_out`}
                                                                                             >
@@ -969,14 +969,14 @@ export default function AttendancePage() {
                                                                                                 <Button
                                                                                                     size="sm"
                                                                                                     variant="outline"
-                                                                                                    className="h-8 w-8 p-0 hover:bg-slate-100 border-dashed"
+                                                                                                    className="h-8 w-8 p-0 hover:bg-muted border-dashed border-border text-muted-foreground hover:text-foreground"
                                                                                                     onClick={() => handleManualAction(emp.id, 'undo')}
                                                                                                     disabled={actionLoading === `${emp.id}_undo`}
                                                                                                 >
                                                                                                     {actionLoading === `${emp.id}_undo` ? (
                                                                                                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                                                                                     ) : (
-                                                                                                        <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+                                                                                                        <RotateCcw className="h-3.5 w-3.5" />
                                                                                                     )}
                                                                                                 </Button>
                                                                                             </TooltipTrigger>
@@ -990,7 +990,7 @@ export default function AttendancePage() {
                                                                         <Button
                                                                             size="sm"
                                                                             variant="ghost"
-                                                                            className="h-8 w-8 p-0 hover:bg-muted text-slate-600"
+                                                                            className="h-8 w-8 p-0 hover:bg-muted text-muted-foreground hover:text-foreground"
                                                                             onClick={() => {
                                                                                 setSelectedEmployeeForEdit({ emp, att });
                                                                                 setIsDrawerOpen(true);
@@ -1014,7 +1014,7 @@ export default function AttendancePage() {
                         <TabsContent value="history" className="space-y-6 m-0 focus-visible:ring-0">
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 <div className="space-y-6">
-                                    <Card className="border-none shadow-md">
+                                    <Card className="border border-border/60 shadow-md bg-card">
                                         <CardHeader>
                                             <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                                                 <Search className="w-4 h-4 text-primary" /> Select Employee
@@ -1022,7 +1022,7 @@ export default function AttendancePage() {
                                         </CardHeader>
                                         <CardContent>
                                             <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
-                                                <SelectTrigger className="w-full font-bold">
+                                                <SelectTrigger className="w-full font-bold bg-background border-input text-foreground">
                                                     <SelectValue placeholder="Search employee..." />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -1035,28 +1035,28 @@ export default function AttendancePage() {
                                     </Card>
 
                                     {selectedEmployeeId && (
-                                        <Card className="border-none shadow-md bg-primary text-primary-foreground">
+                                        <Card className="border border-border/60 shadow-md bg-primary text-primary-foreground">
                                             <CardHeader className="pb-2">
                                                 <CardTitle className="text-sm uppercase tracking-widest opacity-80">{format(date, 'MMMM yyyy')} Stats</CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-4">
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
-                                                        <p className="text-[10px] font-bold opacity-70">PRESENT DAYS</p>
+                                                        <p className="text-[10px] font-bold opacity-75">PRESENT DAYS</p>
                                                         <p className="text-2xl font-black">{monthlyStats.present}</p>
                                                     </div>
                                                     <div>
-                                                        <p className="text-[10px] font-bold opacity-70">ABSENT DAYS</p>
+                                                        <p className="text-[10px] font-bold opacity-75">ABSENT DAYS</p>
                                                         <p className="text-2xl font-black">{monthlyStats.absent}</p>
                                                     </div>
                                                 </div>
-                                                <div className="pt-4 border-t border-white/20">
+                                                <div className="pt-4 border-t border-primary-foreground/20">
                                                     <div className="flex justify-between items-end">
                                                         <div>
-                                                            <p className="text-[10px] font-bold opacity-70 uppercase">Total Monthly Hours</p>
+                                                            <p className="text-[10px] font-bold opacity-75 uppercase">Total Monthly Hours</p>
                                                             <p className="text-2xl font-black">{monthlyStats.totalHours.toFixed(1)} <span className="text-xs font-bold">Hrs</span></p>
                                                         </div>
-                                                        <Badge className="bg-white/20 text-white border-none font-bold">
+                                                        <Badge className="bg-primary-foreground/15 text-primary-foreground border-none font-bold">
                                                             {((monthlyStats.present / 26) * 100).toFixed(0)}%
                                                         </Badge>
                                                     </div>
@@ -1067,10 +1067,10 @@ export default function AttendancePage() {
                                 </div>
 
                                 <div className="lg:col-span-2 space-y-6">
-                                    <Card className="border-none shadow-md">
+                                    <Card className="border border-border/60 shadow-md bg-card">
                                         <CardHeader className="flex flex-row items-center justify-between">
                                             <div>
-                                                <CardTitle>Calendar View</CardTitle>
+                                                <CardTitle className="text-foreground">Calendar View</CardTitle>
                                                 <CardDescription>Color-coded status tracking</CardDescription>
                                             </div>
                                             {selectedEmployeeId && (
@@ -1095,27 +1095,27 @@ export default function AttendancePage() {
                                                 onSelect={(d) => d && setDate(d)}
                                                 modifiers={modifiers}
                                                 modifiersStyles={modifierStyles}
-                                                className="rounded-xl border shadow-sm p-4 w-full max-w-md"
+                                                className="rounded-xl border border-border shadow-xs p-4 w-full max-w-md bg-card text-card-foreground"
                                             />
                                         </CardContent>
                                     </Card>
 
                                     {selectedEmployeeId && (
-                                        <Card className="border-none shadow-md">
-                                            <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
-                                                <CardTitle className="text-sm font-bold">Activity Log</CardTitle>
-                                                <Button variant="outline" size="sm" className="h-8 text-xs"><Download className="w-3 h-3 mr-2" /> Export</Button>
+                                        <Card className="border border-border/60 shadow-md bg-card">
+                                            <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
+                                                <CardTitle className="text-sm font-bold text-foreground">Activity Log</CardTitle>
+                                                <Button variant="outline" size="sm" className="h-8 text-xs border-border"><Download className="w-3 h-3 mr-2" /> Export</Button>
                                             </CardHeader>
                                             <div className="overflow-x-auto">
                                                 <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>Date</TableHead>
-                                                            <TableHead>Status</TableHead>
-                                                            <TableHead>In</TableHead>
-                                                            <TableHead>Out</TableHead>
-                                                            <TableHead>Total</TableHead>
-                                                            <TableHead>Remarks & Auditor</TableHead>
+                                                    <TableHeader className="bg-muted/30 border-b border-border">
+                                                        <TableRow className="border-border">
+                                                            <TableHead className="text-foreground font-semibold">Date</TableHead>
+                                                            <TableHead className="text-foreground font-semibold">Status</TableHead>
+                                                            <TableHead className="text-foreground font-semibold">In</TableHead>
+                                                            <TableHead className="text-foreground font-semibold">Out</TableHead>
+                                                            <TableHead className="text-foreground font-semibold">Total</TableHead>
+                                                            <TableHead className="text-foreground font-semibold">Remarks & Auditor</TableHead>
                                                             <TableHead className="w-[50px]"></TableHead>
                                                         </TableRow>
                                                     </TableHeader>
@@ -1124,38 +1124,38 @@ export default function AttendancePage() {
                                                             <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No records for this month</TableCell></TableRow>
                                                         ) : (
                                                             employeeAttendance.map((row) => (
-                                                                <TableRow key={row.id} className="text-xs">
-                                                                    <TableCell className="font-bold">{format(new Date(row.date), 'MMM dd, EEE')}</TableCell>
+                                                                <TableRow key={row.id} className="text-xs border-border hover:bg-muted/30">
+                                                                    <TableCell className="font-bold text-foreground">{format(new Date(row.date), 'MMM dd, EEE')}</TableCell>
                                                                     <TableCell>
                                                                         <Badge className={cn(
                                                                             "text-[9px] uppercase font-bold border-none",
-                                                                            row.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
-                                                                                row.status === 'absent' ? 'bg-rose-100 text-rose-700' :
-                                                                                    row.status === 'half-day' ? 'bg-amber-100 text-amber-700' :
-                                                                                        row.status === 'leave' ? 'bg-blue-100 text-blue-700' :
-                                                                                            row.status === 'holiday' ? 'bg-slate-100 text-slate-700' :
-                                                                                                row.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700' :
-                                                                                                    'bg-purple-100 text-purple-700'
+                                                                            row.status === 'present' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400' :
+                                                                                row.status === 'absent' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-400' :
+                                                                                    row.status === 'half-day' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400' :
+                                                                                        row.status === 'leave' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-400' :
+                                                                                            row.status === 'holiday' ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' :
+                                                                                                row.status === 'paid-holiday' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-400' :
+                                                                                                    'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-400'
                                                                         )}>
                                                                             {row.status}
                                                                         </Badge>
                                                                     </TableCell>
-                                                                    <TableCell className="font-mono text-muted-foreground/70">
+                                                                    <TableCell className="font-mono text-muted-foreground">
                                                                         {row.check_in ? format(new Date(row.check_in), 'hh:mm a') : "--:--"}
                                                                     </TableCell>
-                                                                    <TableCell className="font-mono text-muted-foreground/70">
+                                                                    <TableCell className="font-mono text-muted-foreground">
                                                                         {row.check_out ? format(new Date(row.check_out), 'hh:mm a') : "--:--"}
                                                                     </TableCell>
-                                                                    <TableCell className="font-medium whitespace-nowrap">
+                                                                    <TableCell className="font-medium whitespace-nowrap text-foreground">
                                                                         {row.total_hours || 0} h
-                                                                        {row.overtime_hours > 0 && <span className="text-purple-600 ml-1">(+{row.overtime_hours})</span>}
+                                                                        {row.overtime_hours > 0 && <span className="text-purple-600 dark:text-purple-400 ml-1">(+{row.overtime_hours})</span>}
                                                                     </TableCell>
                                                                     <TableCell className="text-muted-foreground italic">
                                                                         <div className="flex flex-col gap-1">
                                                                             <span>{row.remarks || '-'}</span>
                                                                             {row.auditor?.full_name && (
                                                                                 <div className="flex items-center gap-1.5 mt-1">
-                                                                                    <Badge variant="secondary" className="text-[8px] uppercase font-bold bg-primary/10 text-primary border-primary/20 px-1.5 h-4">
+                                                                                    <Badge variant="secondary" className="text-[8px] uppercase font-bold bg-primary/10 text-primary border border-primary/20 px-1.5 h-4">
                                                                                         Marked By: {row.auditor.full_name}
                                                                                     </Badge>
                                                                                 </div>
@@ -1166,7 +1166,7 @@ export default function AttendancePage() {
                                                                         <Button
                                                                             variant="ghost"
                                                                             size="icon"
-                                                                            className="h-7 w-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-50"
+                                                                            className="h-7 w-7 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                                                                             onClick={() => handleDeleteLog(row.id)}
                                                                         >
                                                                             <Trash2 className="h-3.5 w-3.5" />
@@ -1191,10 +1191,10 @@ export default function AttendancePage() {
                 setIsDrawerOpen(open);
                 if (!open) setSelectedEmployeeForEdit(null);
             }}>
-                <SheetContent className="w-full sm:max-w-md overflow-y-auto bg-white p-6">
-                    <SheetHeader className="pb-4 border-b">
-                        <SheetTitle className="text-lg font-bold text-slate-900">Edit Attendance</SheetTitle>
-                        <SheetDescription className="text-sm text-slate-500">
+                <SheetContent className="w-full sm:max-w-md overflow-y-auto bg-card text-card-foreground border-l border-border p-6">
+                    <SheetHeader className="pb-4 border-b border-border">
+                        <SheetTitle className="text-lg font-bold text-foreground">Edit Attendance</SheetTitle>
+                        <SheetDescription className="text-sm text-muted-foreground">
                             Modify daily record and portal configurations.
                         </SheetDescription>
                     </SheetHeader>
@@ -1202,18 +1202,18 @@ export default function AttendancePage() {
                     {selectedEmployeeForEdit && (
                         <div className="py-6 space-y-6">
                             {/* Employee profile header */}
-                            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                            <div className="flex items-center gap-3 bg-muted/50 p-3 rounded-xl border border-border">
+                                <Avatar className="h-12 w-12 border-2 border-border shadow-xs">
                                     <AvatarFallback className="text-base font-bold bg-primary text-primary-foreground">
                                         {selectedEmployeeForEdit.emp.name.substring(0, 2).toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-slate-900">{selectedEmployeeForEdit.emp.name}</span>
-                                    <span className="text-xs font-medium text-slate-500">{selectedEmployeeForEdit.emp.position?.name || "Staff Member"}</span>
+                                    <span className="font-bold text-foreground">{selectedEmployeeForEdit.emp.name}</span>
+                                    <span className="text-xs font-medium text-muted-foreground">{selectedEmployeeForEdit.emp.position?.name || "Staff Member"}</span>
                                 </div>
                                 <div className="ml-auto text-right">
-                                    <span className="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                    <span className="text-[10px] uppercase font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/40">
                                         {format(date, 'MMM dd, yyyy')}
                                     </span>
                                 </div>
@@ -1221,11 +1221,11 @@ export default function AttendancePage() {
 
                             {/* Self service toggle */}
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Portal Control</Label>
-                                <div className="flex items-center justify-between bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Portal Control</Label>
+                                <div className="flex items-center justify-between bg-muted/40 p-3 rounded-xl border border-border">
                                     <div className="flex flex-col gap-0.5">
-                                        <span className="text-sm font-semibold text-slate-900">Staff Portal Access</span>
-                                        <span className="text-[10px] text-slate-500">Allow staff to request changes via their portal</span>
+                                        <span className="text-sm font-semibold text-foreground">Staff Portal Access</span>
+                                        <span className="text-[10px] text-muted-foreground">Allow staff to request changes via their portal</span>
                                     </div>
                                     <Switch
                                         checked={editSelfService}
@@ -1236,9 +1236,9 @@ export default function AttendancePage() {
 
                             {/* Attendance Status */}
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Daily Status</Label>
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Daily Status</Label>
                                 <Select value={editStatus} onValueChange={setEditStatus}>
-                                    <SelectTrigger className="w-full font-semibold">
+                                    <SelectTrigger className="w-full font-semibold bg-background border-input text-foreground">
                                         <SelectValue placeholder="Select status" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1255,13 +1255,13 @@ export default function AttendancePage() {
 
                             {/* Session control */}
                             {(editStatus === 'present' || editStatus === 'half-day') && (
-                                <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Work Sessions</Label>
+                                <div className="space-y-3 bg-muted/40 p-4 rounded-xl border border-border">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Work Sessions</Label>
                                     <div className="space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex flex-col gap-0.5">
-                                                <span className="text-xs font-bold text-slate-700">Session 1 (Morning)</span>
-                                                <span className="text-[10px] text-slate-400">{workforceSettings?.session_1_start_time?.slice(0, 5)} - {workforceSettings?.session_1_end_time?.slice(0, 5)}</span>
+                                                <span className="text-xs font-bold text-foreground">Session 1 (Morning)</span>
+                                                <span className="text-[10px] text-muted-foreground">{workforceSettings?.session_1_start_time?.slice(0, 5)} - {workforceSettings?.session_1_end_time?.slice(0, 5)}</span>
                                             </div>
                                             <Switch
                                                 checked={editSession1}
@@ -1273,10 +1273,10 @@ export default function AttendancePage() {
                                                 }}
                                             />
                                         </div>
-                                        <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
+                                        <div className="flex items-center justify-between pt-2.5 border-t border-border">
                                             <div className="flex flex-col gap-0.5">
-                                                <span className="text-xs font-bold text-slate-700">Session 2 (Afternoon)</span>
-                                                <span className="text-[10px] text-slate-400">{workforceSettings?.session_2_start_time?.slice(0, 5)} - {workforceSettings?.session_2_end_time?.slice(0, 5)}</span>
+                                                <span className="text-xs font-bold text-foreground">Session 2 (Afternoon)</span>
+                                                <span className="text-[10px] text-muted-foreground">{workforceSettings?.session_2_start_time?.slice(0, 5)} - {workforceSettings?.session_2_end_time?.slice(0, 5)}</span>
                                             </div>
                                             <Switch
                                                 checked={editSession2}
@@ -1294,25 +1294,25 @@ export default function AttendancePage() {
 
                             {/* Time Correction */}
                             {(editStatus === 'present' || editStatus === 'half-day' || editStatus === 'overtime') && (
-                                <div className="space-y-3 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Shift Timing Corrections</Label>
+                                <div className="space-y-3 bg-muted/40 p-4 rounded-xl border border-border">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Shift Timing Corrections</Label>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="flex flex-col gap-1.5">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase">Clock In</span>
+                                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Clock In</span>
                                             <Input
                                                 type="time"
                                                 value={editCheckIn}
                                                 onChange={(e) => setEditCheckIn(e.target.value)}
-                                                className="bg-white border-slate-200"
+                                                className="bg-background border-input text-foreground"
                                             />
                                         </div>
                                         <div className="flex flex-col gap-1.5">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase">Clock Out</span>
+                                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Clock Out</span>
                                             <Input
                                                 type="time"
                                                 value={editCheckOut}
                                                 onChange={(e) => setEditCheckOut(e.target.value)}
-                                                className="bg-white border-slate-200"
+                                                className="bg-background border-input text-foreground"
                                             />
                                         </div>
                                     </div>
@@ -1322,18 +1322,19 @@ export default function AttendancePage() {
                             {/* Hours and Overtime override */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">OT Overwrite (hrs)</Label>
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">OT Overwrite (hrs)</Label>
                                     <Input
                                         type="number"
                                         step="0.5"
                                         min="0"
                                         value={editOvertimeHours}
                                         onChange={(e) => setEditOvertimeHours(parseFloat(e.target.value) || 0)}
+                                        className="bg-background border-input text-foreground"
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Shift (hrs)</Label>
-                                    <div className="h-10 flex items-center justify-center bg-slate-900 text-white rounded-lg text-sm font-bold">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Shift (hrs)</Label>
+                                    <div className="h-10 flex items-center justify-center bg-muted/80 border border-border text-foreground rounded-lg text-sm font-bold">
                                         {(() => {
                                             if (!editCheckIn || !editCheckOut) return "0.00";
                                             const [h1, m1] = editCheckIn.split(':');
@@ -1352,18 +1353,18 @@ export default function AttendancePage() {
 
                             {/* Remarks */}
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">Remarks / Auditor Note</Label>
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Remarks / Auditor Note</Label>
                                 <Input
                                     placeholder="Reason for correction or adjustment note..."
                                     value={editRemarks}
                                     onChange={(e) => setEditRemarks(e.target.value)}
-                                    className="text-xs italic"
+                                    className="text-xs italic bg-background border-input text-foreground"
                                 />
                             </div>
                         </div>
                     )}
 
-                    <SheetFooter className="pt-4 border-t gap-2 sm:gap-0 mt-auto">
+                    <SheetFooter className="pt-4 border-t border-border gap-2 sm:gap-0 mt-auto">
                         <Button
                             variant="outline"
                             onClick={() => {
@@ -1377,7 +1378,7 @@ export default function AttendancePage() {
                         <Button
                             onClick={handleSaveDrawer}
                             disabled={isSavingDrawer}
-                            className="bg-primary text-white font-bold"
+                            className="bg-primary text-primary-foreground font-bold hover:bg-primary/90"
                         >
                             {isSavingDrawer ? (
                                 <>

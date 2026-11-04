@@ -2250,7 +2250,7 @@ export default function WorkOrderDetail() {
                                                             </Badge>
                                                             <Button
                                                                 size="sm"
-                                                                className="h-6 text-[10px] px-2 bg-primary/90 hover:bg-primary text-white shadow-md font-semibold gap-1 opacity-90 group-hover:opacity-100"
+                                                                className="h-6 text-[10px] px-2 bg-primary/90 hover:bg-primary text-primary-foreground shadow-md font-semibold gap-1 opacity-90 group-hover:opacity-100"
                                                                 onClick={() => setPreviewImage({
                                                                     url: photo.photo_url,
                                                                     title: "Arrival Condition Photo",
@@ -2309,7 +2309,7 @@ export default function WorkOrderDetail() {
                                                             </Badge>
                                                             <Button
                                                                 size="sm"
-                                                                className="h-6 text-[10px] px-2 bg-primary/90 hover:bg-primary text-white shadow-md font-semibold gap-1 opacity-90 group-hover:opacity-100"
+                                                                className="h-6 text-[10px] px-2 bg-primary/90 hover:bg-primary text-primary-foreground shadow-md font-semibold gap-1 opacity-90 group-hover:opacity-100"
                                                                 onClick={() => setPreviewImage({
                                                                     url: photo.photo_url,
                                                                     title: "Reported Issue Photo",
@@ -3420,7 +3420,7 @@ export default function WorkOrderDetail() {
                         <Button
                             onClick={handleAddEmployee}
                             disabled={!selectedServiceId || !selectedEmployeeId || loadingEmployeeData}
-                            className="bg-primary hover:bg-primary/90 text-white shadow-md font-bold text-xs px-6"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md font-bold text-xs px-6"
                         >
                             <Plus className="h-4 w-4 mr-2" />
                             Confirm Assignment
